@@ -13,6 +13,7 @@ import com.example.squintboyadvance.presentation.RomMetadataStore
 import com.example.squintboyadvance.presentation.SettingsRepository
 import com.example.squintboyadvance.shared.emulator.EmulatorState
 import com.example.squintboyadvance.shared.model.ButtonId
+import com.example.squintboyadvance.shared.model.SystemType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,6 +35,9 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+    private val _systemType = MutableStateFlow<SystemType?>(null)
+    val systemType: StateFlow<SystemType?> = _systemType.asStateFlow()
 
     private var emulator: MgbaEmulator? = null
     private var emulatorThread: EmulatorThread? = null
@@ -61,6 +65,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
 
         currentRomId = romId
         _romTitle.value = romTitle
+        _systemType.value = SystemType.fromExtension(romId.substringAfterLast('.', ""))
         _state.value = EmulatorState.LOADING
 
         val context = getApplication<Application>()

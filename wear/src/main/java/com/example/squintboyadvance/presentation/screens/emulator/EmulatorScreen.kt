@@ -26,6 +26,7 @@ fun EmulatorScreen(
     val state by viewModel.state.collectAsState()
     val frame by viewModel.frame.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    val systemType by viewModel.systemType.collectAsState()
 
     LaunchedEffect(romId) {
         viewModel.loadRom(romId, romTitle)
@@ -45,8 +46,10 @@ fun EmulatorScreen(
             EmulatorState.RUNNING -> {
                 GameDisplay(frame = frame)
                 TouchOverlay(
+                    systemType = systemType,
                     onButtonPress = viewModel::pressButton,
-                    onButtonRelease = viewModel::releaseButton
+                    onButtonRelease = viewModel::releaseButton,
+                    onPause = viewModel::pause
                 )
             }
 
