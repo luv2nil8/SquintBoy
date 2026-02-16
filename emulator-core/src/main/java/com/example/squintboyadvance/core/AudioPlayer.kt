@@ -14,7 +14,7 @@ class AudioPlayer(val sampleRate: Int = 48000) {
             AudioFormat.CHANNEL_OUT_STEREO,
             AudioFormat.ENCODING_PCM_16BIT
         )
-        val bufferSize = (minBuf * 2).coerceAtLeast(4096)
+        val bufferSize = minBuf.coerceAtLeast(4096)
 
         audioTrack = AudioTrack.Builder()
             .setAudioAttributes(

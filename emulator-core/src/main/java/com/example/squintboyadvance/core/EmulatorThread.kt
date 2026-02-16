@@ -25,14 +25,15 @@ class EmulatorThread(
                     val framesRead = emulator.runFrameWithAudio(
                         audioBuffer, audioBuffer.size / 2
                     )
-                    onFrame()
 
                     if (framesRead > 0) {
-                        // Blocking write IS the frame pacer — when the AudioTrack
-                        // buffer fills up, this blocks until the hardware drains it,
-                        // naturally syncing emulation speed to the audio clock
+                        // Write audio BEFORE posting video — audio enters the
+                        // AudioTrack pipeline first so it has time to work through
+                        // the buffer while Compose renders the frame on next vsync.
+                        // Blocking write IS the frame pacer.
                         audioPlayer.writeSamples(audioBuffer, framesRead)
                     }
+                    onFrame()
                 }
             } else {
                 // No audio: fall back to sleep-based pacing

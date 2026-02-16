@@ -105,7 +105,7 @@ Java_com_example_squintboyadvance_core_NativeBridge_nativeLoadRom(
     g_core->setVideoBuffer(g_core, g_videoBuffer, g_bufferStride);
 
     // Set up audio buffer — smaller = lower latency
-    g_core->setAudioBufferSize(g_core, 1024);
+    g_core->setAudioBufferSize(g_core, 512);
 
     // Reset to start
     g_core->reset(g_core);
