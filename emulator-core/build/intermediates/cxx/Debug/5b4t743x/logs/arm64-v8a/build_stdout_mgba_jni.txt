@@ -1,0 +1,4 @@
+ninja: Entering directory `/home/hunter/Development/SquintBoy/emulator-core/.cxx/Debug/5b4t743x/arm64-v8a'
+[1/3] cd /home/hunter/Development/SquintBoy/external/mgba && /home/hunter/Android/Sdk/cmake/3.22.1/bin/cmake -DBINARY_NAME=mgba -DCONFIG_FILE=/home/hunter/Development/SquintBoy/external/mgba/src/core/version.c.in -DOUT_FILE=/home/hunter/Development/SquintBoy/emulator-core/.cxx/Debug/5b4t743x/arm64-v8a/mgba/version.c -P /home/hunter/Development/SquintBoy/external/mgba/version.cmake
+[2/3] Building CXX object CMakeFiles/mgba_jni.dir/mgba_jni.cpp.o
+[3/3] Linking CXX shared library /home/hunter/Development/SquintBoy/emulator-core/build/intermediates/cxx/Debug/5b4t743x/obj/arm64-v8a/libmgba_jni.so

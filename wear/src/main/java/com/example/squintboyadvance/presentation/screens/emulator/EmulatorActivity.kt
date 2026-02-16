@@ -4,12 +4,15 @@ import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.example.squintboyadvance.presentation.theme.SquintBoyAdvanceTheme
 
 class EmulatorActivity : ComponentActivity() {
+
+    private val viewModel: EmulatorViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -31,9 +34,25 @@ class EmulatorActivity : ComponentActivity() {
                 EmulatorScreen(
                     romId = romId,
                     romTitle = romTitle,
-                    onExit = { finish() }
+                    onExit = { finish() },
+                    viewModel = viewModel
                 )
             }
         }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        viewModel.pause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.resume()
+    }
+
+    override fun onDestroy() {
+        viewModel.stop()
+        super.onDestroy()
     }
 }

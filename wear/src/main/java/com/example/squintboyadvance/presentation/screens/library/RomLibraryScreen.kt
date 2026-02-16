@@ -3,9 +3,13 @@ package com.example.squintboyadvance.presentation.screens.library
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
@@ -29,6 +33,14 @@ fun RomLibraryScreen(
 ) {
     val roms by viewModel.roms.collectAsState()
     val listState = rememberScalingLazyListState()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Re-scan ROMs when returning from emulator (activity resumes)
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            viewModel.scanRoms()
+        }
+    }
 
     Scaffold(
         timeText = { TimeText() },

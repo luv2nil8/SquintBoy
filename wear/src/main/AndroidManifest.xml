@@ -36,6 +36,7 @@
         <activity
             android:name="com.example.squintboyadvance.presentation.screens.emulator.EmulatorActivity"
             android:exported="false"
+            android:configChanges="orientation|screenSize"
             android:theme="@android:style/Theme.DeviceDefault" />
     </application>
 

@@ -23,3 +23,4 @@ rootProject.name = "Squint Boy Advance"
 include(":mobile")
 include(":wear")
 include(":shared")
+include(":emulator-core")

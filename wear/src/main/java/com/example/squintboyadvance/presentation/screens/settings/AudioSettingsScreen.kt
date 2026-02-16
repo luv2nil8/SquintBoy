@@ -73,8 +73,18 @@ fun AudioSettingsScreen(
                     onValueChange = { viewModel.setAudioVolume(it) },
                     valueRange = 0f..1f,
                     steps = 9,
-                    decreaseIcon = { InlineSliderDefaults.Decrease },
-                    increaseIcon = { InlineSliderDefaults.Increase },
+                    decreaseIcon = {
+                        Icon(
+                            imageVector = InlineSliderDefaults.Decrease,
+                            contentDescription = "Decrease"
+                        )
+                    },
+                    increaseIcon = {
+                        Icon(
+                            imageVector = InlineSliderDefaults.Increase,
+                            contentDescription = "Increase"
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth()
                 )
             }

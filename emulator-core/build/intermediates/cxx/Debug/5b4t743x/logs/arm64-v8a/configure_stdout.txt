@@ -1,0 +1,60 @@
+-- The CXX compiler identification is Clang 18.0.1
+-- The C compiler identification is Clang 18.0.1
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /home/hunter/Android/Sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /home/hunter/Android/Sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/bin/clang - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Found PkgConfig: /usr/bin/pkg-config (found version "1.8.1") 
+-- Looking for strdup
+-- Looking for strdup - found
+-- Looking for strlcpy
+-- Looking for strlcpy - found
+-- Looking for strndup
+-- Looking for strndup - found
+-- Looking for vasprintf
+-- Looking for vasprintf - found
+-- Looking for freelocale
+-- Looking for freelocale - found
+-- Looking for newlocale
+-- Looking for newlocale - found
+-- Looking for setlocale
+-- Looking for setlocale - found
+-- Looking for snprintf_l
+-- Looking for snprintf_l - not found
+-- Looking for uselocale
+-- Looking for uselocale - found
+-- Looking for popcount32
+-- Looking for popcount32 - not found
+-- Looking for futimens
+-- Looking for futimens - found
+-- Looking for futimes
+-- Looking for futimes - found
+-- Looking for localtime_r
+-- Looking for localtime_r - found
+-- Looking for realpath
+-- Looking for realpath - found
+-- Looking for include file xlocale.h
+-- Looking for include file xlocale.h - found
+-- Looking for include file pthread.h
+-- Looking for include file pthread.h - found
+-- Performing Test HAVE_PTHREAD
+-- Performing Test HAVE_PTHREAD - Success
+-- Looking for pthread_create
+-- Looking for pthread_create - found
+-- Looking for include file pthread_np.h
+-- Looking for include file pthread_np.h - not found
+-- Looking for pthread_setname_np
+-- Looking for pthread_setname_np - found
+-- Looking for pthread_set_name_np
+-- Looking for pthread_set_name_np - not found
+-- Looking for crc32
+-- Looking for crc32 - not found
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/hunter/Development/SquintBoy/emulator-core/.cxx/Debug/5b4t743x/arm64-v8a

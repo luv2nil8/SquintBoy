@@ -1,25 +1,19 @@
 package com.example.squintboyadvance.presentation.screens.emulator
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.wear.compose.material.Button
+import androidx.wear.compose.material.CircularProgressIndicator
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
-import com.example.squintboyadvance.presentation.theme.GbGreen
 import com.example.squintboyadvance.shared.emulator.EmulatorState
 
 @Composable
@@ -30,9 +24,10 @@ fun EmulatorScreen(
     viewModel: EmulatorViewModel = viewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    val frame by viewModel.frame.collectAsState()
+    val errorMessage by viewModel.errorMessage.collectAsState()
 
-    // Load ROM on first composition
-    androidx.compose.runtime.LaunchedEffect(romId) {
+    LaunchedEffect(romId) {
         viewModel.loadRom(romId, romTitle)
     }
 
@@ -42,35 +37,40 @@ fun EmulatorScreen(
             .background(Color.Black),
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = romTitle,
-                style = MaterialTheme.typography.title3,
-                color = GbGreen,
-                textAlign = TextAlign.Center
-            )
+        when (state) {
+            EmulatorState.LOADING -> {
+                CircularProgressIndicator()
+            }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            EmulatorState.RUNNING -> {
+                GameDisplay(frame = frame)
+                TouchOverlay(
+                    onButtonPress = viewModel::pressButton,
+                    onButtonRelease = viewModel::releaseButton
+                )
+            }
 
-            Text(
-                text = when (state) {
-                    EmulatorState.IDLE -> "Ready"
-                    EmulatorState.LOADING -> "Loading..."
-                    EmulatorState.RUNNING -> "Emulator Running"
-                    EmulatorState.PAUSED -> "Paused"
-                    EmulatorState.ERROR -> "Error"
-                },
-                style = MaterialTheme.typography.body2,
-                color = Color.Gray
-            )
+            EmulatorState.PAUSED -> {
+                GameDisplay(frame = frame)
+                PauseOverlay(
+                    onResume = viewModel::resume,
+                    onExit = {
+                        viewModel.stop()
+                        onExit()
+                    }
+                )
+            }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            EmulatorState.ERROR -> {
+                Text(
+                    text = errorMessage ?: "Unknown error",
+                    color = Color.Red,
+                    style = MaterialTheme.typography.body2
+                )
+            }
 
-            Button(onClick = onExit) {
-                Text("Exit")
+            EmulatorState.IDLE -> {
+                // Nothing to show
             }
         }
     }
