@@ -4,6 +4,7 @@
 /.idea
 .DS_Store
 /build
+*/build
 /captures
 .externalNativeBuild
 .cxx
@@ -11,3 +12,4 @@
 *.aab
 *.ap_
 *.dex
+.claude/settings.local.json

@@ -1,4 +1,0 @@
-/home/hunter/Android/Sdk/cmake/3.22.1/bin/ninja \
-  -C \
-  /home/hunter/Development/SquintBoy/emulator-core/.cxx/Debug/5b4t743x/armeabi-v7a \
-  mgba_jni
