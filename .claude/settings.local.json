@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew assembleDebug:*)",
+      "Bash(JAVA_HOME=/snap/android-studio/209/jbr /home/hunter/Development/SquintBoy/gradlew:*)",
+      "Bash(JAVA_HOME=/snap/android-studio/209/jbr find:*)",
+      "Bash(unzip:*)",
+      "Bash(JAVA_HOME=/snap/android-studio/209/jbr /snap/android-studio/209/platform-tools/adb devices:*)",
+      "Bash(adb devices:*)",
+      "Bash(/home/hunter/Android/Sdk/platform-tools/adb devices)",
+      "Bash(jar tf:*)",
+      "Bash(JAVA_HOME=/snap/android-studio/209/jbr $JAVA_HOME/bin/jar tf /home/hunter/.gradle/caches/8.13/transforms/46560ea86d8fa76cfed0b3dc9108564e/transformed/compose-navigation-1.2.1/jars/classes.jar)",
+      "Bash(/snap/android-studio/209/jbr/bin/jar:*)",
+      "Bash(/home/hunter/Android/Sdk/platform-tools/adb:*)",
+      "WebSearch",
+      "Bash(git config:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}
