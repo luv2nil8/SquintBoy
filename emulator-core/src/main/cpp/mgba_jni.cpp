@@ -323,6 +323,27 @@ Java_com_example_squintboyadvance_core_NativeBridge_nativeSetSaveDir(
     env->ReleaseStringUTFChars(path, saveDir);
 }
 
+JNIEXPORT jboolean JNICALL
+Java_com_example_squintboyadvance_core_NativeBridge_nativeLoadSaveFile(
+        JNIEnv* env, jobject /* this */, jstring path) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (!g_core) {
+        return JNI_FALSE;
+    }
+
+    const char* savePath = env->GetStringUTFChars(path, nullptr);
+    LOGI("Loading save file: %s", savePath);
+    bool result = mCoreLoadSaveFile(g_core, savePath, false);
+    env->ReleaseStringUTFChars(path, savePath);
+
+    if (result) {
+        LOGI("Save file loaded/created successfully");
+    } else {
+        LOGE("Failed to load save file");
+    }
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
 JNIEXPORT void JNICALL
 Java_com_example_squintboyadvance_core_NativeBridge_nativeDestroy(
         JNIEnv* /* env */, jobject /* this */) {

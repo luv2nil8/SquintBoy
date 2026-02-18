@@ -72,6 +72,8 @@ class MgbaEmulator {
 
     fun setSaveDir(path: String) = NativeBridge.nativeSetSaveDir(path)
 
+    fun loadSaveFile(path: String): Boolean = NativeBridge.nativeLoadSaveFile(path)
+
     fun destroy() {
         NativeBridge.nativeDestroy()
     }

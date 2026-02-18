@@ -56,6 +56,10 @@ class RomMetadataStore private constructor(context: Context) {
         }
     }
 
+    fun remove(romId: String) {
+        prefs.edit().remove(romId).apply()
+    }
+
     fun update(romId: String, transform: (PersistedRomMeta) -> PersistedRomMeta) {
         val current = get(romId)
         val updated = transform(current)

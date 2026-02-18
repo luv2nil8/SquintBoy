@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import com.example.squintboyadvance.shared.protocol.WearMessageConstants
 import java.io.OutputStream
 
 enum class TransferStatus { PENDING, SENDING, COMPLETE, ERROR }
@@ -35,7 +36,6 @@ data class RomTransferItem(
 class RomTransferViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
-        private const val PATH_ROM_TRANSFER = "/rom-transfer"
         private val ROM_EXTENSIONS = setOf("gb", "gbc", "gba")
     }
 
@@ -128,7 +128,7 @@ class RomTransferViewModel(application: Application) : AndroidViewModel(applicat
                 ?: throw Exception("No watch connected")
 
             val channel: ChannelClient.Channel =
-                channelClient.openChannel(node.id, PATH_ROM_TRANSFER).await()
+                channelClient.openChannel(node.id, WearMessageConstants.PATH_ROM_TRANSFER).await()
 
             try {
                 val outputStream: OutputStream =

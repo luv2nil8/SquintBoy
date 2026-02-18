@@ -19,5 +19,6 @@ object NativeBridge {
     external fun nativeLoadState(path: String, flags: Int): Boolean
     external fun nativeCaptureScreenshot(): IntArray?
     external fun nativeSetSaveDir(path: String)
+    external fun nativeLoadSaveFile(path: String): Boolean
     external fun nativeDestroy()
 }

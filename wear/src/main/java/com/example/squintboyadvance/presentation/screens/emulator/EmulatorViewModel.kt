@@ -112,6 +112,11 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         // Initialize save manager (save states + SRAM backups)
         val stateDir = File(context.filesDir, "states")
         val romBaseName = romId.substringBeforeLast('.')
+
+        // Explicitly load/create the SRAM save file — mGBA won't do this automatically
+        // without ENABLE_DIRECTORIES. This opens a .sav VFile so SRAM writes persist.
+        val savFile = File(saveDir, "$romBaseName.sav")
+        emu.loadSaveFile(savFile.absolutePath)
         saveStateManager = SaveStateManager(stateDir, saveDir, romBaseName, emu)
 
         // Restore SRAM backup (if live .sav missing) then load newest valid save state
