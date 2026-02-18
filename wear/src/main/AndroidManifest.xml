@@ -38,6 +38,17 @@
             android:exported="false"
             android:configChanges="orientation|screenSize"
             android:theme="@android:style/Theme.DeviceDefault" />
+        <service
+            android:name="com.example.squintboyadvance.presentation.RomReceiverService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.CHANNEL_EVENT" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/rom-transfer" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>
