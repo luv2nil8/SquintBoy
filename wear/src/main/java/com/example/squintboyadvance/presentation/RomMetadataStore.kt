@@ -36,6 +36,17 @@ class RomMetadataStore private constructor(context: Context) {
 
     private val json = Json { ignoreUnknownKeys = true }
 
+    fun getAll(): Map<String, PersistedRomMeta> {
+        return prefs.all.mapNotNull { (key, value) ->
+            val raw = value as? String ?: return@mapNotNull null
+            try {
+                key to json.decodeFromString(PersistedRomMeta.serializer(), raw)
+            } catch (_: Exception) {
+                null
+            }
+        }.toMap()
+    }
+
     fun get(romId: String): PersistedRomMeta {
         val raw = prefs.getString(romId, null) ?: return PersistedRomMeta()
         return try {

@@ -8,11 +8,15 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import com.example.squintboyadvance.shared.model.ScaleMode
+import kotlin.math.roundToInt
 
 @Composable
 fun GameDisplay(
     frame: ImageBitmap?,
-    targetScale: Int = 2,
+    scaleMode: ScaleMode = ScaleMode.INTEGER,
+    customScale: Float = 1.0f,
+    filterEnabled: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Canvas(modifier = modifier.fillMaxSize()) {
@@ -20,25 +24,41 @@ fun GameDisplay(
 
         val frameW = frame.width
         val frameH = frame.height
+        val quality = if (filterEnabled) FilterQuality.Low else FilterQuality.None
 
-        // Use target scale, but cap to what fits on screen
-        val maxScaleX = (size.width / frameW).toInt().coerceAtLeast(1)
-        val maxScaleY = (size.height / frameH).toInt().coerceAtLeast(1)
-        val maxFit = minOf(maxScaleX, maxScaleY)
-        val scale = minOf(targetScale, maxFit)
+        when (scaleMode) {
+            ScaleMode.INTEGER -> {
+                // 2x nearest-neighbor, capped to screen
+                val maxScaleX = (size.width / frameW).toInt().coerceAtLeast(1)
+                val maxScaleY = (size.height / frameH).toInt().coerceAtLeast(1)
+                val scale = minOf(2, minOf(maxScaleX, maxScaleY))
 
-        val dstW = frameW * scale
-        val dstH = frameH * scale
+                val dstW = frameW * scale
+                val dstH = frameH * scale
+                val offsetX = ((size.width - dstW) / 2).toInt()
+                val offsetY = ((size.height - dstH) / 2).toInt()
 
-        // Center on canvas
-        val offsetX = ((size.width - dstW) / 2).toInt()
-        val offsetY = ((size.height - dstH) / 2).toInt()
+                drawImage(
+                    image = frame,
+                    dstOffset = IntOffset(offsetX, offsetY),
+                    dstSize = IntSize(dstW, dstH),
+                    filterQuality = quality
+                )
+            }
 
-        drawImage(
-            image = frame,
-            dstOffset = IntOffset(offsetX, offsetY),
-            dstSize = IntSize(dstW, dstH),
-            filterQuality = FilterQuality.None
-        )
+            ScaleMode.CUSTOM -> {
+                val dstW = (frameW * customScale).roundToInt()
+                val dstH = (frameH * customScale).roundToInt()
+                val offsetX = ((size.width - dstW) / 2).toInt()
+                val offsetY = ((size.height - dstH) / 2).toInt()
+
+                drawImage(
+                    image = frame,
+                    dstOffset = IntOffset(offsetX, offsetY),
+                    dstSize = IntSize(dstW, dstH),
+                    filterQuality = quality
+                )
+            }
+        }
     }
 }

@@ -6,7 +6,8 @@ class EmulatorThread(
     private val emulator: MgbaEmulator,
     private val onFrame: () -> Unit,
     private val audioPlayer: AudioPlayer? = null,
-    private val isRunning: () -> Boolean
+    private val isRunning: () -> Boolean,
+    private val frameskip: Int = -1
 ) {
 
     private var thread: Thread? = null
@@ -21,29 +22,84 @@ class EmulatorThread(
 
             if (audioPlayer != null) {
                 // Audio-driven loop: blocking AudioTrack writes pace the emulator
+                var autoSkipNext = false
+                var fixedSkipCounter = 0
+
                 while (isRunning()) {
+                    val frameStart = System.nanoTime()
+
+                    val shouldSkipVideo = when {
+                        // Auto: skip if previous frame was slow
+                        frameskip == -1 -> autoSkipNext.also { autoSkipNext = false }
+                        // Off: never skip
+                        frameskip == 0 -> false
+                        // Fixed: skip N frames between rendered frames
+                        else -> {
+                            if (fixedSkipCounter > 0) {
+                                fixedSkipCounter--
+                                true
+                            } else {
+                                fixedSkipCounter = frameskip
+                                false
+                            }
+                        }
+                    }
+
                     val framesRead = emulator.runFrameWithAudio(
                         audioBuffer, audioBuffer.size / 2
                     )
 
                     if (framesRead > 0) {
-                        // Write audio BEFORE posting video — audio enters the
-                        // AudioTrack pipeline first so it has time to work through
-                        // the buffer while Compose renders the frame on next vsync.
-                        // Blocking write IS the frame pacer.
                         audioPlayer.writeSamples(audioBuffer, framesRead)
                     }
-                    onFrame()
+
+                    if (!shouldSkipVideo) {
+                        onFrame()
+                    }
+
+                    // Auto frameskip: if this frame took >16.7ms, skip next frame's video
+                    if (frameskip == -1) {
+                        val elapsed = System.nanoTime() - frameStart
+                        if (elapsed > 16_666_667L) {
+                            autoSkipNext = true
+                        }
+                    }
                 }
             } else {
                 // No audio: fall back to sleep-based pacing
                 val targetFrameTimeNs = 16_666_667L // ~60fps
+                var autoSkipNext = false
+                var fixedSkipCounter = 0
+
                 while (isRunning()) {
                     val frameStart = System.nanoTime()
+
+                    val shouldSkipVideo = when {
+                        frameskip == -1 -> autoSkipNext.also { autoSkipNext = false }
+                        frameskip == 0 -> false
+                        else -> {
+                            if (fixedSkipCounter > 0) {
+                                fixedSkipCounter--
+                                true
+                            } else {
+                                fixedSkipCounter = frameskip
+                                false
+                            }
+                        }
+                    }
+
                     emulator.runFrame()
-                    onFrame()
+
+                    if (!shouldSkipVideo) {
+                        onFrame()
+                    }
 
                     val elapsed = System.nanoTime() - frameStart
+
+                    if (frameskip == -1 && elapsed > targetFrameTimeNs) {
+                        autoSkipNext = true
+                    }
+
                     val sleepNs = targetFrameTimeNs - elapsed
                     if (sleepNs > 1_000_000) {
                         Thread.sleep(sleepNs / 1_000_000, (sleepNs % 1_000_000).toInt())

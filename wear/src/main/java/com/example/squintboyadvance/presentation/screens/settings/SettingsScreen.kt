@@ -37,7 +37,8 @@ fun SettingsScreen(
                 ListHeader {
                     Text(
                         text = "Settings",
-                        style = MaterialTheme.typography.title3
+                        style = MaterialTheme.typography.title2,
+                        color = MaterialTheme.colors.primary
                     )
                 }
             }

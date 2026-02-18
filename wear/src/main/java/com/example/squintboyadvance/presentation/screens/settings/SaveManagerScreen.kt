@@ -33,7 +33,7 @@ fun SaveManagerScreen() {
         ) {
             item {
                 ListHeader {
-                    Text("Save Manager", style = MaterialTheme.typography.title3)
+                    Text("Save Manager", style = MaterialTheme.typography.title2, color = MaterialTheme.colors.primary)
                 }
             }
             items(5) { index ->

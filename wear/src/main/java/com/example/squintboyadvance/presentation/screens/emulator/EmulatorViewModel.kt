@@ -39,6 +39,9 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
     private val _systemType = MutableStateFlow<SystemType?>(null)
     val systemType: StateFlow<SystemType?> = _systemType.asStateFlow()
 
+    private val _fps = MutableStateFlow(0)
+    val fps: StateFlow<Int> = _fps.asStateFlow()
+
     private var emulator: MgbaEmulator? = null
     private var emulatorThread: EmulatorThread? = null
     private var audioPlayer: AudioPlayer? = null
@@ -52,6 +55,11 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
     // Play time tracking
     private var currentRomId: String? = null
     private var sessionStartTime: Long = 0L
+
+    // FPS tracking — ring buffer of frame timestamps
+    private val frameTimestamps = LongArray(60)
+    private var frameTimestampIndex = 0
+    private var frameTimestampCount = 0
 
     companion object {
         private const val OUTPUT_SAMPLE_RATE = 48000
@@ -127,11 +135,13 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun startEmulatorThread(emu: MgbaEmulator) {
+        val settings = settingsRepo.settings.value
         emulatorThread = EmulatorThread(
             emulator = emu,
             onFrame = ::onFrameReady,
             audioPlayer = if (audioEnabled) audioPlayer else null,
-            isRunning = { _state.value == EmulatorState.RUNNING }
+            isRunning = { _state.value == EmulatorState.RUNNING },
+            frameskip = settings.frameskip
         )
         emulatorThread?.start()
     }
@@ -144,6 +154,20 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         emu.getVideoBufferInto(pixels)
         bitmap.setPixels(pixels, 0, emu.width, 0, 0, emu.width, emu.height)
         _frame.value = bitmap.asImageBitmap()
+
+        // Track FPS
+        val now = System.nanoTime()
+        frameTimestamps[frameTimestampIndex] = now
+        frameTimestampIndex = (frameTimestampIndex + 1) % frameTimestamps.size
+        if (frameTimestampCount < frameTimestamps.size) frameTimestampCount++
+
+        if (frameTimestampCount >= 2) {
+            val oldest = frameTimestamps[(frameTimestampIndex - frameTimestampCount + frameTimestamps.size) % frameTimestamps.size]
+            val elapsedSec = (now - oldest) / 1_000_000_000.0
+            if (elapsedSec > 0) {
+                _fps.value = ((frameTimestampCount - 1) / elapsedSec).toInt()
+            }
+        }
     }
 
     private fun saveScreenshot() {
@@ -218,6 +242,10 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             // Reset session timer for the resumed segment
             sessionStartTime = System.currentTimeMillis()
             _state.value = EmulatorState.RUNNING
+
+            // Reset FPS tracking
+            frameTimestampCount = 0
+            frameTimestampIndex = 0
 
             if (audioEnabled && !wasAudioEnabled) {
                 val emu = emulator ?: return

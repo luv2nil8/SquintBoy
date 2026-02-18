@@ -1,16 +1,23 @@
 package com.example.squintboyadvance.presentation.screens.settings
 
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
+import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.InlineSlider
 import androidx.wear.compose.material.InlineSliderDefaults
 import androidx.wear.compose.material.ListHeader
@@ -23,9 +30,6 @@ import androidx.wear.compose.material.ToggleChip
 import androidx.wear.compose.material.ToggleChipDefaults
 import androidx.wear.compose.material.Vignette
 import androidx.wear.compose.material.VignettePosition
-import androidx.compose.foundation.layout.size
-import androidx.compose.ui.unit.dp
-import androidx.wear.compose.material.Icon
 import com.example.squintboyadvance.shared.model.InputDevice
 
 @Composable
@@ -46,12 +50,12 @@ fun ControllerSettingsScreen(
         ) {
             item {
                 ListHeader {
-                    Text("Controller", style = MaterialTheme.typography.title3)
+                    Text("Controller", style = MaterialTheme.typography.title2, color = MaterialTheme.colors.primary)
                 }
             }
             item {
                 ListHeader {
-                    Text("Input Mode", style = MaterialTheme.typography.body2)
+                    Text("Input Mode", style = MaterialTheme.typography.body1, color = MaterialTheme.colors.onSurface)
                 }
             }
             item {
@@ -80,25 +84,53 @@ fun ControllerSettingsScreen(
             }
             item {
                 ListHeader {
-                    Text("Touch Overlay", style = MaterialTheme.typography.body2)
+                    Text("Touch Overlay", style = MaterialTheme.typography.body1, color = MaterialTheme.colors.onSurface)
                 }
             }
             item {
                 Text(
                     text = "Opacity: ${(settings.controllerLayout.overlayAlpha * 100).toInt()}%",
-                    style = MaterialTheme.typography.caption1
+                    style = MaterialTheme.typography.body1,
+                    color = MaterialTheme.colors.onSurfaceVariant
                 )
             }
             item {
-                InlineSlider(
-                    value = settings.controllerLayout.overlayAlpha,
-                    onValueChange = { viewModel.setOverlayAlpha(it) },
-                    valueRange = 0f..1f,
-                    steps = 9,
-                    decreaseIcon = { InlineSliderDefaults.Decrease },
-                    increaseIcon = { InlineSliderDefaults.Increase },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    InlineSlider(
+                        value = settings.controllerLayout.overlayAlpha,
+                        onValueChange = { viewModel.setOverlayAlpha(it) },
+                        valueRange = 0f..1f,
+                        steps = 9,
+                        decreaseIcon = {
+                            Icon(
+                                imageVector = InlineSliderDefaults.Decrease,
+                                contentDescription = "Decrease"
+                            )
+                        },
+                        increaseIcon = {
+                            Icon(
+                                imageVector = InlineSliderDefaults.Increase,
+                                contentDescription = "Increase"
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    // Drag overlay — padded to only cover the track, leaving +/- buttons exposed
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .padding(horizontal = 52.dp)
+                            .pointerInput(Unit) {
+                                detectHorizontalDragGestures { change, _ ->
+                                    change.consume()
+                                    val fraction = (change.position.x / size.width)
+                                        .coerceIn(0f, 1f)
+                                    val snapped = (fraction * 10).toInt() / 10f
+                                    viewModel.setOverlayAlpha(snapped)
+                                }
+                            }
+                    )
+                }
             }
             item {
                 ToggleChip(

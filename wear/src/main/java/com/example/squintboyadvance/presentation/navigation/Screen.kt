@@ -8,4 +8,7 @@ sealed class Screen(val route: String) {
     data object ControllerSettings : Screen("settings/controller")
     data object PaletteSettings : Screen("settings/palette")
     data object SaveManager : Screen("settings/saves")
+    data object ScaleEditor : Screen("settings/video/scale_editor/{isGba}") {
+        fun createRoute(isGba: Boolean) = "settings/video/scale_editor/$isGba"
+    }
 }

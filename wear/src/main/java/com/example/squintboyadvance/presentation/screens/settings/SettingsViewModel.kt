@@ -6,7 +6,7 @@ import com.example.squintboyadvance.presentation.SettingsRepository
 import com.example.squintboyadvance.shared.model.EmulatorSettings
 import com.example.squintboyadvance.shared.model.GbPalette
 import com.example.squintboyadvance.shared.model.InputDevice
-import com.example.squintboyadvance.shared.model.VideoScaling
+import com.example.squintboyadvance.shared.model.ScaleMode
 import kotlinx.coroutines.flow.StateFlow
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -23,8 +23,28 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         repo.update { it.copy(audioVolume = volume) }
     }
 
-    fun setVideoScaling(scaling: VideoScaling) {
-        repo.update { it.copy(videoScaling = scaling) }
+    fun setGbaScaleMode(mode: ScaleMode) {
+        repo.update { it.copy(gbaScaleMode = mode) }
+    }
+
+    fun setGbaCustomScale(scale: Float) {
+        repo.update { it.copy(gbaCustomScale = scale) }
+    }
+
+    fun setGbScaleMode(mode: ScaleMode) {
+        repo.update { it.copy(gbScaleMode = mode) }
+    }
+
+    fun setGbCustomScale(scale: Float) {
+        repo.update { it.copy(gbCustomScale = scale) }
+    }
+
+    fun setGbaFilter(enabled: Boolean) {
+        repo.update { it.copy(gbaFilterEnabled = enabled) }
+    }
+
+    fun setGbFilter(enabled: Boolean) {
+        repo.update { it.copy(gbFilterEnabled = enabled) }
     }
 
     fun setFrameskip(frameskip: Int) {

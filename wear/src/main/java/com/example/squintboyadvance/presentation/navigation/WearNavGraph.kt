@@ -13,6 +13,7 @@ import com.example.squintboyadvance.presentation.screens.settings.AudioSettingsS
 import com.example.squintboyadvance.presentation.screens.settings.ControllerSettingsScreen
 import com.example.squintboyadvance.presentation.screens.settings.PaletteSettingsScreen
 import com.example.squintboyadvance.presentation.screens.settings.SaveManagerScreen
+import com.example.squintboyadvance.presentation.screens.settings.ScaleEditorScreen
 import com.example.squintboyadvance.presentation.screens.settings.SettingsScreen
 import com.example.squintboyadvance.presentation.screens.settings.VideoSettingsScreen
 
@@ -50,7 +51,11 @@ fun WearNavGraph(modifier: Modifier = Modifier) {
             AudioSettingsScreen()
         }
         composable(Screen.VideoSettings.route) {
-            VideoSettingsScreen()
+            VideoSettingsScreen(
+                onOpenScaleEditor = { isGba ->
+                    navController.navigate(Screen.ScaleEditor.createRoute(isGba))
+                }
+            )
         }
         composable(Screen.ControllerSettings.route) {
             ControllerSettingsScreen()
@@ -60,6 +65,10 @@ fun WearNavGraph(modifier: Modifier = Modifier) {
         }
         composable(Screen.SaveManager.route) {
             SaveManagerScreen()
+        }
+        composable(Screen.ScaleEditor.route) { backStackEntry ->
+            val isGba = backStackEntry.arguments?.getString("isGba")?.toBooleanStrictOrNull() ?: true
+            ScaleEditorScreen(isGba = isGba)
         }
     }
 }

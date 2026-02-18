@@ -40,7 +40,7 @@ fun PaletteSettingsScreen(
         ) {
             item {
                 ListHeader {
-                    Text("GB Palette", style = MaterialTheme.typography.title3)
+                    Text("GB Palette", style = MaterialTheme.typography.title2, color = MaterialTheme.colors.primary)
                 }
             }
             items(GbPalette.entries.toList()) { palette ->
