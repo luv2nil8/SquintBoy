@@ -219,6 +219,22 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         sessionStartTime = System.currentTimeMillis() // Reset for next session segment
     }
 
+    /** Toggles audio on/off and persists the setting. Takes effect on next resume(). */
+    fun toggleMute() {
+        settingsRepo.update { it.copy(audioEnabled = !it.audioEnabled) }
+    }
+
+    /**
+     * Soft-resets the emulator (must be called while PAUSED).
+     * Calls mCoreReset() to restart the game, then resumes.
+     * SRAM is preserved (the VFile handle stays open).
+     */
+    fun resetRom() {
+        if (_state.value != EmulatorState.PAUSED) return
+        emulator?.reset()
+        resume()
+    }
+
     fun pressButton(button: ButtonId) {
         emulator?.pressButton(button)
     }

@@ -15,4 +15,8 @@ object WearMessageConstants {
     const val PATH_SETTINGS_REQUEST = "/settings/request"
     const val PATH_SETTINGS_RESPONSE = "/settings/response"
     const val PATH_SETTINGS_SYNC = "/settings/sync"
+
+    // Clears save-state stack (.ss0–.ss4) and SRAM backup stack (.sav.0–.sav.4) for a ROM.
+    // Payload: romId (UTF-8). Used after uploading a new save from phone to watch.
+    const val PATH_SAVE_CLEAR_STACKS = "/save/clear_stacks"
 }

@@ -1,6 +1,7 @@
 package com.example.squintboyadvance.ui
 
 import android.app.Application
+import android.net.Uri
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Watch
@@ -35,12 +35,15 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.example.squintboyadvance.shared.model.SystemType
+import com.example.squintboyadvance.ui.roms.RomManagementScreen
 import com.example.squintboyadvance.ui.roms.RomsTab
-import com.example.squintboyadvance.ui.saves.SaveSyncScreen
 import com.example.squintboyadvance.ui.settings.WatchSettingsScreen
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,7 +54,6 @@ import kotlinx.coroutines.tasks.await
 
 enum class CompanionTab(val route: String, val label: String, val icon: ImageVector) {
     ROMS("roms", "ROMs", Icons.Default.SportsEsports),
-    SAVES("saves", "Saves", Icons.Default.Save),
     SETTINGS("settings", "Settings", Icons.Default.Settings),
 }
 
@@ -89,6 +91,9 @@ fun CompanionApp(connectionViewModel: ConnectionViewModel = viewModel()) {
     val currentRoute = navBackStack?.destination?.route
     val watchConnected by connectionViewModel.watchConnected.collectAsStateWithLifecycle()
 
+    // Determine which tab is active (only for the two top-level destinations)
+    val activeTab = CompanionTab.entries.firstOrNull { currentRoute == it.route }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -100,12 +105,10 @@ fun CompanionApp(connectionViewModel: ConnectionViewModel = viewModel()) {
             )
         },
         bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-            ) {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                 CompanionTab.entries.forEach { tab ->
                     NavigationBarItem(
-                        selected = currentRoute == tab.route,
+                        selected = activeTab == tab,
                         onClick = {
                             if (currentRoute != tab.route) {
                                 navController.navigate(tab.route) {
@@ -130,7 +133,7 @@ fun CompanionApp(connectionViewModel: ConnectionViewModel = viewModel()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(padding),
         ) {
             ConnectionStatusBar(watchConnected) { connectionViewModel.refresh() }
 
@@ -140,13 +143,34 @@ fun CompanionApp(connectionViewModel: ConnectionViewModel = viewModel()) {
                 modifier = Modifier.fillMaxSize(),
             ) {
                 composable(CompanionTab.ROMS.route) {
-                    RomsTab(watchConnected = watchConnected)
-                }
-                composable(CompanionTab.SAVES.route) {
-                    SaveSyncScreen(watchConnected = watchConnected)
+                    RomsTab(
+                        watchConnected = watchConnected,
+                        onRomSelected = { entry ->
+                            navController.navigate(
+                                "rom_management/${Uri.encode(entry.romId)}/${entry.systemType.name}"
+                            )
+                        },
+                    )
                 }
                 composable(CompanionTab.SETTINGS.route) {
                     WatchSettingsScreen(watchConnected = watchConnected)
+                }
+                composable(
+                    route = "rom_management/{romId}/{systemType}",
+                    arguments = listOf(
+                        navArgument("romId") { type = NavType.StringType },
+                        navArgument("systemType") { type = NavType.StringType },
+                    ),
+                ) { backStack ->
+                    val romId = Uri.decode(backStack.arguments?.getString("romId") ?: "")
+                    val systemType = runCatching {
+                        SystemType.valueOf(backStack.arguments?.getString("systemType") ?: "GB")
+                    }.getOrDefault(SystemType.GB)
+                    RomManagementScreen(
+                        romId = romId,
+                        systemType = systemType,
+                        watchConnected = watchConnected,
+                    )
                 }
             }
         }

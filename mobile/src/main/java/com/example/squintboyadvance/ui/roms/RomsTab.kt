@@ -1,8 +1,14 @@
 package com.example.squintboyadvance.ui.roms
 
+import android.net.Uri
 import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,19 +23,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -43,6 +50,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,10 +65,13 @@ import com.example.squintboyadvance.shared.model.WatchRomEntry
 import com.example.squintboyadvance.ui.RomTransferItem
 import com.example.squintboyadvance.ui.RomTransferViewModel
 import com.example.squintboyadvance.ui.TransferStatus
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun RomsTab(
     watchConnected: Boolean,
+    onRomSelected: (WatchRomEntry) -> Unit,
     transferViewModel: RomTransferViewModel = viewModel(),
     watchRomListViewModel: WatchRomListViewModel = viewModel(),
 ) {
@@ -68,6 +79,16 @@ fun RomsTab(
     val sending by transferViewModel.sending.collectAsStateWithLifecycle()
     val watchRoms by watchRomListViewModel.watchRoms.collectAsStateWithLifecycle()
     val isLoading by watchRomListViewModel.isLoading.collectAsStateWithLifecycle()
+
+    // URIs currently animating out (will be removed from ViewModel after animation)
+    var dismissingUris by remember { mutableStateOf(setOf<Uri>()) }
+    val scope = rememberCoroutineScope()
+
+    // System filter for the watch library
+    var filterSystem by remember { mutableStateOf<SystemType?>(null) }
+    val filteredWatchRoms = remember(watchRoms, filterSystem) {
+        if (filterSystem == null) watchRoms else watchRoms.filter { it.systemType == filterSystem }
+    }
 
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
@@ -94,7 +115,7 @@ fun RomsTab(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // ── Transfer section ──
+            // ── Transfer section ────────────────────────────────────────
             if (roms.isNotEmpty()) {
                 item {
                     Row(
@@ -111,9 +132,7 @@ fun RomsTab(
                             TextButton(
                                 onClick = { transferViewModel.sendAll() },
                                 enabled = watchConnected && !sending,
-                            ) {
-                                Text("Send All")
-                            }
+                            ) { Text("Send All") }
                         }
                     }
                 }
@@ -121,9 +140,8 @@ fun RomsTab(
                 val activeTransfers = roms.filter { it.status == TransferStatus.SENDING }
                 if (activeTransfers.isNotEmpty()) {
                     item {
-                        val overallProgress = activeTransfers.map { it.progress }.average().toFloat()
                         LinearProgressIndicator(
-                            progress = { overallProgress },
+                            progress = { activeTransfers.map { it.progress }.average().toFloat() },
                             modifier = Modifier.fillMaxWidth(),
                             color = MaterialTheme.colorScheme.primary,
                             trackColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -132,59 +150,86 @@ fun RomsTab(
                 }
 
                 items(roms, key = { it.uri.toString() }) { rom ->
-                    TransferRomCard(
-                        item = rom,
-                        watchConnected = watchConnected,
-                        sending = sending,
-                        onSend = { transferViewModel.sendRom(rom) },
-                        onRemove = { transferViewModel.removeRom(rom) },
-                    )
-                }
-            }
-
-            // ── Watch Library section ──
-            item {
-                if (roms.isNotEmpty()) {
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "Watch Library",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    IconButton(
-                        onClick = { watchRomListViewModel.requestRomList() },
-                        enabled = watchConnected,
+                    AnimatedVisibility(
+                        visible = rom.uri !in dismissingUris,
+                        exit = slideOutHorizontally(
+                            targetOffsetX = { it },
+                            animationSpec = tween(300),
+                        ) + shrinkVertically(animationSpec = tween(300, delayMillis = 250)),
                     ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        TransferRomCard(
+                            item = rom,
+                            watchConnected = watchConnected,
+                            sending = sending,
+                            onSend = { transferViewModel.sendRom(rom) },
+                            onDismiss = if (rom.status == TransferStatus.COMPLETE) {
+                                {
+                                    dismissingUris = dismissingUris + rom.uri
+                                    scope.launch {
+                                        delay(600) // wait for animation
+                                        transferViewModel.removeRom(rom)
+                                        dismissingUris = dismissingUris - rom.uri
+                                    }
+                                    // Refresh library so the new ROM appears
+                                    if (watchConnected) watchRomListViewModel.requestRomList()
+                                }
+                            } else null,
+                        )
                     }
                 }
+
+                item { HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp)) }
             }
 
+            // ── Library heading + filter pills ──────────────────────────
+            item {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Library",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        IconButton(
+                            onClick = { watchRomListViewModel.requestRomList() },
+                            enabled = watchConnected,
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        }
+                    }
+                    SystemFilterPills(
+                        selected = filterSystem,
+                        onSelect = { filterSystem = it },
+                    )
+                }
+            }
+
+            // ── Watch library items ─────────────────────────────────────
             if (isLoading) {
                 item {
                     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(modifier = Modifier.size(24.dp))
                     }
                 }
-            } else if (watchRoms.isEmpty()) {
+            } else if (filteredWatchRoms.isEmpty()) {
                 item {
                     Text(
-                        if (watchConnected) "No ROMs on watch" else "Connect watch to view library",
+                        if (watchConnected) {
+                            if (filterSystem == null) "No ROMs on watch" else "No ${filterSystem?.name} ROMs on watch"
+                        } else "Connect watch to view library",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             } else {
-                items(watchRoms, key = { it.romId }) { entry ->
+                items(filteredWatchRoms, key = { it.romId }) { entry ->
                     WatchRomCard(
                         entry = entry,
-                        onDelete = { watchRomListViewModel.deleteRom(entry.romId) },
+                        onClick = { onRomSelected(entry) },
                     )
                 }
             }
@@ -192,13 +237,49 @@ fun RomsTab(
     }
 }
 
+// ── Filter pills ─────────────────────────────────────────────────────────────
+
+@Composable
+private fun SystemFilterPills(
+    selected: SystemType?,
+    onSelect: (SystemType?) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .horizontalScroll(rememberScrollState())
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        PillChip(label = "All", active = selected == null, onClick = { onSelect(null) })
+        PillChip(label = "GBA", active = selected == SystemType.GBA, onClick = { onSelect(SystemType.GBA) })
+        PillChip(label = "GBC", active = selected == SystemType.GBC, onClick = { onSelect(SystemType.GBC) })
+        PillChip(label = "GB", active = selected == SystemType.GB, onClick = { onSelect(SystemType.GB) })
+    }
+}
+
+@Composable
+private fun PillChip(label: String, active: Boolean, onClick: () -> Unit) {
+    FilterChip(
+        selected = active,
+        onClick = onClick,
+        label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+        shape = RoundedCornerShape(50),
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+            selectedLabelColor = MaterialTheme.colorScheme.primary,
+        ),
+    )
+}
+
+// ── Transfer card ─────────────────────────────────────────────────────────────
+
 @Composable
 private fun TransferRomCard(
     item: RomTransferItem,
     watchConnected: Boolean,
     sending: Boolean,
     onSend: () -> Unit,
-    onRemove: () -> Unit,
+    onDismiss: (() -> Unit)?,
 ) {
     val context = LocalContext.current
     val badgeColor = when (item.systemType) {
@@ -243,7 +324,11 @@ private fun TransferRomCard(
                 }
                 if (item.status == TransferStatus.ERROR && item.errorMessage != null) {
                     Spacer(Modifier.height(4.dp))
-                    Text(item.errorMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    Text(
+                        item.errorMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
             }
 
@@ -252,21 +337,39 @@ private fun TransferRomCard(
             when (item.status) {
                 TransferStatus.PENDING -> {
                     IconButton(onClick = onSend, enabled = watchConnected && !sending) {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = MaterialTheme.colorScheme.primary)
+                        Icon(
+                            Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "Send",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
                     }
-                    IconButton(onClick = onRemove) {
-                        Icon(Icons.Default.Close, contentDescription = "Remove", modifier = Modifier.size(20.dp))
-                    }
+                    // No remove button — transfer items are not removable
                 }
                 TransferStatus.SENDING -> {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
                 }
                 TransferStatus.COMPLETE -> {
-                    Icon(Icons.Default.CheckCircle, contentDescription = "Complete", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                    // Tapping the checkmark dismisses the tile and refreshes the library
+                    IconButton(onClick = { onDismiss?.invoke() }) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = "Dismiss",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
                 }
                 TransferStatus.ERROR -> {
                     IconButton(onClick = onSend, enabled = watchConnected && !sending) {
-                        Icon(Icons.Default.Error, contentDescription = "Retry", tint = MaterialTheme.colorScheme.error)
+                        Icon(
+                            Icons.Default.Error,
+                            contentDescription = "Retry",
+                            tint = MaterialTheme.colorScheme.error,
+                        )
                     }
                 }
             }
@@ -274,35 +377,20 @@ private fun TransferRomCard(
     }
 }
 
-@Composable
-private fun WatchRomCard(entry: WatchRomEntry, onDelete: () -> Unit) {
-    val context = LocalContext.current
-    var showDeleteDialog by remember { mutableStateOf(false) }
+// ── Watch library card ────────────────────────────────────────────────────────
 
+@Composable
+private fun WatchRomCard(entry: WatchRomEntry, onClick: () -> Unit) {
+    val context = LocalContext.current
     val badgeColor = when (entry.systemType) {
         SystemType.GB -> Color(0xFF306230)
         SystemType.GBC -> Color(0xFFDA70D6)
         SystemType.GBA -> Color(0xFF6A5ACD)
     }
 
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Delete ROM?") },
-            text = { Text("Delete ${entry.romId} and all its saves from the watch?") },
-            confirmButton = {
-                TextButton(onClick = { showDeleteDialog = false; onDelete() }) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
-            },
-        )
-    }
-
     Card(
         modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Row(
@@ -340,9 +428,12 @@ private fun WatchRomCard(entry: WatchRomEntry, onDelete: () -> Unit) {
                     }
                 }
             }
-            IconButton(onClick = { showDeleteDialog = true }) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
-            }
+            // Chevron hint that the card is tappable
+            Text(
+                "›",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

@@ -131,6 +131,7 @@ class RomReceiverService : WearableListenerService() {
                 WearMessageConstants.PATH_SETTINGS_REQUEST -> handleSettingsRequest(event)
                 WearMessageConstants.PATH_SETTINGS_SYNC -> handleSettingsSync(event)
                 WearMessageConstants.PATH_SAVE_LIST_REQUEST -> handleSaveListRequest(event)
+                WearMessageConstants.PATH_SAVE_CLEAR_STACKS -> handleSaveClearStacks(event)
                 else -> Log.w(TAG, "Unknown message path: ${event.path}")
             }
         } catch (e: Exception) {
@@ -230,6 +231,18 @@ class RomReceiverService : WearableListenerService() {
             Wearable.getMessageClient(this)
                 .sendMessage(event.sourceNodeId, WearMessageConstants.PATH_SAVE_LIST_RESPONSE, response.toByteArray())
         )
+    }
+
+    private fun handleSaveClearStacks(event: MessageEvent) {
+        val romId = String(event.data, Charsets.UTF_8)
+        val romBaseName = romId.substringBeforeLast('.')
+        val statesDir = File(filesDir, "states")
+        val savesDir = File(filesDir, "saves")
+        for (i in 0..4) {
+            File(statesDir, "$romBaseName.ss$i").delete()
+            File(savesDir, "$romBaseName.sav.$i").delete()
+        }
+        Log.i(TAG, "Cleared save/state stacks for $romBaseName")
     }
 
     // ── Helpers ────────────────────────────────────────────────────────

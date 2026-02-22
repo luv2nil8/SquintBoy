@@ -345,6 +345,16 @@ Java_com_example_squintboyadvance_core_NativeBridge_nativeLoadSaveFile(
 }
 
 JNIEXPORT void JNICALL
+Java_com_example_squintboyadvance_core_NativeBridge_nativeReset(
+        JNIEnv* /* env */, jobject /* this */) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (g_core) {
+        g_core->reset(g_core);
+        LOGI("Core reset");
+    }
+}
+
+JNIEXPORT void JNICALL
 Java_com_example_squintboyadvance_core_NativeBridge_nativeDestroy(
         JNIEnv* /* env */, jobject /* this */) {
     std::lock_guard<std::mutex> lock(g_mutex);

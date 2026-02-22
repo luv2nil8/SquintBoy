@@ -2,6 +2,7 @@ package com.example.squintboyadvance.presentation.screens.settings
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -23,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import com.example.squintboyadvance.presentation.RomMetadataStore
@@ -98,10 +100,23 @@ private fun labelFor(id: ButtonId): String = when (id) {
     ButtonId.R -> "R"
 }
 
+/**
+ * Scale editor screen / overlay.
+ *
+ * When used from the pause menu:
+ *  - [liveFrame] provides the current game frame as the preview background
+ *  - [isOverlay] = true → transparent background (game shows through)
+ *  - [onDismiss] → show a back chip; tap it to return to the pause menu
+ *
+ * When used from the settings nav graph all three are left at their defaults.
+ */
 @Composable
 fun ScaleEditorScreen(
     isGba: Boolean,
-    viewModel: SettingsViewModel = viewModel()
+    liveFrame: ImageBitmap? = null,
+    isOverlay: Boolean = false,
+    onDismiss: (() -> Unit)? = null,
+    viewModel: SettingsViewModel = viewModel(),
 ) {
     val settings by viewModel.settings.collectAsState()
     val currentScale = if (isGba) settings.gbaCustomScale else settings.gbCustomScale
@@ -125,7 +140,7 @@ fun ScaleEditorScreen(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .then(if (!isOverlay) Modifier.background(Color.Black) else Modifier),
     ) {
         val screenWidthPx = with(LocalDensity.current) { maxWidth.toPx() }
         val screenHeightPx = with(LocalDensity.current) { maxHeight.toPx() }
@@ -137,32 +152,37 @@ fun ScaleEditorScreen(
         val scaledW = (frameW * currentScale).roundToInt()
         val scaledH = (frameH * currentScale).roundToInt()
 
-        // Preview frame — screenshot or colored fallback
-        val metadataStore = RomMetadataStore.getInstance(LocalContext.current)
-        val screenshotPath = findLatestScreenshotPath(metadataStore, isGba)
-        val screenshot = rememberScreenshot(screenshotPath)
-        val fallbackColor = if (isGba) Color(0xFF2E7D32) else Color(0xFF1565C0)
+        // Preview frame — live game frame, screenshot from disk, or colored fallback
         val scaledWDp = with(density) { scaledW.toDp() }
         val scaledHDp = with(density) { scaledH.toDp() }
 
-        if (screenshot != null) {
-            Image(
-                bitmap = screenshot,
-                contentDescription = "Preview",
-                contentScale = ContentScale.FillBounds,
-                filterQuality = FilterQuality.None,
-                modifier = Modifier
-                    .size(scaledWDp, scaledHDp)
-                    .align(Alignment.Center)
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .size(scaledWDp, scaledHDp)
-                    .background(fallbackColor)
-                    .align(Alignment.Center)
-            )
+        if (!isOverlay) {
+            // Settings nav path: show screenshot or fallback
+            val metadataStore = RomMetadataStore.getInstance(LocalContext.current)
+            val screenshotPath = findLatestScreenshotPath(metadataStore, isGba)
+            val screenshot = rememberScreenshot(screenshotPath)
+            val fallbackColor = if (isGba) Color(0xFF2E7D32) else Color(0xFF1565C0)
+            val previewBitmap = liveFrame ?: screenshot
+            if (previewBitmap != null) {
+                Image(
+                    bitmap = previewBitmap,
+                    contentDescription = "Preview",
+                    contentScale = ContentScale.FillBounds,
+                    filterQuality = FilterQuality.None,
+                    modifier = Modifier
+                        .size(scaledWDp, scaledHDp)
+                        .align(Alignment.Center),
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(scaledWDp, scaledHDp)
+                        .background(fallbackColor)
+                        .align(Alignment.Center),
+                )
+            }
         }
+        // When isOverlay=true the game's GameDisplay renders behind this composable — no preview drawn here.
 
         // Static touch overlay preview — centered on full screen
         Box(modifier = Modifier.align(Alignment.Center)) {
@@ -344,6 +364,25 @@ fun ScaleEditorScreen(
                         )
                     }
                 }
+            }
+        }
+
+        // "Done" back chip — only when used as a pause-menu overlay
+        if (onDismiss != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 8.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color(0xFF1A1A1A).copy(alpha = 0.85f))
+                    .clickable { onDismiss() }
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+            ) {
+                Text(
+                    text = "Done",
+                    color = MaterialTheme.colors.primary,
+                    style = MaterialTheme.typography.caption2,
+                )
             }
         }
     }
