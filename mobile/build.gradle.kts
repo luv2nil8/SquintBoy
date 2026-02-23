@@ -14,11 +14,11 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.example.squintboyadvance"
+    namespace = "com.anaglych.squintboyadvance"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.luv2nil8.squintboyadvance"
+        applicationId = "com.anaglych.squintboyadvance"
         minSdk = 30
         targetSdk = 36
         versionCode = 1

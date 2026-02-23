@@ -15,7 +15,17 @@
       "WebSearch",
       "Bash(git config:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(JAVA_HOME=/snap/android-studio/209/jbr ./gradlew:*)",
+      "Bash(git -C /home/hunter/Development/SquintBoy diff --name-only HEAD)",
+      "Bash(git -C /home/hunter/Development/SquintBoy ls-files:*)",
+      "Bash(git -C /home/hunter/Development/SquintBoy diff --stat HEAD)",
+      "Bash(git -C /home/hunter/Development/SquintBoy status)",
+      "Bash(git -C /home/hunter/Development/SquintBoy log --oneline -5)",
+      "Bash(git -C /home/hunter/Development/SquintBoy add mobile/src/main/java/com/example/squintboyadvance/ui/CompanionApp.kt mobile/src/main/java/com/example/squintboyadvance/ui/roms/RomManagementScreen.kt mobile/src/main/java/com/example/squintboyadvance/ui/roms/RomManagementViewModel.kt mobile/src/main/java/com/example/squintboyadvance/ui/roms/RomsTab.kt mobile/src/main/java/com/example/squintboyadvance/ui/roms/WatchRomListViewModel.kt mobile/src/main/java/com/example/squintboyadvance/ui/saves/SaveSyncViewModel.kt mobile/src/main/java/com/example/squintboyadvance/ui/settings/WatchSettingsViewModel.kt wear/src/main/java/com/example/squintboyadvance/presentation/screens/emulator/EmulatorScreen.kt wear/src/main/java/com/example/squintboyadvance/presentation/screens/emulator/PauseOverlay.kt wear/src/main/java/com/example/squintboyadvance/presentation/screens/settings/ScaleEditorScreen.kt)",
+      "Bash(git -C:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)"
     ]
   }
 }

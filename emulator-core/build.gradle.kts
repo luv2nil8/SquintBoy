@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.squintboyadvance.core"
+    namespace = "com.anaglych.squintboyadvance.core"
     compileSdk = 36
 
     defaultConfig {

@@ -23,7 +23,7 @@
             android:value="true" />
 
         <activity
-            android:name="com.example.squintboyadvance.presentation.MainActivity"
+            android:name="com.anaglych.squintboyadvance.presentation.MainActivity"
             android:exported="true"
             android:taskAffinity=""
             android:theme="@style/MainActivityTheme.Starting">
@@ -34,12 +34,12 @@
         </activity>
 
         <activity
-            android:name="com.example.squintboyadvance.presentation.screens.emulator.EmulatorActivity"
+            android:name="com.anaglych.squintboyadvance.presentation.screens.emulator.EmulatorActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize"
             android:theme="@android:style/Theme.DeviceDefault" />
         <service
-            android:name="com.example.squintboyadvance.presentation.RomReceiverService"
+            android:name="com.anaglych.squintboyadvance.presentation.RomReceiverService"
             android:exported="true">
             <intent-filter>
                 <action android:name="com.google.android.gms.wearable.CHANNEL_EVENT" />

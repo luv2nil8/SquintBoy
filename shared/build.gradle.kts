@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.squintboyadvance.shared"
+    namespace = "com.anaglych.squintboyadvance.shared"
     compileSdk = 36
 
     defaultConfig {

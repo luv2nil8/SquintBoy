@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.squintboyadvance.wear"
+    namespace = "com.anaglych.squintboyadvance.wear"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.luv2nil8.squintboyadvance"
+        applicationId = "com.anaglych.squintboyadvance"
         minSdk = 30
         targetSdk = 36
         versionCode = 1

@@ -5,11 +5,11 @@
 -keepclasseswithmembers class kotlinx.serialization.json.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
--keep,includedescriptorclasses class com.example.squintboyadvance.**$$serializer { *; }
--keepclassmembers class com.example.squintboyadvance.** {
+-keep,includedescriptorclasses class com.anaglych.squintboyadvance.**$$serializer { *; }
+-keepclassmembers class com.anaglych.squintboyadvance.** {
     *** Companion;
 }
--keepclasseswithmembers class com.example.squintboyadvance.** {
+-keepclasseswithmembers class com.anaglych.squintboyadvance.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
 

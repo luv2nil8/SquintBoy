@@ -1,0 +1,74 @@
+package com.anaglych.squintboyadvance.presentation.navigation
+
+import android.content.Intent
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.wear.compose.navigation.SwipeDismissableNavHost
+import androidx.wear.compose.navigation.composable
+import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
+import com.anaglych.squintboyadvance.presentation.screens.emulator.EmulatorActivity
+import com.anaglych.squintboyadvance.presentation.screens.library.RomLibraryScreen
+import com.anaglych.squintboyadvance.presentation.screens.settings.AudioSettingsScreen
+import com.anaglych.squintboyadvance.presentation.screens.settings.ControllerSettingsScreen
+import com.anaglych.squintboyadvance.presentation.screens.settings.PaletteSettingsScreen
+import com.anaglych.squintboyadvance.presentation.screens.settings.SaveManagerScreen
+import com.anaglych.squintboyadvance.presentation.screens.settings.ScaleEditorScreen
+import com.anaglych.squintboyadvance.presentation.screens.settings.SettingsScreen
+import com.anaglych.squintboyadvance.presentation.screens.settings.VideoSettingsScreen
+
+@Composable
+fun WearNavGraph(modifier: Modifier = Modifier) {
+    val navController = rememberSwipeDismissableNavController()
+    val context = LocalContext.current
+
+    SwipeDismissableNavHost(
+        navController = navController,
+        startDestination = Screen.RomLibrary.route,
+        modifier = modifier
+    ) {
+        composable(Screen.RomLibrary.route) {
+            RomLibraryScreen(
+                onRomSelected = { rom ->
+                    context.startActivity(
+                        Intent(context, EmulatorActivity::class.java).apply {
+                            putExtra("rom_id", rom.id)
+                            putExtra("rom_title", rom.title)
+                        }
+                    )
+                },
+                onSettingsClick = {
+                    navController.navigate(Screen.Settings.route)
+                }
+            )
+        }
+        composable(Screen.Settings.route) {
+            SettingsScreen(
+                onNavigate = { screen -> navController.navigate(screen.route) }
+            )
+        }
+        composable(Screen.AudioSettings.route) {
+            AudioSettingsScreen()
+        }
+        composable(Screen.VideoSettings.route) {
+            VideoSettingsScreen(
+                onOpenScaleEditor = { isGba ->
+                    navController.navigate(Screen.ScaleEditor.createRoute(isGba))
+                }
+            )
+        }
+        composable(Screen.ControllerSettings.route) {
+            ControllerSettingsScreen()
+        }
+        composable(Screen.PaletteSettings.route) {
+            PaletteSettingsScreen()
+        }
+        composable(Screen.SaveManager.route) {
+            SaveManagerScreen()
+        }
+        composable(Screen.ScaleEditor.route) { backStackEntry ->
+            val isGba = backStackEntry.arguments?.getString("isGba")?.toBooleanStrictOrNull() ?: true
+            ScaleEditorScreen(isGba = isGba)
+        }
+    }
+}

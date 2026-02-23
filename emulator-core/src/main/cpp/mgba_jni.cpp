@@ -29,7 +29,7 @@ static unsigned g_bufferStride = 0;  // Stride for pixel offset calculation
 extern "C" {
 
 JNIEXPORT jboolean JNICALL
-Java_com_example_squintboyadvance_core_NativeBridge_nativeLoadRom(
+Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeLoadRom(
         JNIEnv* env, jobject /* this */, jstring path) {
     std::lock_guard<std::mutex> lock(g_mutex);
 
@@ -118,7 +118,7 @@ Java_com_example_squintboyadvance_core_NativeBridge_nativeLoadRom(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_squintboyadvance_core_NativeBridge_nativeInitAudio(
+Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeInitAudio(
         JNIEnv* /* env */, jobject /* this */, jint outputSampleRate) {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (!g_core) return;
@@ -129,7 +129,7 @@ Java_com_example_squintboyadvance_core_NativeBridge_nativeInitAudio(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_squintboyadvance_core_NativeBridge_nativeRunFrame(
+Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeRunFrame(
         JNIEnv* /* env */, jobject /* this */) {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (g_core) {
@@ -140,7 +140,7 @@ Java_com_example_squintboyadvance_core_NativeBridge_nativeRunFrame(
 // Combined run frame + resample audio in one atomic JNI call.
 // Eliminates mutex contention between separate runFrame/readAudio calls.
 JNIEXPORT jint JNICALL
-Java_com_example_squintboyadvance_core_NativeBridge_nativeRunFrameWithAudio(
+Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeRunFrameWithAudio(
         JNIEnv* env, jobject /* this */, jshortArray buffer, jint maxFrames) {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (!g_core) return 0;
@@ -156,7 +156,7 @@ Java_com_example_squintboyadvance_core_NativeBridge_nativeRunFrameWithAudio(
 }
 
 JNIEXPORT jintArray JNICALL
-Java_com_example_squintboyadvance_core_NativeBridge_nativeGetVideoBuffer(
+Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeGetVideoBuffer(
         JNIEnv* env, jobject /* this */) {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (!g_core || !g_videoBuffer) {
@@ -187,7 +187,7 @@ Java_com_example_squintboyadvance_core_NativeBridge_nativeGetVideoBuffer(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_squintboyadvance_core_NativeBridge_nativeGetVideoBufferInto(
+Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeGetVideoBufferInto(
         JNIEnv* env, jobject /* this */, jintArray outBuffer) {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (!g_core || !g_videoBuffer || !outBuffer) {
@@ -214,21 +214,21 @@ Java_com_example_squintboyadvance_core_NativeBridge_nativeGetVideoBufferInto(
 }
 
 JNIEXPORT jint JNICALL
-Java_com_example_squintboyadvance_core_NativeBridge_nativeGetWidth(
+Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeGetWidth(
         JNIEnv* /* env */, jobject /* this */) {
     std::lock_guard<std::mutex> lock(g_mutex);
     return (jint)g_width;
 }
 
 JNIEXPORT jint JNICALL
-Java_com_example_squintboyadvance_core_NativeBridge_nativeGetHeight(
+Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeGetHeight(
         JNIEnv* /* env */, jobject /* this */) {
     std::lock_guard<std::mutex> lock(g_mutex);
     return (jint)g_height;
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_squintboyadvance_core_NativeBridge_nativeSetKeys(
+Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeSetKeys(
         JNIEnv* /* env */, jobject /* this */, jint keys) {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (g_core) {
@@ -237,7 +237,7 @@ Java_com_example_squintboyadvance_core_NativeBridge_nativeSetKeys(
 }
 
 JNIEXPORT jint JNICALL
-Java_com_example_squintboyadvance_core_NativeBridge_nativeGetAudioSampleRate(
+Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeGetAudioSampleRate(
         JNIEnv* /* env */, jobject /* this */) {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (!g_core) {
@@ -247,7 +247,7 @@ Java_com_example_squintboyadvance_core_NativeBridge_nativeGetAudioSampleRate(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_example_squintboyadvance_core_NativeBridge_nativeSaveState(
+Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeSaveState(
         JNIEnv* env, jobject /* this */, jstring path, jint flags) {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (!g_core) {
@@ -274,7 +274,7 @@ Java_com_example_squintboyadvance_core_NativeBridge_nativeSaveState(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_example_squintboyadvance_core_NativeBridge_nativeLoadState(
+Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeLoadState(
         JNIEnv* env, jobject /* this */, jstring path, jint flags) {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (!g_core) {
@@ -303,14 +303,14 @@ Java_com_example_squintboyadvance_core_NativeBridge_nativeLoadState(
 }
 
 JNIEXPORT jintArray JNICALL
-Java_com_example_squintboyadvance_core_NativeBridge_nativeCaptureScreenshot(
+Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeCaptureScreenshot(
         JNIEnv* env, jobject /* this */) {
     // Same as getVideoBuffer — captures current frame
-    return Java_com_example_squintboyadvance_core_NativeBridge_nativeGetVideoBuffer(env, nullptr);
+    return Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeGetVideoBuffer(env, nullptr);
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_squintboyadvance_core_NativeBridge_nativeSetSaveDir(
+Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeSetSaveDir(
         JNIEnv* env, jobject /* this */, jstring path) {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (!g_core) {
@@ -324,7 +324,7 @@ Java_com_example_squintboyadvance_core_NativeBridge_nativeSetSaveDir(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_example_squintboyadvance_core_NativeBridge_nativeLoadSaveFile(
+Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeLoadSaveFile(
         JNIEnv* env, jobject /* this */, jstring path) {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (!g_core) {
@@ -345,7 +345,7 @@ Java_com_example_squintboyadvance_core_NativeBridge_nativeLoadSaveFile(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_squintboyadvance_core_NativeBridge_nativeReset(
+Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeReset(
         JNIEnv* /* env */, jobject /* this */) {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (g_core) {
@@ -355,7 +355,7 @@ Java_com_example_squintboyadvance_core_NativeBridge_nativeReset(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_squintboyadvance_core_NativeBridge_nativeDestroy(
+Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeDestroy(
         JNIEnv* /* env */, jobject /* this */) {
     std::lock_guard<std::mutex> lock(g_mutex);
     audioBridgeDeinit();
