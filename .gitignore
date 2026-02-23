@@ -13,3 +13,7 @@
 *.ap_
 *.dex
 .claude/settings.local.json
+
+# Release signing — never commit these
+keystore.properties
+*.keystore

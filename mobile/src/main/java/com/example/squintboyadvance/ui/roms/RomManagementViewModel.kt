@@ -59,7 +59,8 @@ class RomManagementViewModel(
         private const val TIMEOUT_MS = 5000L
         private const val BACKUP_NAMES_PREFS = "backup_names"
         private const val WATCH_SAVE_PREFS = "watch_save_cache"
-        private const val FILE_PROVIDER_AUTHORITY = "com.example.squintboyadvance.fileprovider"
+        private const val DISPLAY_NAMES_PREFS = "rom_display_names"
+        private const val FILE_PROVIDER_AUTHORITY = "com.luv2nil8.squintboyadvance.fileprovider"
 
         fun factory(application: Application, romId: String): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
@@ -75,12 +76,18 @@ class RomManagementViewModel(
     private val nodeClient = Wearable.getNodeClient(application)
     private val namePrefs = application.getSharedPreferences(BACKUP_NAMES_PREFS, Context.MODE_PRIVATE)
     private val watchSavePrefs = application.getSharedPreferences(WATCH_SAVE_PREFS, Context.MODE_PRIVATE)
+    private val displayNamesPrefs = application.getSharedPreferences(DISPLAY_NAMES_PREFS, Context.MODE_PRIVATE)
 
     // Where phone-side backup files live
     private val backupDir: File
         get() = File(getApplication<Application>().filesDir, "backups/$romId").also { it.mkdirs() }
 
     // ── Exposed state ──────────────────────────────────────────────────
+
+    private val _displayName = MutableStateFlow(
+        displayNamesPrefs.getString(romId, null) ?: romId.substringBeforeLast('.')
+    )
+    val displayName: StateFlow<String> = _displayName.asStateFlow()
 
     private val _watchSave = MutableStateFlow<SaveFileEntry?>(null)
     val watchSave: StateFlow<SaveFileEntry?> = _watchSave.asStateFlow()
@@ -289,6 +296,17 @@ class RomManagementViewModel(
         backup.file.delete()
         namePrefs.edit().remove("$romId/${backup.file.name}").apply()
         scanBackups()
+    }
+
+    fun renameRom(newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty()) {
+            displayNamesPrefs.edit().remove(romId).apply()
+            _displayName.value = romId.substringBeforeLast('.')
+        } else {
+            displayNamesPrefs.edit().putString(romId, trimmed).apply()
+            _displayName.value = trimmed
+        }
     }
 
     fun renameBackup(backup: SaveBackupEntry, newName: String) {
