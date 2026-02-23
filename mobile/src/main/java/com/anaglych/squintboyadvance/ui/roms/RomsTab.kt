@@ -179,12 +179,12 @@ fun RomsTab(
                                 {
                                     dismissingUris = dismissingUris + rom.uri
                                     scope.launch {
-                                        delay(600) // wait for animation
+                                        delay(600) // wait for full collapse animation
                                         transferViewModel.removeRom(rom)
                                         dismissingUris = dismissingUris - rom.uri
+                                        // Refresh after space is cleared so slide-in follows collapse
+                                        if (watchConnected) watchRomListViewModel.requestRomList()
                                     }
-                                    // Refresh library so the new ROM appears
-                                    if (watchConnected) watchRomListViewModel.requestRomList()
                                 }
                             } else null,
                         )
