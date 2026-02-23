@@ -242,8 +242,10 @@ fun RomsTab(
                 }
             } else {
                 items(filteredWatchRoms, key = { it.romId }) { entry ->
+                    var visible by remember { mutableStateOf(false) }
+                    LaunchedEffect(Unit) { visible = true }
                     AnimatedVisibility(
-                        visible = true,
+                        visible = visible,
                         enter = slideInHorizontally(
                             initialOffsetX = { it },
                             animationSpec = tween(300),
