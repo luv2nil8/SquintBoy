@@ -1,3 +1,75 @@
+# Third-Party Licenses
+
+Squint Boy Advance incorporates third-party open source software.
+The full license texts are included below.
+
+---
+
+## 1. mGBA — Game Boy / Game Boy Color / Game Boy Advance Emulator
+
+**Copyright © 2013–2024 Jeffrey Pfau. All rights reserved.**
+Licensed under the **Mozilla Public License, Version 2.0**
+
+Squint Boy Advance uses mGBA as its emulation core, compiled via the
+Android NDK. The mGBA source code is used **unmodified** as a git
+submodule — no mGBA source files were altered.
+
+- Source code: https://github.com/mgba-emu/mgba
+- License: https://mozilla.org/MPL/2.0/
+
+### mGBA bundled dependencies
+
+mGBA includes the following libraries in its source tree:
+
+| Library | Copyright | License |
+|---------|-----------|---------|
+| zlib | © 1995–2024 Jean-loup Gailly & Mark Adler | zlib License |
+| inih | © 2009 Ben Hoyt | BSD 3-Clause |
+
+---
+
+## 2. Android Jetpack / AndroidX
+
+Licensed under the **Apache License, Version 2.0**
+Source: https://github.com/androidx/androidx
+
+Components used:
+- AndroidX Core KTX
+- AndroidX AppCompat
+- AndroidX Activity Compose
+- AndroidX Lifecycle (ViewModel, Runtime Compose)
+- AndroidX Navigation (Compose)
+- Jetpack Compose (UI, Material3, Foundation)
+- Wear Compose (Material, Foundation, Navigation)
+- AndroidX RecyclerView
+- AndroidX Splashscreen
+
+---
+
+## 3. Kotlin & kotlinx Libraries
+
+Licensed under the **Apache License, Version 2.0**
+Source: https://github.com/Kotlin/kotlin
+
+Components used:
+- Kotlin Standard Library
+- kotlinx.serialization-json
+- kotlinx.coroutines-play-services
+
+---
+
+## 4. Google Play Services — Wearable
+
+**com.google.android.gms:play-services-wearable**
+© Google LLC. Subject to the Google APIs Terms of Service:
+https://developers.google.com/terms
+
+---
+
+## License Texts
+
+### Mozilla Public License, Version 2.0
+
 Mozilla Public License Version 2.0
 ==================================
 
@@ -371,3 +443,105 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
   This Source Code Form is "Incompatible With Secondary Licenses", as
   defined by the Mozilla Public License, v. 2.0.
+
+---
+
+### Apache License, Version 2.0
+
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship made available under the
+      License, as indicated by a copyright notice that is included in
+      or attached to the work.
+
+      "Derivative Works" shall mean any work based on the Work for which
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship.
+
+      "Contribution" shall mean any work of authorship submitted to the
+      Licensor for inclusion in the Work by the copyright owner or by an
+      authorized individual or Legal Entity.
+
+      "Contributor" shall mean Licensor and any Legal Entity on behalf of
+      whom a Contribution has been received by the Licensor and included
+      within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      patent license to make, use, sell, offer for sale, have made,
+      import, and otherwise transfer the Work.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+         (a) You must give any other recipients of the Work or Derivative
+             Works a copy of this License; and
+
+         (b) You must cause any modified files to carry prominent notices
+             stating that You changed the files; and
+
+         (c) You must retain, in the Source form of any Derivative Works
+             that You distribute, all copyright, patent, trademark, and
+             attribution notices from the Source form of the Work; and
+
+         (d) If the Work includes a "NOTICE" text file, You must include
+             a readable copy of the attribution notices contained within
+             such NOTICE file.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution submitted for inclusion in the Work shall be under
+      the terms and conditions of this License.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or agreed
+      to in writing, Licensor provides the Work on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND.
+
+   8. Limitation of Liability. In no event and under no legal theory shall
+      any Contributor be liable to You for damages arising under this License.
+
+   9. Accepting Warranty or Additional Liability. While redistributing the
+      Work, You may offer acceptance of support, warranty, indemnity, or
+      other liability obligations consistent with this License.
+
+   END OF TERMS AND CONDITIONS

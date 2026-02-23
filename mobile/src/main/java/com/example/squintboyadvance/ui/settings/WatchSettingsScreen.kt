@@ -1,5 +1,6 @@
 package com.example.squintboyadvance.ui.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -41,6 +43,7 @@ import com.example.squintboyadvance.shared.model.ScaleMode
 @Composable
 fun WatchSettingsScreen(
     watchConnected: Boolean,
+    onOpenLicenses: () -> Unit = {},
     viewModel: WatchSettingsViewModel = viewModel(),
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -213,6 +216,22 @@ fun WatchSettingsScreen(
                     viewModel.updateLocal { it.copy(colorPalette = palette) }
                 },
             )
+        }
+
+        item { HorizontalDivider(modifier = Modifier.padding(top = 8.dp)) }
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onOpenLicenses)
+                    .padding(vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                Text("Open Source Licenses", style = MaterialTheme.typography.bodyMedium)
+                Text("›", style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
 
         item { Spacer(Modifier.height(80.dp)) }

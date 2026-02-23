@@ -42,6 +42,7 @@ import com.example.squintboyadvance.shared.model.SystemType
 import com.example.squintboyadvance.ui.roms.RomManagementScreen
 import com.example.squintboyadvance.ui.roms.RomsTab
 import com.example.squintboyadvance.ui.roms.WatchRomListViewModel
+import com.example.squintboyadvance.ui.settings.LicensesScreen
 import com.example.squintboyadvance.ui.settings.WatchSettingsScreen
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,6 +53,7 @@ import kotlinx.coroutines.tasks.await
 
 private const val ROUTE_ROMS = "roms"
 private const val ROUTE_SETTINGS = "settings"
+private const val ROUTE_LICENSES = "licenses"
 
 class ConnectionViewModel(application: Application) : AndroidViewModel(application) {
     private val nodeClient = Wearable.getNodeClient(application)
@@ -144,7 +146,13 @@ fun CompanionApp(
                     )
                 }
                 composable(ROUTE_SETTINGS) {
-                    WatchSettingsScreen(watchConnected = watchConnected)
+                    WatchSettingsScreen(
+                        watchConnected = watchConnected,
+                        onOpenLicenses = { navController.navigate(ROUTE_LICENSES) },
+                    )
+                }
+                composable(ROUTE_LICENSES) {
+                    LicensesScreen()
                 }
                 composable(
                     route = "rom_management/{romId}/{systemType}",
