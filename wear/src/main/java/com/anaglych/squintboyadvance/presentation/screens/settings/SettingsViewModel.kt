@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import com.anaglych.squintboyadvance.presentation.SettingsRepository
 import com.anaglych.squintboyadvance.shared.model.EmulatorSettings
-import com.anaglych.squintboyadvance.shared.model.GbPalette
 import com.anaglych.squintboyadvance.shared.model.InputDevice
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 import kotlinx.coroutines.flow.StateFlow
@@ -71,8 +70,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun setColorPalette(palette: GbPalette) {
-        repo.update { it.copy(colorPalette = palette) }
+    fun setGbPaletteIndex(index: Int) {
+        repo.update { it.copy(gbPaletteIndex = index) }
     }
 
     fun setAutoSaveEnabled(enabled: Boolean) {

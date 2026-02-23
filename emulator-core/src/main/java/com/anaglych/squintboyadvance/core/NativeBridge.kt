@@ -20,6 +20,8 @@ object NativeBridge {
     external fun nativeCaptureScreenshot(): IntArray?
     external fun nativeSetSaveDir(path: String)
     external fun nativeLoadSaveFile(path: String): Boolean
+    // colors: 4 ints in mGBA order [lightest→darkest], each 0xFFRRGGBB Android ARGB
+    external fun nativeSetGbPalette(colors: IntArray)
     external fun nativeReset()
     external fun nativeDestroy()
 }

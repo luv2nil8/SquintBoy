@@ -36,7 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.anaglych.squintboyadvance.shared.model.GbPalette
+import com.anaglych.squintboyadvance.shared.model.GbColorPalette
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -209,11 +209,12 @@ fun WatchSettingsScreen(
         item {
             DropdownSetting(
                 label = "Palette",
-                selected = s.colorPalette.displayName,
-                options = GbPalette.entries.map { it.displayName },
+                selected = GbColorPalette.ALL.getOrNull(s.gbPaletteIndex)?.name
+                    ?: GbColorPalette.ALL[GbColorPalette.DEFAULT_INDEX].name,
+                options = GbColorPalette.ALL.map { it.name },
                 onSelect = { name ->
-                    val palette = GbPalette.entries.first { it.displayName == name }
-                    viewModel.updateLocal { it.copy(colorPalette = palette) }
+                    val index = GbColorPalette.ALL.indexOfFirst { it.name == name }
+                    if (index >= 0) viewModel.updateLocal { it.copy(gbPaletteIndex = index) }
                 },
             )
         }

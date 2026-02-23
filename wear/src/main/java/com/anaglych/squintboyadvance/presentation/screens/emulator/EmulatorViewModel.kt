@@ -13,6 +13,7 @@ import com.anaglych.squintboyadvance.presentation.RomMetadataStore
 import com.anaglych.squintboyadvance.presentation.SettingsRepository
 import com.anaglych.squintboyadvance.shared.emulator.EmulatorState
 import com.anaglych.squintboyadvance.shared.model.ButtonId
+import com.anaglych.squintboyadvance.shared.model.GbColorPalette
 import com.anaglych.squintboyadvance.shared.model.SystemType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -131,6 +132,12 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             player.start()
         }
 
+        // Apply GB color palette (GB/GBC only; no-op if GBA)
+        if (_systemType.value != SystemType.GBA) {
+            val palette = GbColorPalette.ALL.getOrNull(settings.gbPaletteIndex)
+            if (palette != null) emu.setGbPalette(palette.mgbaOrder())
+        }
+
         // Start tracking play time
         sessionStartTime = System.currentTimeMillis()
 
@@ -217,6 +224,14 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             )
         }
         sessionStartTime = System.currentTimeMillis() // Reset for next session segment
+    }
+
+    /** Applies a GB palette immediately and persists the index. GB/GBC only. */
+    fun setGbPalette(index: Int) {
+        if (_systemType.value == SystemType.GBA) return
+        settingsRepo.update { it.copy(gbPaletteIndex = index) }
+        val palette = GbColorPalette.ALL.getOrNull(index) ?: return
+        emulator?.setGbPalette(palette.mgbaOrder())
     }
 
     /** Toggles audio on/off and persists the setting. Takes effect on next resume(). */

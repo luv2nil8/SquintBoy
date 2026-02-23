@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -32,21 +33,24 @@ private val BUTTON_SIZE = 52.dp
 private val BUTTON_SPACING = 14.dp
 
 /**
- * Pause menu overlay: 2×2 grid of round buttons plus a centred Exit button.
+ * Pause menu overlay.
  *
- * ```
- * [🔇 Mute]   [▶ Resume]
- * [⊡ Interface] [↺ Reset]
- *      [✕ Exit]
- * ```
+ * For GBA (isGb = false):        For GB/GBC (isGb = true):
+ * ```                             ```
+ * [🔇 Mute]   [▶ Resume]         [🔇 Mute]   [▶ Resume]
+ * [⊡ Display] [↺ Reset]          [⊡ Display] [↺ Reset]
+ *      [✕ Exit]                   [🎨 Palette] [✕ Exit]
+ * ```                             ```
  */
 @Composable
 fun PauseOverlay(
     isMuted: Boolean,
+    isGb: Boolean,
     onToggleMute: () -> Unit,
     onResume: () -> Unit,
     onInterface: () -> Unit,
     onReset: () -> Unit,
+    onPalette: () -> Unit,
     onExit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -80,7 +84,7 @@ fun PauseOverlay(
 
             Spacer(Modifier.height(2.dp))
 
-            // Row 2: Interface + Reset
+            // Row 2: Display + Reset
             Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_SPACING)) {
                 PauseButton(
                     icon = Icons.Default.AspectRatio,
@@ -98,14 +102,33 @@ fun PauseOverlay(
 
             Spacer(Modifier.height(2.dp))
 
-            // Row 3: Exit (centred)
-            PauseButton(
-                icon = Icons.Default.Close,
-                label = "Exit",
-                onClick = onExit,
-                backgroundColor = RED.copy(alpha = 0.85f),
-                iconColor = Color.White,
-            )
+            // Row 3: Palette + Exit (GB) or just Exit (GBA)
+            if (isGb) {
+                Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_SPACING)) {
+                    PauseButton(
+                        icon = Icons.Default.Brush,
+                        label = "Palette",
+                        onClick = onPalette,
+                        backgroundColor = primaryGreen,
+                        iconColor = Color.White,
+                    )
+                    PauseButton(
+                        icon = Icons.Default.Close,
+                        label = "Exit",
+                        onClick = onExit,
+                        backgroundColor = RED.copy(alpha = 0.85f),
+                        iconColor = Color.White,
+                    )
+                }
+            } else {
+                PauseButton(
+                    icon = Icons.Default.Close,
+                    label = "Exit",
+                    onClick = onExit,
+                    backgroundColor = RED.copy(alpha = 0.85f),
+                    iconColor = Color.White,
+                )
+            }
         }
     }
 }

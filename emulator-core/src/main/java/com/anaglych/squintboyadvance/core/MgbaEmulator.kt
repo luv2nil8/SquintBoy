@@ -74,6 +74,16 @@ class MgbaEmulator {
 
     fun loadSaveFile(path: String): Boolean = NativeBridge.nativeLoadSaveFile(path)
 
+    /**
+     * Applies a 4-color DMG palette at runtime (GB/GBC only — no-op on GBA).
+     * [mgbaOrder] must be 4 ints: index 0 = lightest, index 3 = darkest.
+     * Use [GbColorPalette.mgbaOrder] to get the correctly-ordered array.
+     * Each color is a packed 0xFFRRGGBB Android ARGB int.
+     */
+    fun setGbPalette(mgbaOrder: IntArray) {
+        NativeBridge.nativeSetGbPalette(mgbaOrder)
+    }
+
     fun reset() = NativeBridge.nativeReset()
 
     fun destroy() {

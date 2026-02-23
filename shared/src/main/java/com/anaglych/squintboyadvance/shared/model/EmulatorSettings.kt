@@ -12,7 +12,7 @@ data class EmulatorSettings(
     val gbCustomScale: Float = 1.0f,
     val gbaFilterEnabled: Boolean = false,
     val gbFilterEnabled: Boolean = false,
-    val colorPalette: GbPalette = GbPalette.DEFAULT,
+    val gbPaletteIndex: Int = GbColorPalette.DEFAULT_INDEX,
     val frameskip: Int = -1,
     val showFps: Boolean = false,
     val preferredInput: InputDevice = InputDevice.TOUCH,
@@ -25,13 +25,5 @@ data class EmulatorSettings(
 @Serializable
 enum class ScaleMode(val displayName: String) {
     INTEGER("Integer 2x"),
-    CUSTOM("Custom")
-}
-
-@Serializable
-enum class GbPalette(val displayName: String) {
-    DEFAULT("Default Green"),
-    GRAYSCALE("Grayscale"),
-    CLASSIC("Classic DMG"),
     CUSTOM("Custom")
 }

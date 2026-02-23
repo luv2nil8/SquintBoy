@@ -344,6 +344,29 @@ Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeLoadSaveFile(
     return result ? JNI_TRUE : JNI_FALSE;
 }
 
+// Sets all three GB sub-palettes (BG, OBJ0, OBJ1) to the same 4 colors.
+// colors[0] = lightest (DMG shade 0), colors[3] = darkest (DMG shade 3).
+// Each color is 0xFFRRGGBB Android ARGB; alpha is stripped before writing to config.
+JNIEXPORT void JNICALL
+Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeSetGbPalette(
+        JNIEnv* env, jobject /* this */, jintArray colors) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (!g_core) return;
+
+    jint* c = env->GetIntArrayElements(colors, nullptr);
+    if (!c) return;
+
+    char key[16];
+    for (int sub = 0; sub < 3; sub++) {
+        for (int i = 0; i < 4; i++) {
+            snprintf(key, sizeof(key), "gb.pal[%d]", sub * 4 + i);
+            mCoreConfigSetIntValue(&g_core->config, key, c[i] & 0xFFFFFF);
+        }
+    }
+    env->ReleaseIntArrayElements(colors, c, JNI_ABORT);
+    g_core->reloadConfigOption(g_core, "gb.pal", &g_core->config);
+}
+
 JNIEXPORT void JNICALL
 Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeReset(
         JNIEnv* /* env */, jobject /* this */) {

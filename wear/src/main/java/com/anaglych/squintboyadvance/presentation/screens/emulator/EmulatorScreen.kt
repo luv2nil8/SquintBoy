@@ -22,12 +22,13 @@ import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import com.anaglych.squintboyadvance.presentation.SettingsRepository
 import com.anaglych.squintboyadvance.presentation.components.WearSlideToConfirm
+import com.anaglych.squintboyadvance.presentation.screens.settings.PalettePickerOverlay
 import com.anaglych.squintboyadvance.presentation.screens.settings.ScaleEditorScreen
 import com.anaglych.squintboyadvance.shared.emulator.EmulatorState
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 import com.anaglych.squintboyadvance.shared.model.SystemType
 
-private enum class PauseUiState { MENU, SCALE_EDITOR, CONFIRM_RESET }
+private enum class PauseUiState { MENU, SCALE_EDITOR, CONFIRM_RESET, PALETTE_PICKER }
 
 @Composable
 fun EmulatorScreen(
@@ -97,8 +98,6 @@ fun EmulatorScreen(
             }
 
             EmulatorState.PAUSED -> {
-                // While the scale editor is open, force CUSTOM so the background
-                // game reflects the slider value in real-time.
                 val activeScaleMode =
                     if (pauseUiState == PauseUiState.SCALE_EDITOR) ScaleMode.CUSTOM else scaleMode
                 GameDisplay(
@@ -111,10 +110,12 @@ fun EmulatorScreen(
                 when (pauseUiState) {
                     PauseUiState.MENU -> PauseOverlay(
                         isMuted = !settings.audioEnabled,
+                        isGb = !isGba,
                         onToggleMute = viewModel::toggleMute,
                         onResume = viewModel::resume,
                         onInterface = { pauseUiState = PauseUiState.SCALE_EDITOR },
                         onReset = { pauseUiState = PauseUiState.CONFIRM_RESET },
+                        onPalette = { pauseUiState = PauseUiState.PALETTE_PICKER },
                         onExit = {
                             viewModel.stop()
                             onExit()
@@ -132,10 +133,15 @@ fun EmulatorScreen(
                         slideText = "Slide to reset",
                         warningText = "The game will restart from the beginning. Your save file is preserved.",
                         confirmColor = Color(0xFFD32F2F),
-                        onConfirmed = {
-                            viewModel.resetRom()
-                            // resetRom() calls resume() which transitions to RUNNING
-                            // — LaunchedEffect above will reset pauseUiState to MENU
+                        onConfirmed = { viewModel.resetRom() },
+                        onDismiss = { pauseUiState = PauseUiState.MENU },
+                    )
+
+                    PauseUiState.PALETTE_PICKER -> PalettePickerOverlay(
+                        selectedIndex = settings.gbPaletteIndex,
+                        onSelected = { index ->
+                            viewModel.setGbPalette(index)
+                            pauseUiState = PauseUiState.MENU
                         },
                         onDismiss = { pauseUiState = PauseUiState.MENU },
                     )
