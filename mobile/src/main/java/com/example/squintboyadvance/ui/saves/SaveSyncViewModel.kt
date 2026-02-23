@@ -1,6 +1,7 @@
 package com.example.squintboyadvance.ui.saves
 
 import android.app.Application
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -19,6 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.BufferedInputStream
 import java.io.File
@@ -35,12 +37,15 @@ class SaveSyncViewModel(application: Application) : AndroidViewModel(application
     companion object {
         private const val TAG = "SaveSyncVM"
         private const val TIMEOUT_MS = 5000L
+        private const val PREFS_NAME = "save_list_cache"
+        private const val KEY_SAVE_LIST = "save_list_json"
     }
 
     private val json = Json { ignoreUnknownKeys = true }
     private val messageClient = Wearable.getMessageClient(application)
     private val channelClient = Wearable.getChannelClient(application)
     private val nodeClient = Wearable.getNodeClient(application)
+    private val prefs = application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private val _savesByRom = MutableStateFlow<Map<String, List<SaveFileEntry>>>(emptyMap())
     val savesByRom: StateFlow<Map<String, List<SaveFileEntry>>> = _savesByRom.asStateFlow()
@@ -61,7 +66,9 @@ class SaveSyncViewModel(application: Application) : AndroidViewModel(application
 
     init {
         messageClient.addListener(this)
+        loadCache()
         scanLocalSaves()
+        requestSaveList()
     }
 
     override fun onCleared() {
@@ -75,6 +82,7 @@ class SaveSyncViewModel(application: Application) : AndroidViewModel(application
             try {
                 val response = json.decodeFromString(SaveListResponse.serializer(), String(event.data))
                 _savesByRom.value = response.saves.groupBy { it.romId }
+                saveCache(response.saves)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to parse save list", e)
             }
@@ -194,6 +202,27 @@ class SaveSyncViewModel(application: Application) : AndroidViewModel(application
                 Log.e(TAG, "Failed to push save $key", e)
                 setTransferStatus(key, TransferStatus(TransferState.ERROR, e.message))
             }
+        }
+    }
+
+    // ── Persistence ──────────────────────────────────────────────────────────
+
+    private fun loadCache() {
+        val cached = prefs.getString(KEY_SAVE_LIST, null) ?: return
+        try {
+            val response = json.decodeFromString(SaveListResponse.serializer(), cached)
+            _savesByRom.value = response.saves.groupBy { it.romId }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to load save list cache", e)
+        }
+    }
+
+    private fun saveCache(saves: List<SaveFileEntry>) {
+        try {
+            val encoded = json.encodeToString(SaveListResponse(saves))
+            prefs.edit().putString(KEY_SAVE_LIST, encoded).apply()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to save save list cache", e)
         }
     }
 

@@ -20,13 +20,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
@@ -64,6 +69,7 @@ fun RomManagementScreen(
     romId: String,
     systemType: SystemType,
     watchConnected: Boolean,
+    onRomDeleted: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val application = context.applicationContext as Application
@@ -80,6 +86,13 @@ fun RomManagementScreen(
 
     // State for the upload confirmation flow
     var pendingUpload by remember { mutableStateOf<SaveBackupEntry?>(null) }
+    var showDeleteRomConfirm by remember { mutableStateOf(false) }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        uri?.let { viewModel.importFromStorage(it) }
+    }
 
     LaunchedEffect(Unit) {
         if (watchConnected) viewModel.refreshWatchSave()
@@ -158,7 +171,14 @@ fun RomManagementScreen(
             // ── Phone Backups ───────────────────────────────────────────
             item {
                 Spacer(Modifier.height(4.dp))
-                SectionHeader(title = "Backups on Phone")
+                SectionHeader(
+                    title = "Backups on Phone",
+                    action = {
+                        IconButton(onClick = { importLauncher.launch(arrayOf("*/*")) }) {
+                            Icon(Icons.Default.Add, contentDescription = "Import save from phone")
+                        }
+                    },
+                )
             }
 
             if (backups.isEmpty()) {
@@ -182,7 +202,69 @@ fun RomManagementScreen(
                 }
             }
 
+            // ── Remove ROM ──────────────────────────────────────────────
+            item {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { showDeleteRomConfirm = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
+                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Remove ROM from Watch")
+                }
+            }
+
             item { Spacer(Modifier.height(80.dp)) }
+        }
+    }
+
+    // ── Delete ROM confirmation overlay ────────────────────────────────────
+    if (showDeleteRomConfirm) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showDeleteRomConfirm = false }) {
+            Card(
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text(
+                        "Remove ROM",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "\"${romId.substringBeforeLast('.')}\" will be deleted from your watch. " +
+                            "Your save backups on this phone are not affected.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    SlideToConfirm(
+                        text = "Slide to remove",
+                        accentColor = MaterialTheme.colorScheme.error,
+                        onConfirmed = {
+                            showDeleteRomConfirm = false
+                            viewModel.deleteRom(onDeleted = onRomDeleted)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(
+                        onClick = { showDeleteRomConfirm = false },
+                        modifier = Modifier.align(Alignment.End),
+                    ) { Text("Cancel") }
+                }
+            }
         }
     }
 

@@ -24,6 +24,7 @@ import com.example.squintboyadvance.presentation.SettingsRepository
 import com.example.squintboyadvance.presentation.components.WearSlideToConfirm
 import com.example.squintboyadvance.presentation.screens.settings.ScaleEditorScreen
 import com.example.squintboyadvance.shared.emulator.EmulatorState
+import com.example.squintboyadvance.shared.model.ScaleMode
 import com.example.squintboyadvance.shared.model.SystemType
 
 private enum class PauseUiState { MENU, SCALE_EDITOR, CONFIRM_RESET }
@@ -96,10 +97,13 @@ fun EmulatorScreen(
             }
 
             EmulatorState.PAUSED -> {
-                // Game frame always visible in background
+                // While the scale editor is open, force CUSTOM so the background
+                // game reflects the slider value in real-time.
+                val activeScaleMode =
+                    if (pauseUiState == PauseUiState.SCALE_EDITOR) ScaleMode.CUSTOM else scaleMode
                 GameDisplay(
                     frame = frame,
-                    scaleMode = scaleMode,
+                    scaleMode = activeScaleMode,
                     customScale = customScale,
                     filterEnabled = filterEnabled,
                 )

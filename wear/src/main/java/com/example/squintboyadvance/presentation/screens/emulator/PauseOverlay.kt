@@ -22,12 +22,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.Button
 import androidx.wear.compose.material.ButtonDefaults
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
-import androidx.wear.compose.material.Text
 
 private val RED = Color(0xFFD32F2F)
 private val BUTTON_SIZE = 52.dp
@@ -62,18 +60,21 @@ fun PauseOverlay(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            val primaryGreen = MaterialTheme.colors.primary
+
             // Row 1: Mute + Resume
             Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_SPACING)) {
                 PauseButton(
                     icon = if (isMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
                     label = if (isMuted) "Unmute" else "Mute",
                     onClick = onToggleMute,
+                    backgroundColor = primaryGreen.copy(alpha = 0.85f),
                 )
                 PauseButton(
                     icon = Icons.Default.PlayArrow,
                     label = "Resume",
                     onClick = onResume,
-                    iconColor = MaterialTheme.colors.primary,
+                    iconColor = primaryGreen,
                 )
             }
 
@@ -85,13 +86,13 @@ fun PauseOverlay(
                     icon = Icons.Default.AspectRatio,
                     label = "Display",
                     onClick = onInterface,
+                    backgroundColor = primaryGreen.copy(alpha = 0.85f),
                 )
                 PauseButton(
                     icon = Icons.Default.Refresh,
                     label = "Reset",
                     onClick = onReset,
-                    backgroundColor = RED.copy(alpha = 0.85f),
-                    iconColor = Color.White,
+                    iconColor = RED,
                 )
             }
 
@@ -117,27 +118,16 @@ private fun PauseButton(
     backgroundColor: Color = Color.White.copy(alpha = 0.12f),
     iconColor: Color = Color.White,
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(3.dp),
+    Button(
+        onClick = onClick,
+        modifier = Modifier.size(BUTTON_SIZE),
+        colors = ButtonDefaults.buttonColors(backgroundColor = backgroundColor),
     ) {
-        Button(
-            onClick = onClick,
-            modifier = Modifier.size(BUTTON_SIZE),
-            colors = ButtonDefaults.buttonColors(backgroundColor = backgroundColor),
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = iconColor,
-                modifier = Modifier.size(22.dp),
-            )
-        }
-        Text(
-            text = label,
-            fontSize = 8.sp,
-            color = Color.White.copy(alpha = 0.65f),
-            style = MaterialTheme.typography.caption2,
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = iconColor,
+            modifier = Modifier.size(22.dp),
         )
     }
 }

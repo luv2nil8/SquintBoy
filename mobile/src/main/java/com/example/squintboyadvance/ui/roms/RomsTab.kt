@@ -6,9 +6,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,7 +24,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -75,6 +75,7 @@ fun RomsTab(
     transferViewModel: RomTransferViewModel = viewModel(),
     watchRomListViewModel: WatchRomListViewModel = viewModel(),
 ) {
+    // Note: watchRomListViewModel may be hoisted from CompanionApp (same Activity scope = same instance)
     val roms by transferViewModel.roms.collectAsStateWithLifecycle()
     val sending by transferViewModel.sending.collectAsStateWithLifecycle()
     val watchRoms by watchRomListViewModel.watchRoms.collectAsStateWithLifecycle()
@@ -209,7 +210,9 @@ fun RomsTab(
             }
 
             // ── Watch library items ─────────────────────────────────────
-            if (isLoading) {
+            // Show spinner only when syncing with an empty list.
+            // If we have cached data, render it while the background sync runs.
+            if (isLoading && filteredWatchRoms.isEmpty()) {
                 item {
                     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(modifier = Modifier.size(24.dp))
@@ -218,19 +221,39 @@ fun RomsTab(
             } else if (filteredWatchRoms.isEmpty()) {
                 item {
                     Text(
-                        if (watchConnected) {
-                            if (filterSystem == null) "No ROMs on watch" else "No ${filterSystem?.name} ROMs on watch"
-                        } else "Connect watch to view library",
+                        if (filterSystem != null) "No ${filterSystem?.name} ROMs on watch"
+                        else if (watchConnected) "No ROMs on watch"
+                        else "Connect watch to sync library",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             } else {
                 items(filteredWatchRoms, key = { it.romId }) { entry ->
-                    WatchRomCard(
-                        entry = entry,
-                        onClick = { onRomSelected(entry) },
-                    )
+                    AnimatedVisibility(
+                        visible = true,
+                        enter = slideInHorizontally(
+                            initialOffsetX = { it },
+                            animationSpec = tween(300),
+                        ) + fadeIn(animationSpec = tween(300)),
+                    ) {
+                        WatchRomCard(
+                            entry = entry,
+                            onClick = { onRomSelected(entry) },
+                        )
+                    }
+                }
+                // Subtle sync indicator at the bottom when refreshing cached data
+                if (isLoading) {
+                    item {
+                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -246,13 +269,16 @@ private fun SystemFilterPills(
 ) {
     Row(
         modifier = Modifier
-            .horizontalScroll(rememberScrollState())
+            .fillMaxWidth()
             .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.Center,
     ) {
         PillChip(label = "All", active = selected == null, onClick = { onSelect(null) })
+        Spacer(Modifier.width(6.dp))
         PillChip(label = "GBA", active = selected == SystemType.GBA, onClick = { onSelect(SystemType.GBA) })
+        Spacer(Modifier.width(6.dp))
         PillChip(label = "GBC", active = selected == SystemType.GBC, onClick = { onSelect(SystemType.GBC) })
+        Spacer(Modifier.width(6.dp))
         PillChip(label = "GB", active = selected == SystemType.GB, onClick = { onSelect(SystemType.GB) })
     }
 }

@@ -3,7 +3,9 @@ package com.example.squintboyadvance.ui.roms
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.util.Log
+import kotlinx.serialization.encodeToString
 import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
@@ -56,6 +58,7 @@ class RomManagementViewModel(
         private const val TAG = "RomManagementVM"
         private const val TIMEOUT_MS = 5000L
         private const val BACKUP_NAMES_PREFS = "backup_names"
+        private const val WATCH_SAVE_PREFS = "watch_save_cache"
         private const val FILE_PROVIDER_AUTHORITY = "com.example.squintboyadvance.fileprovider"
 
         fun factory(application: Application, romId: String): ViewModelProvider.Factory =
@@ -71,6 +74,7 @@ class RomManagementViewModel(
     private val channelClient = Wearable.getChannelClient(application)
     private val nodeClient = Wearable.getNodeClient(application)
     private val namePrefs = application.getSharedPreferences(BACKUP_NAMES_PREFS, Context.MODE_PRIVATE)
+    private val watchSavePrefs = application.getSharedPreferences(WATCH_SAVE_PREFS, Context.MODE_PRIVATE)
 
     // Where phone-side backup files live
     private val backupDir: File
@@ -97,6 +101,7 @@ class RomManagementViewModel(
 
     init {
         messageClient.addListener(this)
+        loadWatchSaveCache()
         scanBackups()
     }
 
@@ -116,6 +121,7 @@ class RomManagementViewModel(
                     it.romId == romId && it.type == SaveFileType.SRAM_LIVE
                 }
                 _watchSave.value = liveSave
+                persistWatchSave(liveSave)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to parse save list", e)
             }
@@ -303,12 +309,75 @@ class RomManagementViewModel(
         return if (size in validSizes) SaveValidationResult.VALID else SaveValidationResult.SIZE_MISMATCH
     }
 
+    /**
+     * Sends a delete request to the watch for this ROM, then invokes [onDeleted].
+     */
+    fun deleteRom(onDeleted: () -> Unit) {
+        viewModelScope.launch {
+            try {
+                val nodeId = nodeClient.connectedNodes.await().firstOrNull()?.id
+                    ?: return@launch
+                messageClient.sendMessage(
+                    nodeId,
+                    WearMessageConstants.PATH_ROM_DELETE,
+                    romId.toByteArray(Charsets.UTF_8),
+                ).await()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to delete ROM $romId", e)
+            } finally {
+                onDeleted()
+            }
+        }
+    }
+
+    /**
+     * Copies a .sav file chosen from the device's storage into [backupDir] as a new backup entry.
+     */
+    fun importFromStorage(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val context = getApplication<Application>()
+                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                val outFile = File(backupDir, "import_$timestamp.sav")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    outFile.outputStream().use { output -> input.copyTo(output) }
+                }
+                scanBackups()
+            } catch (e: Exception) {
+                Log.e(TAG, "importFromStorage failed", e)
+            }
+        }
+    }
+
     fun clearTransferMessages() {
         _backupTransfer.value = SaveTransferState()
         _uploadTransfer.value = SaveTransferState()
     }
 
     // ── Internal ───────────────────────────────────────────────────────
+
+    private fun loadWatchSaveCache() {
+        val cached = watchSavePrefs.getString(romId, null) ?: return
+        try {
+            _watchSave.value = json.decodeFromString(SaveFileEntry.serializer(), cached)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to load watch save cache for $romId", e)
+        }
+    }
+
+    private fun persistWatchSave(entry: SaveFileEntry?) {
+        try {
+            if (entry == null) {
+                watchSavePrefs.edit().remove(romId).apply()
+            } else {
+                watchSavePrefs.edit()
+                    .putString(romId, json.encodeToString(SaveFileEntry.serializer(), entry))
+                    .apply()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to persist watch save for $romId", e)
+        }
+    }
 
     private fun scanBackups() {
         val files = backupDir.listFiles()

@@ -67,6 +67,7 @@ import androidx.wear.compose.material.Text
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.example.squintboyadvance.shared.model.ButtonId
+import com.example.squintboyadvance.shared.model.ScaleMode
 import kotlin.math.roundToInt
 
 // GBA: 240x160, GB/GBC: 160x144
@@ -122,6 +123,15 @@ fun ScaleEditorScreen(
     val currentScale = if (isGba) settings.gbaCustomScale else settings.gbCustomScale
     val frameW = if (isGba) GBA_W else GB_W
     val frameH = if (isGba) GBA_H else GB_H
+
+    // When opened from the pause menu, lock in CUSTOM mode immediately so
+    // slider adjustments persist after the user taps Done.
+    LaunchedEffect(isOverlay) {
+        if (isOverlay) {
+            if (isGba) viewModel.setGbaScaleMode(ScaleMode.CUSTOM)
+            else viewModel.setGbScaleMode(ScaleMode.CUSTOM)
+        }
+    }
 
     var overlayVisible by remember { mutableStateOf(true) }
     var isSliding by remember { mutableStateOf(false) }

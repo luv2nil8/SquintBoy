@@ -11,15 +11,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,7 +27,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -44,6 +41,7 @@ import androidx.navigation.navArgument
 import com.example.squintboyadvance.shared.model.SystemType
 import com.example.squintboyadvance.ui.roms.RomManagementScreen
 import com.example.squintboyadvance.ui.roms.RomsTab
+import com.example.squintboyadvance.ui.roms.WatchRomListViewModel
 import com.example.squintboyadvance.ui.settings.WatchSettingsScreen
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,10 +50,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
-enum class CompanionTab(val route: String, val label: String, val icon: ImageVector) {
-    ROMS("roms", "ROMs", Icons.Default.SportsEsports),
-    SETTINGS("settings", "Settings", Icons.Default.Settings),
-}
+private const val ROUTE_ROMS = "roms"
+private const val ROUTE_SETTINGS = "settings"
 
 class ConnectionViewModel(application: Application) : AndroidViewModel(application) {
     private val nodeClient = Wearable.getNodeClient(application)
@@ -85,49 +81,43 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CompanionApp(connectionViewModel: ConnectionViewModel = viewModel()) {
+fun CompanionApp(
+    connectionViewModel: ConnectionViewModel = viewModel(),
+    watchRomListViewModel: WatchRomListViewModel = viewModel(),
+) {
     val navController = rememberNavController()
     val navBackStack by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStack?.destination?.route
     val watchConnected by connectionViewModel.watchConnected.collectAsStateWithLifecycle()
 
-    // Determine which tab is active (only for the two top-level destinations)
-    val activeTab = CompanionTab.entries.firstOrNull { currentRoute == it.route }
+    val isRootRoute = currentRoute == ROUTE_ROMS
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Squint Boy Advance") },
+                navigationIcon = {
+                    if (!isRootRoute) {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    if (isRootRoute) {
+                        IconButton(onClick = { navController.navigate(ROUTE_SETTINGS) }) {
+                            Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.primary,
                 ),
             )
-        },
-        bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                CompanionTab.entries.forEach { tab ->
-                    NavigationBarItem(
-                        selected = activeTab == tab,
-                        onClick = {
-                            if (currentRoute != tab.route) {
-                                navController.navigate(tab.route) {
-                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            }
-                        },
-                        icon = { Icon(tab.icon, contentDescription = tab.label) },
-                        label = { Text(tab.label) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.primary,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                        ),
-                    )
-                }
-            }
         },
     ) { padding ->
         Column(
@@ -139,12 +129,13 @@ fun CompanionApp(connectionViewModel: ConnectionViewModel = viewModel()) {
 
             NavHost(
                 navController = navController,
-                startDestination = CompanionTab.ROMS.route,
+                startDestination = ROUTE_ROMS,
                 modifier = Modifier.fillMaxSize(),
             ) {
-                composable(CompanionTab.ROMS.route) {
+                composable(ROUTE_ROMS) {
                     RomsTab(
                         watchConnected = watchConnected,
+                        watchRomListViewModel = watchRomListViewModel,
                         onRomSelected = { entry ->
                             navController.navigate(
                                 "rom_management/${Uri.encode(entry.romId)}/${entry.systemType.name}"
@@ -152,7 +143,7 @@ fun CompanionApp(connectionViewModel: ConnectionViewModel = viewModel()) {
                         },
                     )
                 }
-                composable(CompanionTab.SETTINGS.route) {
+                composable(ROUTE_SETTINGS) {
                     WatchSettingsScreen(watchConnected = watchConnected)
                 }
                 composable(
@@ -170,6 +161,10 @@ fun CompanionApp(connectionViewModel: ConnectionViewModel = viewModel()) {
                         romId = romId,
                         systemType = systemType,
                         watchConnected = watchConnected,
+                        onRomDeleted = {
+                            watchRomListViewModel.removeRomLocally(romId)
+                            navController.popBackStack()
+                        },
                     )
                 }
             }
