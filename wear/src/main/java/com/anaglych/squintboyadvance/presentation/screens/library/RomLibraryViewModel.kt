@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.anaglych.squintboyadvance.presentation.RomLibrarySignal
 import com.anaglych.squintboyadvance.presentation.RomMetadataStore
 import com.anaglych.squintboyadvance.shared.model.RomMetadata
 import com.anaglych.squintboyadvance.shared.model.SystemType
@@ -39,6 +40,9 @@ class RomLibraryViewModel(application: Application) : AndroidViewModel(applicati
 
     init {
         scanRoms()
+        viewModelScope.launch {
+            RomLibrarySignal.romChanged.collect { scanRoms() }
+        }
     }
 
     fun scanRoms() {

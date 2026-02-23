@@ -56,6 +56,7 @@ class RomReceiverService : WearableListenerService() {
             inputStream.copyTo(out)
         }
         Log.i(TAG, "Received ROM: $safeName (${outFile.length()} bytes)")
+        RomLibrarySignal.emit()
     }
 
     private fun handleSavePush(channel: ChannelClient.Channel) {
@@ -182,6 +183,7 @@ class RomReceiverService : WearableListenerService() {
         val metadataStore = RomMetadataStore.getInstance(this)
         metadataStore.remove(romId)
         Log.i(TAG, "Deleted ROM and associated data: $romId")
+        RomLibrarySignal.emit()
     }
 
     private fun handleSettingsRequest(event: MessageEvent) {

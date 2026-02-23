@@ -109,8 +109,7 @@ fun PauseOverlay(
                         icon = Icons.Default.Brush,
                         label = "Palette",
                         onClick = onPalette,
-                        backgroundColor = primaryGreen,
-                        iconColor = Color.White,
+                        backgroundColor = primaryGreen.copy(alpha = 0.85f),
                     )
                     PauseButton(
                         icon = Icons.Default.Close,
