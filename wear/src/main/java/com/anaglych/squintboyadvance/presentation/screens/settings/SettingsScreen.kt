@@ -58,23 +58,9 @@ fun SettingsScreen(
             }
             item {
                 SettingsChip(
-                    label = "Controller",
-                    description = "Input, layout, haptics",
-                    onClick = { onNavigate(Screen.ControllerSettings) }
-                )
-            }
-            item {
-                SettingsChip(
                     label = "GB Palette",
                     description = "Color presets",
                     onClick = { onNavigate(Screen.PaletteSettings) }
-                )
-            }
-            item {
-                SettingsChip(
-                    label = "Save Manager",
-                    description = "Save slots, import/export",
-                    onClick = { onNavigate(Screen.SaveManager) }
                 )
             }
         }
