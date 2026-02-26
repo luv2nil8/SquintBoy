@@ -15,7 +15,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.compose.material.CircularProgressIndicator
 import androidx.wear.compose.material.MaterialTheme
@@ -41,7 +40,6 @@ fun EmulatorScreen(
     val frame by viewModel.frame.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     val systemType by viewModel.systemType.collectAsState()
-    val fps by viewModel.fps.collectAsState()
 
     val settingsRepo = SettingsRepository.getInstance(viewModel.getApplication())
     val settings by settingsRepo.settings.collectAsState()
@@ -85,16 +83,6 @@ fun EmulatorScreen(
                     onButtonRelease = viewModel::releaseButton,
                     onPause = viewModel::pause,
                 )
-                if (settings.showFps) {
-                    Text(
-                        text = "$fps",
-                        color = Color.White.copy(alpha = 0.6f),
-                        fontSize = 10.sp,
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(start = 8.dp, top = 4.dp),
-                    )
-                }
             }
 
             EmulatorState.PAUSED -> {

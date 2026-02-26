@@ -1,5 +1,6 @@
 package com.anaglych.squintboyadvance.ui.settings
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,17 +12,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -33,6 +35,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -48,7 +53,6 @@ fun WatchSettingsScreen(
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
-    val isSaving by viewModel.isSaving.collectAsStateWithLifecycle()
 
     if (settings == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -83,29 +87,6 @@ fun WatchSettingsScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        // ── Actions ──
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OutlinedButton(
-                    onClick = { viewModel.loadSettings() },
-                    enabled = watchConnected && !isLoading,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("Reload")
-                }
-                Button(
-                    onClick = { viewModel.pushToWatch() },
-                    enabled = watchConnected && !isSaving && viewModel.isDirty,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(if (isSaving) "Saving..." else "Save to Watch")
-                }
-            }
-        }
-
         // ── Audio ──
         item { SectionHeader("Audio") }
         item {
@@ -145,6 +126,11 @@ fun WatchSettingsScreen(
             }
         }
         item {
+            FrameskipSetting("GBA Frameskip", s.gbaFrameskip) { value ->
+                viewModel.updateLocal { it.copy(gbaFrameskip = value) }
+            }
+        }
+        item {
             DropdownSetting(
                 label = "GB Scale",
                 selected = s.gbScaleMode.displayName,
@@ -167,59 +153,44 @@ fun WatchSettingsScreen(
                 viewModel.updateLocal { it.copy(gbFilterEnabled = !it.gbFilterEnabled) }
             }
         }
-
-        // ── Gameplay ──
-        item { SectionHeader("Gameplay") }
         item {
-            SliderSetting(
-                "Frameskip",
-                if (s.frameskip < 0) "Auto" else "${s.frameskip}",
-                s.frameskip.toFloat(),
-                -1f..4f,
-                steps = 4,
-            ) { v ->
-                viewModel.updateLocal { it.copy(frameskip = v.toInt()) }
-            }
-        }
-        item {
-            SwitchSetting("Show FPS", s.showFps) {
-                viewModel.updateLocal { it.copy(showFps = !it.showFps) }
-            }
-        }
-        item {
-            SwitchSetting("Auto-Save", s.autoSaveEnabled) {
-                viewModel.updateLocal { it.copy(autoSaveEnabled = !it.autoSaveEnabled) }
-            }
-        }
-        if (s.autoSaveEnabled) {
-            item {
-                SliderSetting("Interval", "${s.autoSaveIntervalSec}s", s.autoSaveIntervalSec.toFloat(), 15f..300f, steps = 18) { v ->
-                    viewModel.updateLocal { it.copy(autoSaveIntervalSec = v.toInt()) }
-                }
-            }
-        }
-        item {
-            SliderSetting("Turbo", "${"%.1f".format(s.turboSpeed)}x", s.turboSpeed, 1.5f..4f) { v ->
-                viewModel.updateLocal { it.copy(turboSpeed = v) }
+            FrameskipSetting("GB Frameskip", s.gbFrameskip) { value ->
+                viewModel.updateLocal { it.copy(gbFrameskip = value) }
             }
         }
 
         // ── GB Palette ──
         item { SectionHeader("GB Palette") }
         item {
-            DropdownSetting(
-                label = "Palette",
-                selected = GbColorPalette.ALL.getOrNull(s.gbPaletteIndex)?.name
-                    ?: GbColorPalette.ALL[GbColorPalette.DEFAULT_INDEX].name,
-                options = GbColorPalette.ALL.map { it.name },
-                onSelect = { name ->
-                    val index = GbColorPalette.ALL.indexOfFirst { it.name == name }
-                    if (index >= 0) viewModel.updateLocal { it.copy(gbPaletteIndex = index) }
-                },
+            PaletteSetting(
+                selectedIndex = s.gbPaletteIndex,
+                onSelect = { index -> viewModel.updateLocal { it.copy(gbPaletteIndex = index) } },
             )
         }
 
         item { HorizontalDivider(modifier = Modifier.padding(top = 8.dp)) }
+        item {
+            val uriHandler = LocalUriHandler.current
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { uriHandler.openUri("https://lospec.com/shop") }
+                    .padding(vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column {
+                    Text("Palettes by Lospec", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "lospec.com — support their work",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text("›", style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
         item {
             Row(
                 modifier = Modifier
@@ -227,7 +198,7 @@ fun WatchSettingsScreen(
                     .clickable(onClick = onOpenLicenses)
                     .padding(vertical = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Open Source Licenses", style = MaterialTheme.typography.bodyMedium)
                 Text("›", style = MaterialTheme.typography.titleMedium,
@@ -236,6 +207,89 @@ fun WatchSettingsScreen(
         }
 
         item { Spacer(Modifier.height(80.dp)) }
+    }
+}
+
+@Composable
+private fun FrameskipSetting(label: String, current: Int, onSelect: (Int) -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(0 to "Off", 1 to "1", 2 to "2", 3 to "3").forEach { (value, chip) ->
+                FilterChip(
+                    selected = current == value,
+                    onClick = { onSelect(value) },
+                    label = { Text(chip) },
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PaletteSetting(
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selected = GbColorPalette.ALL.getOrNull(selectedIndex)
+        ?: GbColorPalette.ALL[GbColorPalette.DEFAULT_INDEX]
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("Palette", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(end = 16.dp))
+        Spacer(Modifier.weight(1f))
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = it },
+        ) {
+            OutlinedTextField(
+                value = selected.name,
+                onValueChange = {},
+                readOnly = true,
+                leadingIcon = { PaletteSwatch(palette = selected, size = 20.dp) },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                modifier = Modifier
+                    .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                    .fillMaxWidth(0.6f),
+                textStyle = MaterialTheme.typography.bodySmall,
+                singleLine = true,
+            )
+            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                GbColorPalette.ALL.forEachIndexed { index, palette ->
+                    DropdownMenuItem(
+                        text = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                PaletteSwatch(palette = palette, size = 22.dp)
+                                Text(palette.name, style = MaterialTheme.typography.bodySmall)
+                            }
+                        },
+                        onClick = { onSelect(index); expanded = false },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaletteSwatch(palette: GbColorPalette, size: Dp) {
+    val c0 = Color(palette.c0)  // darkest — top-left
+    val c1 = Color(palette.c1)  // top-right
+    val c2 = Color(palette.c2)  // bottom-left
+    val c3 = Color(palette.c3)  // lightest — bottom-right
+    Canvas(modifier = Modifier.size(size)) {
+        drawArc(color = c0, startAngle = 180f, sweepAngle = 90f, useCenter = true)
+        drawArc(color = c1, startAngle = 270f, sweepAngle = 90f, useCenter = true)
+        drawArc(color = c2, startAngle = 90f,  sweepAngle = 90f, useCenter = true)
+        drawArc(color = c3, startAngle = 0f,   sweepAngle = 90f, useCenter = true)
     }
 }
 

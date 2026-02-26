@@ -26,6 +26,7 @@ class WatchSettingsViewModel(application: Application) : AndroidViewModel(applic
     companion object {
         private const val TAG = "WatchSettingsVM"
         private const val TIMEOUT_MS = 5000L
+        private const val PUSH_DEBOUNCE_MS = 400L
         private const val PREFS_NAME = "watch_settings_cache"
         private const val KEY_SETTINGS = "settings_json"
     }
@@ -38,18 +39,11 @@ class WatchSettingsViewModel(application: Application) : AndroidViewModel(applic
     private val _settings = MutableStateFlow<EmulatorSettings?>(null)
     val settings: StateFlow<EmulatorSettings?> = _settings.asStateFlow()
 
-    private val _originalSettings = MutableStateFlow<EmulatorSettings?>(null)
-
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    private val _isSaving = MutableStateFlow(false)
-    val isSaving: StateFlow<Boolean> = _isSaving.asStateFlow()
-
-    val isDirty: Boolean
-        get() = _settings.value != null && _settings.value != _originalSettings.value
-
     private var timeoutJob: Job? = null
+    private var pushJob: Job? = null
 
     init {
         messageClient.addListener(this)
@@ -67,9 +61,10 @@ class WatchSettingsViewModel(application: Application) : AndroidViewModel(applic
             timeoutJob?.cancel()
             try {
                 val s = json.decodeFromString(EmulatorSettings.serializer(), String(event.data))
-                // Don't clobber unsaved local edits — just update the baseline
-                if (!isDirty) _settings.value = s
-                _originalSettings.value = s
+                // Don't clobber unsaved local edits from a pending push
+                if (pushJob == null || !pushJob!!.isActive) {
+                    _settings.value = s
+                }
                 saveCache(s)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to parse settings", e)
@@ -99,23 +94,25 @@ class WatchSettingsViewModel(application: Application) : AndroidViewModel(applic
     }
 
     fun updateLocal(transform: (EmulatorSettings) -> EmulatorSettings) {
-        _settings.value = _settings.value?.let(transform)
+        val current = _settings.value ?: return
+        _settings.value = transform(current)
+        pushJob?.cancel()
+        pushJob = viewModelScope.launch {
+            delay(PUSH_DEBOUNCE_MS)
+            pushToWatch()
+        }
     }
 
-    fun pushToWatch() {
+    private fun pushToWatch() {
         val current = _settings.value ?: return
         viewModelScope.launch {
-            _isSaving.value = true
             try {
                 val nodeId = nodeClient.connectedNodes.await().firstOrNull()?.id ?: return@launch
                 val payload = json.encodeToString(EmulatorSettings.serializer(), current).toByteArray()
                 messageClient.sendMessage(nodeId, WearMessageConstants.PATH_SETTINGS_SYNC, payload).await()
-                _originalSettings.value = current
                 saveCache(current)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to push settings", e)
-            } finally {
-                _isSaving.value = false
             }
         }
     }
@@ -127,7 +124,6 @@ class WatchSettingsViewModel(application: Application) : AndroidViewModel(applic
         try {
             val s = json.decodeFromString(EmulatorSettings.serializer(), cached)
             _settings.value = s
-            _originalSettings.value = s
         } catch (e: Exception) {
             Log.w(TAG, "Failed to load settings cache", e)
         }

@@ -133,6 +133,7 @@ class RomReceiverService : WearableListenerService() {
                 WearMessageConstants.PATH_SETTINGS_SYNC -> handleSettingsSync(event)
                 WearMessageConstants.PATH_SAVE_LIST_REQUEST -> handleSaveListRequest(event)
                 WearMessageConstants.PATH_SAVE_CLEAR_STACKS -> handleSaveClearStacks(event)
+                WearMessageConstants.PATH_ROM_RENAME -> handleRomRename(event)
                 else -> Log.w(TAG, "Unknown message path: ${event.path}")
             }
         } catch (e: Exception) {
@@ -245,6 +246,18 @@ class RomReceiverService : WearableListenerService() {
             File(savesDir, "$romBaseName.sav.$i").delete()
         }
         Log.i(TAG, "Cleared save/state stacks for $romBaseName")
+    }
+
+    private fun handleRomRename(event: MessageEvent) {
+        val payload = String(event.data, Charsets.UTF_8)
+        val newlineIdx = payload.indexOf('\n')
+        if (newlineIdx < 0) return
+        val romId = payload.substring(0, newlineIdx)
+        val newName = payload.substring(newlineIdx + 1).trim()
+        val metadataStore = RomMetadataStore.getInstance(this)
+        metadataStore.update(romId) { it.copy(displayName = newName.ifEmpty { null }) }
+        Log.i(TAG, "Renamed ROM $romId → ${newName.ifEmpty { "(cleared)" }}")
+        RomLibrarySignal.emit()
     }
 
     // ── Helpers ────────────────────────────────────────────────────────

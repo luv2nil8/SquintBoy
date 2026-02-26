@@ -60,7 +60,7 @@ class RomLibraryViewModel(application: Application) : AndroidViewModel(applicati
                 val meta = metadataStore.get(file.name)
                 RomMetadata(
                     id = file.name,
-                    title = file.nameWithoutExtension,
+                    title = meta.displayName ?: file.nameWithoutExtension,
                     systemType = systemType,
                     filePath = file.absolutePath,
                     fileSize = file.length(),

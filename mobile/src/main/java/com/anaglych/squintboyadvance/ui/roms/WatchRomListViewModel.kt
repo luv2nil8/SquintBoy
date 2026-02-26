@@ -110,6 +110,15 @@ class WatchRomListViewModel(application: Application) : AndroidViewModel(applica
             displayNamesPrefs.edit().putString(romId, trimmed).apply()
         }
         loadDisplayNames()
+        viewModelScope.launch {
+            try {
+                val nodeId = nodeClient.connectedNodes.await().firstOrNull()?.id ?: return@launch
+                val payload = "$romId\n$trimmed".toByteArray(Charsets.UTF_8)
+                messageClient.sendMessage(nodeId, WearMessageConstants.PATH_ROM_RENAME, payload).await()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to sync rename to watch", e)
+            }
+        }
     }
 
     /** Removes a ROM from the in-memory list and cache without sending a message to the watch. */

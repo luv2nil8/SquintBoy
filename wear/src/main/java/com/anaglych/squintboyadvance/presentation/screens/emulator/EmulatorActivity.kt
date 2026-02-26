@@ -1,6 +1,7 @@
 package com.anaglych.squintboyadvance.presentation.screens.emulator
 
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -38,6 +39,14 @@ class EmulatorActivity : ComponentActivity() {
                     viewModel = viewModel
                 )
             }
+        }
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        return when (keyCode) {
+            KeyEvent.KEYCODE_VOLUME_UP -> { viewModel.adjustVolume(0.1f); true }
+            KeyEvent.KEYCODE_VOLUME_DOWN -> { viewModel.adjustVolume(-0.1f); true }
+            else -> super.onKeyDown(keyCode, event)
         }
     }
 

@@ -46,12 +46,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         repo.update { it.copy(gbFilterEnabled = enabled) }
     }
 
-    fun setFrameskip(frameskip: Int) {
-        repo.update { it.copy(frameskip = frameskip) }
+    fun setGbaFrameskip(frameskip: Int) {
+        repo.update { it.copy(gbaFrameskip = frameskip) }
     }
 
-    fun setShowFps(show: Boolean) {
-        repo.update { it.copy(showFps = show) }
+    fun setGbFrameskip(frameskip: Int) {
+        repo.update { it.copy(gbFrameskip = frameskip) }
     }
 
     fun setPreferredInput(input: InputDevice) {
@@ -74,11 +74,4 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         repo.update { it.copy(gbPaletteIndex = index) }
     }
 
-    fun setAutoSaveEnabled(enabled: Boolean) {
-        repo.update { it.copy(autoSaveEnabled = enabled) }
-    }
-
-    fun setAutoSaveInterval(seconds: Int) {
-        repo.update { it.copy(autoSaveIntervalSec = seconds) }
-    }
 }

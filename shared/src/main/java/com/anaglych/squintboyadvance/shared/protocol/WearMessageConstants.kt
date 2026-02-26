@@ -22,4 +22,8 @@ object WearMessageConstants {
 
     // Sent from watch to phone: asks the companion app to open its ROM file picker.
     const val PATH_OPEN_ROM_PICKER = "/rom/picker/open"
+
+    // Sent from phone to watch: sets a custom display name for a ROM.
+    // Payload: "$romId\n$newName" (UTF-8). Empty newName clears the override.
+    const val PATH_ROM_RENAME = "/rom/rename"
 }

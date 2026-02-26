@@ -28,7 +28,8 @@ class RomMetadataStore private constructor(context: Context) {
     data class PersistedRomMeta(
         val lastPlayed: Long? = null,
         val totalPlayTimeMs: Long = 0L,
-        val thumbnailPath: String? = null
+        val thumbnailPath: String? = null,
+        val displayName: String? = null
     )
 
     private val prefs: SharedPreferences =

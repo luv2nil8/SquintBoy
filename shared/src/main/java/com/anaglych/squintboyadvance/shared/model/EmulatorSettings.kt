@@ -13,13 +13,10 @@ data class EmulatorSettings(
     val gbaFilterEnabled: Boolean = false,
     val gbFilterEnabled: Boolean = false,
     val gbPaletteIndex: Int = GbColorPalette.DEFAULT_INDEX,
-    val frameskip: Int = -1,
-    val showFps: Boolean = false,
+    val gbaFrameskip: Int = 0,
+    val gbFrameskip: Int = 0,
     val preferredInput: InputDevice = InputDevice.TOUCH,
     val controllerLayout: ControllerLayout = ControllerLayout(),
-    val autoSaveEnabled: Boolean = true,
-    val autoSaveIntervalSec: Int = 60,
-    val turboSpeed: Float = 2.0f
 )
 
 @Serializable

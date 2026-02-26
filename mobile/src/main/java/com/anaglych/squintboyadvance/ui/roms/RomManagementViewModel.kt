@@ -307,6 +307,15 @@ class RomManagementViewModel(
             displayNamesPrefs.edit().putString(romId, trimmed).apply()
             _displayName.value = trimmed
         }
+        viewModelScope.launch {
+            try {
+                val nodeId = nodeClient.connectedNodes.await().firstOrNull()?.id ?: return@launch
+                val payload = "$romId\n$trimmed".toByteArray(Charsets.UTF_8)
+                messageClient.sendMessage(nodeId, WearMessageConstants.PATH_ROM_RENAME, payload).await()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to sync rename to watch", e)
+            }
+        }
     }
 
     fun renameBackup(backup: SaveBackupEntry, newName: String) {

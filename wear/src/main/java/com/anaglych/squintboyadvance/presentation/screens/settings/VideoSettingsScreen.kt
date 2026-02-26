@@ -123,16 +123,20 @@ fun VideoSettingsScreen(
             }
 
             item {
+                val currentFrameskip = if (isGba) settings.gbaFrameskip else settings.gbFrameskip
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally)
                 ) {
-                    val options = listOf(-1 to "Auto", 0 to "Off", 1 to "1", 2 to "2")
+                    val options = listOf(0 to "Off", 1 to "1", 2 to "2", 3 to "3")
                     for ((value, label) in options) {
                         CompactChip(
-                            onClick = { viewModel.setFrameskip(value) },
+                            onClick = {
+                                if (isGba) viewModel.setGbaFrameskip(value)
+                                else viewModel.setGbFrameskip(value)
+                            },
                             label = { Text(label) },
-                            colors = if (settings.frameskip == value) {
+                            colors = if (currentFrameskip == value) {
                                 ChipDefaults.primaryChipColors()
                             } else {
                                 ChipDefaults.secondaryChipColors()
@@ -142,22 +146,6 @@ fun VideoSettingsScreen(
                 }
             }
 
-            // Show FPS toggle
-            item {
-                ToggleChip(
-                    checked = settings.showFps,
-                    onCheckedChange = { viewModel.setShowFps(it) },
-                    label = { Text("Show FPS") },
-                    toggleControl = {
-                        Icon(
-                            imageVector = ToggleChipDefaults.switchIcon(checked = settings.showFps),
-                            contentDescription = null,
-                            modifier = Modifier.size(ToggleChipDefaults.IconSize)
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
         }
     }
 }
