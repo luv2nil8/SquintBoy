@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,6 +38,7 @@ import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material.Button
 import androidx.wear.compose.material.ButtonDefaults
+import androidx.wear.compose.material.CompactChip
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.PositionIndicator
@@ -55,6 +57,7 @@ fun RomLibraryScreen(
 ) {
     val roms by viewModel.roms.collectAsState()
     val pickerState by viewModel.pickerState.collectAsStateWithLifecycle()
+    val phoneAppInstalled by viewModel.phoneAppInstalled.collectAsStateWithLifecycle()
     val listState = rememberScalingLazyListState()
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -101,6 +104,15 @@ fun RomLibraryScreen(
                         ) {
                             Icon(Icons.Default.Add, contentDescription = "Add ROM")
                         }
+                    }
+                }
+
+                // ── Phone app install prompt ─────────────────────────────
+                if (phoneAppInstalled == false) {
+                    item {
+                        PhoneInstallCard(
+                            onInstall = { viewModel.openPhonePlayStore() },
+                        )
                     }
                 }
 
@@ -174,5 +186,41 @@ fun RomLibraryScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PhoneInstallCard(onInstall: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colors.surface)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            Icons.Default.PhoneAndroid,
+            contentDescription = null,
+            tint = MaterialTheme.colors.primary,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Get the phone app",
+            style = MaterialTheme.typography.body2,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            "Transfer ROMs & sync saves",
+            style = MaterialTheme.typography.caption3,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f),
+        )
+        Spacer(Modifier.height(6.dp))
+        CompactChip(
+            onClick = onInstall,
+            label = { Text("Install") },
+        )
     }
 }

@@ -1,21 +1,27 @@
 package com.anaglych.squintboyadvance.presentation.screens.library
 
 import android.app.Application
+import android.content.Intent
+import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.wear.remote.interactions.RemoteActivityHelper
 import com.anaglych.squintboyadvance.presentation.RomLibrarySignal
 import com.anaglych.squintboyadvance.presentation.RomMetadataStore
 import com.anaglych.squintboyadvance.shared.model.RomMetadata
 import com.anaglych.squintboyadvance.shared.model.SystemType
 import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
+import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.Wearable
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import java.io.File
 
 enum class RomPickerState { IDLE, SENDING, WAITING, ERROR }
@@ -37,11 +43,50 @@ class RomLibraryViewModel(application: Application) : AndroidViewModel(applicati
     private val metadataStore = RomMetadataStore.getInstance(application)
     private val messageClient = Wearable.getMessageClient(application)
     private val nodeClient = Wearable.getNodeClient(application)
+    private val capabilityClient = Wearable.getCapabilityClient(application)
+    private val remoteActivityHelper = RemoteActivityHelper(application)
+
+    private val _phoneAppInstalled = MutableStateFlow<Boolean?>(null)
+    val phoneAppInstalled: StateFlow<Boolean?> = _phoneAppInstalled.asStateFlow()
 
     init {
         scanRoms()
+        checkPhoneAppInstalled()
         viewModelScope.launch {
             RomLibrarySignal.romChanged.collect { scanRoms() }
+        }
+    }
+
+    private fun checkPhoneAppInstalled() {
+        viewModelScope.launch {
+            try {
+                val capInfo = capabilityClient.getCapability(
+                    WearMessageConstants.CAPABILITY_PHONE_APP,
+                    CapabilityClient.FILTER_ALL,
+                ).await()
+                val installed = capInfo.nodes.isNotEmpty()
+                Log.d(TAG, "Phone app capability check: nodes=${capInfo.nodes.size}, installed=$installed")
+                _phoneAppInstalled.value = installed
+            } catch (e: Exception) {
+                Log.e(TAG, "Phone app capability check failed", e)
+                _phoneAppInstalled.value = false
+            }
+        }
+    }
+
+    fun openPhonePlayStore() {
+        viewModelScope.launch {
+            try {
+                val nodeId = nodeClient.connectedNodes.await().firstOrNull()?.id ?: return@launch
+                withContext(Dispatchers.IO) {
+                    remoteActivityHelper.startRemoteActivity(
+                        Intent(Intent.ACTION_VIEW)
+                            .setData(Uri.parse(WearMessageConstants.PLAY_STORE_URI))
+                            .addCategory(Intent.CATEGORY_BROWSABLE),
+                        nodeId,
+                    ).get()
+                }
+            } catch (_: Exception) { /* best-effort */ }
         }
     }
 

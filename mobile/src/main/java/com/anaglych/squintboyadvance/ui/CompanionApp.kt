@@ -1,6 +1,7 @@
 package com.anaglych.squintboyadvance.ui
 
 import android.app.Application
+import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,18 +40,23 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.wear.remote.interactions.RemoteActivityHelper
 import com.anaglych.squintboyadvance.shared.model.SystemType
+import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
 import com.anaglych.squintboyadvance.ui.roms.RomManagementScreen
 import com.anaglych.squintboyadvance.ui.roms.RomsTab
 import com.anaglych.squintboyadvance.ui.roms.WatchRomListViewModel
 import com.anaglych.squintboyadvance.ui.settings.LicensesScreen
 import com.anaglych.squintboyadvance.ui.settings.WatchSettingsScreen
+import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 
 private const val ROUTE_ROMS = "roms"
 private const val ROUTE_SETTINGS = "settings"
@@ -57,12 +64,17 @@ private const val ROUTE_LICENSES = "licenses"
 
 class ConnectionViewModel(application: Application) : AndroidViewModel(application) {
     private val nodeClient = Wearable.getNodeClient(application)
+    private val capabilityClient = Wearable.getCapabilityClient(application)
+    private val remoteActivityHelper = RemoteActivityHelper(application)
 
     private val _watchConnected = MutableStateFlow(false)
     val watchConnected: StateFlow<Boolean> = _watchConnected.asStateFlow()
 
     private val _connectedNodeId = MutableStateFlow<String?>(null)
     val connectedNodeId: StateFlow<String?> = _connectedNodeId.asStateFlow()
+
+    private val _watchAppInstalled = MutableStateFlow<Boolean?>(null)
+    val watchAppInstalled: StateFlow<Boolean?> = _watchAppInstalled.asStateFlow()
 
     init { refresh() }
 
@@ -73,10 +85,37 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
                 val node = nodes.firstOrNull()
                 _watchConnected.value = node != null
                 _connectedNodeId.value = node?.id
+
+                if (node != null) {
+                    val capInfo = capabilityClient.getCapability(
+                        WearMessageConstants.CAPABILITY_WATCH_APP,
+                        CapabilityClient.FILTER_ALL,
+                    ).await()
+                    _watchAppInstalled.value = capInfo.nodes.isNotEmpty()
+                } else {
+                    _watchAppInstalled.value = null
+                }
             } catch (_: Exception) {
                 _watchConnected.value = false
                 _connectedNodeId.value = null
+                _watchAppInstalled.value = null
             }
+        }
+    }
+
+    fun openWatchPlayStore() {
+        val nodeId = _connectedNodeId.value ?: return
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    remoteActivityHelper.startRemoteActivity(
+                        Intent(Intent.ACTION_VIEW)
+                            .setData(Uri.parse(WearMessageConstants.PLAY_STORE_URI))
+                            .addCategory(Intent.CATEGORY_BROWSABLE),
+                        nodeId,
+                    ).get()
+                }
+            } catch (_: Exception) { /* best-effort */ }
         }
     }
 }
@@ -91,6 +130,7 @@ fun CompanionApp(
     val navBackStack by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStack?.destination?.route
     val watchConnected by connectionViewModel.watchConnected.collectAsStateWithLifecycle()
+    val watchAppInstalled by connectionViewModel.watchAppInstalled.collectAsStateWithLifecycle()
 
     val isRootRoute = currentRoute == ROUTE_ROMS
 
@@ -127,7 +167,12 @@ fun CompanionApp(
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            ConnectionStatusBar(watchConnected) { connectionViewModel.refresh() }
+            ConnectionStatusBar(
+                connected = watchConnected,
+                watchAppInstalled = watchAppInstalled,
+                onRefresh = { connectionViewModel.refresh() },
+                onInstall = { connectionViewModel.openWatchPlayStore() },
+            )
 
             NavHost(
                 navController = navController,
@@ -184,7 +229,14 @@ fun CompanionApp(
 }
 
 @Composable
-fun ConnectionStatusBar(connected: Boolean, onRefresh: () -> Unit) {
+fun ConnectionStatusBar(
+    connected: Boolean,
+    watchAppInstalled: Boolean?,
+    onRefresh: () -> Unit,
+    onInstall: () -> Unit,
+) {
+    val needsInstall = connected && watchAppInstalled == false
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -192,22 +244,33 @@ fun ConnectionStatusBar(connected: Boolean, onRefresh: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            Icons.Default.Watch,
+            if (needsInstall) Icons.Default.Download else Icons.Default.Watch,
             contentDescription = null,
-            tint = if (connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = if (connected && !needsInstall) MaterialTheme.colorScheme.primary
+                   else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(20.dp),
         )
         Spacer(Modifier.width(8.dp))
         Text(
-            text = if (connected) "Watch: Connected" else "Watch: Disconnected",
+            text = when {
+                needsInstall -> "Watch: App Not Found"
+                connected -> "Watch: Connected"
+                else -> "Watch: Disconnected"
+            },
             style = MaterialTheme.typography.bodyMedium,
-            color = if (connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (connected && !needsInstall) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (connected) {
+        if (connected && !needsInstall) {
             Spacer(Modifier.width(6.dp))
             Text("\u25CF", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
         }
         Spacer(Modifier.weight(1f))
+        if (needsInstall) {
+            TextButton(onClick = onInstall) {
+                Text("Install", style = MaterialTheme.typography.labelSmall)
+            }
+        }
         TextButton(onClick = onRefresh) {
             Text("Refresh", style = MaterialTheme.typography.labelSmall)
         }

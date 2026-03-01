@@ -21,8 +21,8 @@ android {
         applicationId = "com.anaglych.squintboyadvance"
         minSdk = 30
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 3
+        versionName = "1.0.2"
     }
 
     signingConfigs {
@@ -69,6 +69,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.play.services.wearable)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
+    implementation("androidx.wear:wear-remote-interactions:1.1.0")
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)

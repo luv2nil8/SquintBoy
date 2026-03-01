@@ -26,4 +26,11 @@ object WearMessageConstants {
     // Sent from phone to watch: sets a custom display name for a ROM.
     // Payload: "$romId\n$newName" (UTF-8). Empty newName clears the override.
     const val PATH_ROM_RENAME = "/rom/rename"
+
+    // Capability names declared in res/values/wear.xml on each side.
+    const val CAPABILITY_PHONE_APP = "squintboy_phone_app"
+    const val CAPABILITY_WATCH_APP = "squintboy_watch_app"
+
+    // Play Store URI used by RemoteActivityHelper to open the store on the other device.
+    const val PLAY_STORE_URI = "market://details?id=com.anaglych.squintboyadvance"
 }
