@@ -23,9 +23,18 @@ object WearMessageConstants {
     // Sent from watch to phone: asks the companion app to open its ROM file picker.
     const val PATH_OPEN_ROM_PICKER = "/rom/picker/open"
 
+    // Sent from watch to phone: reports the result of a ROM transfer.
+    // Payload: JSON-encoded TransferResult.
+    const val PATH_ROM_TRANSFER_RESULT = "/rom/transfer/result"
+
     // Sent from phone to watch: sets a custom display name for a ROM.
     // Payload: "$romId\n$newName" (UTF-8). Empty newName clears the override.
     const val PATH_ROM_RENAME = "/rom/rename"
+
+    // Ping/pong: watch sends ping, phone replies with pong.
+    // Used to detect companion app presence (bypasses ReVanced capability interference).
+    const val PATH_PHONE_PING = "/phone/ping"
+    const val PATH_PHONE_PONG = "/phone/pong"
 
     // Capability names declared in res/values/wear.xml on each side.
     const val CAPABILITY_PHONE_APP = "squintboy_phone_app"

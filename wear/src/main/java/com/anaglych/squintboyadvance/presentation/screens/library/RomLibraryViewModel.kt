@@ -12,7 +12,6 @@ import com.anaglych.squintboyadvance.presentation.RomMetadataStore
 import com.anaglych.squintboyadvance.shared.model.RomMetadata
 import com.anaglych.squintboyadvance.shared.model.SystemType
 import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
-import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -36,39 +35,54 @@ class RomLibraryViewModel(application: Application) : AndroidViewModel(applicati
     private val _roms = MutableStateFlow<List<RomMetadata>>(emptyList())
     val roms: StateFlow<List<RomMetadata>> = _roms.asStateFlow()
 
+    private val _transferringNames = MutableStateFlow<List<String>>(emptyList())
+    val transferringNames: StateFlow<List<String>> = _transferringNames.asStateFlow()
+
     private val _pickerState = MutableStateFlow(RomPickerState.IDLE)
     val pickerState: StateFlow<RomPickerState> = _pickerState.asStateFlow()
+
+    private val _phoneAppInstalled = MutableStateFlow(true)
+    val phoneAppInstalled: StateFlow<Boolean> = _phoneAppInstalled.asStateFlow()
 
     private val romsDir = File(application.filesDir, "roms")
     private val metadataStore = RomMetadataStore.getInstance(application)
     private val messageClient = Wearable.getMessageClient(application)
     private val nodeClient = Wearable.getNodeClient(application)
-    private val capabilityClient = Wearable.getCapabilityClient(application)
     private val remoteActivityHelper = RemoteActivityHelper(application)
 
-    private val _phoneAppInstalled = MutableStateFlow<Boolean?>(null)
-    val phoneAppInstalled: StateFlow<Boolean?> = _phoneAppInstalled.asStateFlow()
+    @Volatile private var pongReceived = false
 
     init {
         scanRoms()
-        checkPhoneAppInstalled()
+        pingPhone()
         viewModelScope.launch {
             RomLibrarySignal.romChanged.collect { scanRoms() }
         }
+        viewModelScope.launch {
+            RomLibrarySignal.phonePong.collect {
+                pongReceived = true
+                _phoneAppInstalled.value = true
+            }
+        }
     }
 
-    private fun checkPhoneAppInstalled() {
+    fun pingPhone() {
+        pongReceived = false
         viewModelScope.launch {
             try {
-                val capInfo = capabilityClient.getCapability(
-                    WearMessageConstants.CAPABILITY_PHONE_APP,
-                    CapabilityClient.FILTER_ALL,
+                val nodeId = nodeClient.connectedNodes.await().firstOrNull()?.id ?: run {
+                    _phoneAppInstalled.value = false
+                    return@launch
+                }
+                messageClient.sendMessage(
+                    nodeId,
+                    WearMessageConstants.PATH_PHONE_PING,
+                    byteArrayOf(),
                 ).await()
-                val installed = capInfo.nodes.isNotEmpty()
-                Log.d(TAG, "Phone app capability check: nodes=${capInfo.nodes.size}, installed=$installed")
-                _phoneAppInstalled.value = installed
+                delay(3000)
+                if (!pongReceived) _phoneAppInstalled.value = false
             } catch (e: Exception) {
-                Log.e(TAG, "Phone app capability check failed", e)
+                Log.d(TAG, "Ping failed: ${e.message}")
                 _phoneAppInstalled.value = false
             }
         }
@@ -93,14 +107,21 @@ class RomLibraryViewModel(application: Application) : AndroidViewModel(applicati
     fun scanRoms() {
         if (!romsDir.exists()) {
             _roms.value = emptyList()
+            _transferringNames.value = emptyList()
             return
         }
 
+        val allFiles = romsDir.listFiles()?.filter { it.isFile } ?: emptyList()
         val validExtensions = SystemType.entries.flatMap { it.fileExtensions }.toSet()
 
-        _roms.value = romsDir.listFiles()
-            ?.filter { it.isFile && it.extension.lowercase() in validExtensions }
-            ?.map { file ->
+        // Collect in-progress transfer filenames (strip ".transferring_" prefix)
+        _transferringNames.value = allFiles
+            .filter { it.name.startsWith(".transferring_") }
+            .map { it.name.removePrefix(".transferring_") }
+
+        _roms.value = allFiles
+            .filter { !it.name.startsWith(".transferring_") && it.extension.lowercase() in validExtensions }
+            .map { file ->
                 val systemType = SystemType.fromExtension(file.extension) ?: SystemType.GB
                 val meta = metadataStore.get(file.name)
                 RomMetadata(
@@ -115,8 +136,7 @@ class RomLibraryViewModel(application: Application) : AndroidViewModel(applicati
                     thumbnailPath = meta.thumbnailPath
                 )
             }
-            ?.sortedByDescending { it.lastPlayed ?: it.addedTimestamp }
-            ?: emptyList()
+            .sortedByDescending { it.lastPlayed ?: it.addedTimestamp }
     }
 
     fun sendOpenRomPicker() {

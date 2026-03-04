@@ -1,5 +1,6 @@
 package com.anaglych.squintboyadvance.presentation
 
+import android.os.PowerManager
 import android.util.Log
 import com.anaglych.squintboyadvance.shared.model.*
 import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
@@ -18,6 +19,7 @@ class RomReceiverService : WearableListenerService() {
 
     companion object {
         private const val TAG = "RomReceiverService"
+        private const val STALL_TIMEOUT_MS = 30_000L
     }
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -42,21 +44,118 @@ class RomReceiverService : WearableListenerService() {
     }
 
     private fun handleRomTransfer(channel: ChannelClient.Channel) {
-        val inputStream = BufferedInputStream(
-            Tasks.await(Wearable.getChannelClient(this).getInputStream(channel))
-        )
-
-        val filename = readHeaderLine(inputStream) ?: return
-        val safeName = filename.replace('/', '_').replace('\\', '_')
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+        val wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK, "SquintBoy:RomTransfer"
+        ).apply { acquire(10 * 60 * 1000L) } // 10-min safety timeout
 
         val romsDir = File(filesDir, "roms").apply { mkdirs() }
-        val outFile = File(romsDir, safeName)
+        var tempFile: File? = null
+        var receivedBytes = 0L
+        var expectedSize = 0L
+        var safeName = ""
 
-        outFile.outputStream().use { out ->
-            inputStream.copyTo(out)
+        try {
+            val inputStream = BufferedInputStream(
+                Tasks.await(Wearable.getChannelClient(this).getInputStream(channel))
+            )
+
+            val filename = readHeaderLine(inputStream)
+                ?: throw Exception("Missing filename header")
+            val sizeStr = readHeaderLine(inputStream)
+                ?: throw Exception("Missing filesize header")
+            expectedSize = sizeStr.toLongOrNull()
+                ?: throw Exception("Invalid filesize header: $sizeStr")
+
+            safeName = filename.replace('/', '_').replace('\\', '_')
+            tempFile = File(romsDir, ".transferring_$safeName")
+            tempFile.createNewFile() // must exist on disk before signal
+
+            // Signal library so shimmer card appears immediately
+            RomLibrarySignal.emit()
+
+            tempFile.outputStream().use { out ->
+                val buffer = ByteArray(8192)
+                val lastDataTime = java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis())
+
+                // Watchdog closes the stream if no progress for 30s
+                val watchdog = java.util.concurrent.Executors.newSingleThreadScheduledExecutor()
+                watchdog.scheduleAtFixedRate({
+                    if (System.currentTimeMillis() - lastDataTime.get() > STALL_TIMEOUT_MS) {
+                        try { inputStream.close() } catch (_: Exception) {}
+                    }
+                }, 10, 5, java.util.concurrent.TimeUnit.SECONDS)
+
+                try {
+                    var read: Int
+                    while (inputStream.read(buffer).also { read = it } != -1) {
+                        out.write(buffer, 0, read)
+                        receivedBytes += read
+                        lastDataTime.set(System.currentTimeMillis())
+                    }
+                } catch (e: java.io.IOException) {
+                    if (receivedBytes < expectedSize) {
+                        throw Exception("Transfer stalled — no data for 30s")
+                    }
+                    // If we got all bytes, the watchdog closed a finished stream — that's fine
+                } finally {
+                    watchdog.shutdownNow()
+                }
+            }
+
+            if (receivedBytes != expectedSize) {
+                throw Exception("Size mismatch: expected $expectedSize, got $receivedBytes")
+            }
+
+            val outFile = File(romsDir, safeName)
+            if (!tempFile.renameTo(outFile)) {
+                // renameTo can fail on some filesystems; fall back to copy+delete
+                tempFile.copyTo(outFile, overwrite = true)
+                tempFile.delete()
+            }
+            tempFile = null // prevent finally-block cleanup
+
+            Log.i(TAG, "Received ROM: $safeName ($receivedBytes bytes)")
+            RomLibrarySignal.emitTransfer(safeName, true)
+            RomLibrarySignal.emit()
+            sendTransferResult(channel, safeName, true, receivedBytes, expectedSize)
+        } catch (e: Exception) {
+            Log.e(TAG, "ROM transfer failed: ${e.message}", e)
+            tempFile?.delete()
+            RomLibrarySignal.emit() // rescan so shimmer card disappears
+            RomLibrarySignal.emitTransfer(
+                safeName.ifEmpty { "unknown" }, false, e.message
+            )
+            sendTransferResult(
+                channel, safeName.ifEmpty { "unknown" },
+                false, receivedBytes, expectedSize, e.message
+            )
+        } finally {
+            if (wakeLock.isHeld) wakeLock.release()
         }
-        Log.i(TAG, "Received ROM: $safeName (${outFile.length()} bytes)")
-        RomLibrarySignal.emit()
+    }
+
+    private fun sendTransferResult(
+        channel: ChannelClient.Channel,
+        filename: String,
+        success: Boolean,
+        receivedBytes: Long,
+        expectedBytes: Long,
+        errorMessage: String? = null,
+    ) {
+        try {
+            val result = TransferResult(filename, success, receivedBytes, expectedBytes, errorMessage)
+            val payload = json.encodeToString(TransferResult.serializer(), result)
+            Tasks.await(
+                Wearable.getMessageClient(this).sendMessage(
+                    channel.nodeId,
+                    WearMessageConstants.PATH_ROM_TRANSFER_RESULT,
+                    payload.toByteArray(Charsets.UTF_8),
+                )
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send transfer result", e)
+        }
     }
 
     private fun handleSavePush(channel: ChannelClient.Channel) {
@@ -134,6 +233,10 @@ class RomReceiverService : WearableListenerService() {
                 WearMessageConstants.PATH_SAVE_LIST_REQUEST -> handleSaveListRequest(event)
                 WearMessageConstants.PATH_SAVE_CLEAR_STACKS -> handleSaveClearStacks(event)
                 WearMessageConstants.PATH_ROM_RENAME -> handleRomRename(event)
+                WearMessageConstants.PATH_PHONE_PONG -> {
+                    Log.d(TAG, "Received pong from phone")
+                    RomLibrarySignal.emitPhonePong()
+                }
                 else -> Log.w(TAG, "Unknown message path: ${event.path}")
             }
         } catch (e: Exception) {

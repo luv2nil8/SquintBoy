@@ -22,6 +22,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,6 +36,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.wear.compose.foundation.lazy.AutoCenteringParams
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
@@ -47,7 +51,10 @@ import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.TimeText
 import androidx.wear.compose.material.Vignette
 import androidx.wear.compose.material.VignettePosition
+import com.anaglych.squintboyadvance.presentation.RomLibrarySignal
+import com.anaglych.squintboyadvance.presentation.TransferEvent
 import com.anaglych.squintboyadvance.shared.model.RomMetadata
+import kotlinx.coroutines.delay
 
 @Composable
 fun RomLibraryScreen(
@@ -56,14 +63,24 @@ fun RomLibraryScreen(
     viewModel: RomLibraryViewModel = viewModel()
 ) {
     val roms by viewModel.roms.collectAsState()
+    val transferringNames by viewModel.transferringNames.collectAsState()
     val pickerState by viewModel.pickerState.collectAsStateWithLifecycle()
     val phoneAppInstalled by viewModel.phoneAppInstalled.collectAsStateWithLifecycle()
-    val listState = rememberScalingLazyListState()
+    val listState = rememberScalingLazyListState(initialCenterItemIndex = 2)
     val lifecycleOwner = LocalLifecycleOwner.current
+    var transferEvent by remember { mutableStateOf<TransferEvent?>(null) }
 
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             viewModel.scanRoms()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        RomLibrarySignal.transferEvent.collect { event ->
+            transferEvent = event
+            delay(3000)
+            transferEvent = null
         }
     }
 
@@ -77,11 +94,16 @@ fun RomLibraryScreen(
             ScalingLazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
+                autoCentering = AutoCenteringParams(itemIndex = 2),
             ) {
+                item { Spacer(Modifier.height(48.dp)) }
+
                 // ── Action buttons ──────────────────────────────────────
                 item {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -107,8 +129,8 @@ fun RomLibraryScreen(
                     }
                 }
 
-                // ── Phone app install prompt ─────────────────────────────
-                if (phoneAppInstalled == false) {
+                // ── Phone app install prompt ──────────────────────────────
+                if (!phoneAppInstalled) {
                     item {
                         PhoneInstallCard(
                             onInstall = { viewModel.openPhonePlayStore() },
@@ -116,8 +138,12 @@ fun RomLibraryScreen(
                     }
                 }
 
-                // ── ROM list or empty state ─────────────────────────────
-                if (roms.isEmpty()) {
+                // ── Transferring ROM cards ─────────────────────────────
+                items(transferringNames, key = { "transferring_$it" }) { name ->
+                    TransferringRomCard(filename = name)
+                }
+
+                if (roms.isEmpty() && transferringNames.isEmpty()) {
                     item { EmptyLibraryState() }
                 } else {
                     items(roms, key = { it.id }) { rom ->
@@ -182,6 +208,50 @@ fun RomLibraryScreen(
                             )
                         }
                         RomPickerState.IDLE -> {}
+                    }
+                }
+            }
+        }
+
+        // ── Transfer result overlay ─────────────────────────────────────
+        transferEvent?.let { event ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xCC000000))
+                    .clickable { transferEvent = null },
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colors.surface)
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    if (event.success) {
+                        Text(
+                            "ROM received!",
+                            style = MaterialTheme.typography.body2,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colors.primary,
+                        )
+                    } else {
+                        Text(
+                            "Transfer failed",
+                            style = MaterialTheme.typography.body2,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colors.error,
+                        )
+                        event.errorMessage?.let { msg ->
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                msg,
+                                style = MaterialTheme.typography.caption3,
+                                textAlign = TextAlign.Center,
+                                color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f),
+                            )
+                        }
                     }
                 }
             }

@@ -3,11 +3,14 @@ package com.anaglych.squintboyadvance.ui
 import android.app.Application
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,6 +39,8 @@ data class RomTransferItem(
 class RomTransferViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
+        private const val TAG = "RomTransferVM"
+        private const val CONFIRMATION_TIMEOUT_MS = 30_000L
         private val ROM_EXTENSIONS = setOf("gb", "gbc", "gba")
     }
 
@@ -51,8 +56,24 @@ class RomTransferViewModel(application: Application) : AndroidViewModel(applicat
     private val nodeClient = Wearable.getNodeClient(application)
     private val channelClient = Wearable.getChannelClient(application)
 
+    // Track pending confirmation timeouts by filename
+    private val pendingTimeouts = mutableMapOf<String, Job>()
+
     init {
         refreshConnectionStatus()
+        viewModelScope.launch {
+            TransferResultSignal.results.collect { result ->
+                pendingTimeouts.remove(result.filename)?.cancel()
+                if (result.success) {
+                    updateRomStatusByName(result.filename, TransferStatus.COMPLETE, progress = 1f)
+                } else {
+                    updateRomStatusByName(
+                        result.filename, TransferStatus.ERROR,
+                        errorMessage = result.errorMessage ?: "Transfer failed on watch"
+                    )
+                }
+            }
+        }
     }
 
     fun refreshConnectionStatus() {
@@ -135,8 +156,9 @@ class RomTransferViewModel(application: Application) : AndroidViewModel(applicat
                     channelClient.getOutputStream(channel).await()
 
                 outputStream.use { out ->
-                    // Write filename header
+                    // Write filename + filesize headers
                     out.write("${item.displayName}\n".toByteArray(Charsets.UTF_8))
+                    out.write("${item.size}\n".toByteArray(Charsets.UTF_8))
 
                     // Stream ROM bytes
                     val resolver = getApplication<Application>().contentResolver
@@ -161,7 +183,22 @@ class RomTransferViewModel(application: Application) : AndroidViewModel(applicat
                 channelClient.close(channel).await()
             }
 
-            updateRomStatus(item.uri, TransferStatus.COMPLETE, progress = 1f)
+            // Data sent — keep SENDING at 100% until watch confirms
+            updateRomStatus(item.uri, TransferStatus.SENDING, progress = 1f)
+
+            // Start a timeout: if no confirmation arrives, mark as error
+            val timeoutJob = viewModelScope.launch {
+                delay(CONFIRMATION_TIMEOUT_MS)
+                val current = _roms.value.find { it.displayName == item.displayName }
+                if (current?.status == TransferStatus.SENDING && current.progress >= 1f) {
+                    Log.w(TAG, "No confirmation from watch for ${item.displayName}")
+                    updateRomStatus(
+                        item.uri, TransferStatus.ERROR,
+                        errorMessage = "No confirmation from watch"
+                    )
+                }
+            }
+            pendingTimeouts[item.displayName] = timeoutJob
         } catch (e: Exception) {
             updateRomStatus(item.uri, TransferStatus.ERROR, errorMessage = e.message)
         }
@@ -176,6 +213,20 @@ class RomTransferViewModel(application: Application) : AndroidViewModel(applicat
         _roms.update { list ->
             list.map {
                 if (it.uri == uri) it.copy(status = status, progress = progress, errorMessage = errorMessage)
+                else it
+            }
+        }
+    }
+
+    private fun updateRomStatusByName(
+        displayName: String,
+        status: TransferStatus,
+        progress: Float = 0f,
+        errorMessage: String? = null,
+    ) {
+        _roms.update { list ->
+            list.map {
+                if (it.displayName == displayName) it.copy(status = status, progress = progress, errorMessage = errorMessage)
                 else it
             }
         }

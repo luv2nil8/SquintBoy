@@ -29,7 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
@@ -170,23 +170,22 @@ fun RomsTab(
                             animationSpec = tween(300),
                         ) + shrinkVertically(animationSpec = tween(300, delayMillis = 250)),
                     ) {
+                        val dismissAction: () -> Unit = {
+                            dismissingUris = dismissingUris + rom.uri
+                            scope.launch {
+                                delay(600)
+                                transferViewModel.removeRom(rom)
+                                dismissingUris = dismissingUris - rom.uri
+                                if (watchConnected) watchRomListViewModel.requestRomList()
+                            }
+                        }
                         TransferRomCard(
                             item = rom,
                             watchConnected = watchConnected,
                             sending = sending,
                             onSend = { transferViewModel.sendRom(rom) },
-                            onDismiss = if (rom.status == TransferStatus.COMPLETE) {
-                                {
-                                    dismissingUris = dismissingUris + rom.uri
-                                    scope.launch {
-                                        delay(600) // wait for full collapse animation
-                                        transferViewModel.removeRom(rom)
-                                        dismissingUris = dismissingUris - rom.uri
-                                        // Refresh after space is cleared so slide-in follows collapse
-                                        if (watchConnected) watchRomListViewModel.requestRomList()
-                                    }
-                                }
-                            } else null,
+                            onDismiss = if (rom.status == TransferStatus.COMPLETE) dismissAction else null,
+                            onCancel = if (rom.status == TransferStatus.ERROR) dismissAction else null,
                         )
                     }
                 }
@@ -321,6 +320,7 @@ private fun TransferRomCard(
     sending: Boolean,
     onSend: () -> Unit,
     onDismiss: (() -> Unit)?,
+    onCancel: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val badgeColor = when (item.systemType) {
@@ -363,10 +363,10 @@ private fun TransferRomCard(
                         trackColor = MaterialTheme.colorScheme.surfaceVariant,
                     )
                 }
-                if (item.status == TransferStatus.ERROR && item.errorMessage != null) {
+                if (item.status == TransferStatus.ERROR) {
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        item.errorMessage,
+                        "Transfer failed. Try again?",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -405,11 +405,20 @@ private fun TransferRomCard(
                     }
                 }
                 TransferStatus.ERROR -> {
+                    onCancel?.let {
+                        IconButton(onClick = it) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Cancel",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                     IconButton(onClick = onSend, enabled = watchConnected && !sending) {
                         Icon(
-                            Icons.Default.Error,
+                            Icons.Default.Refresh,
                             contentDescription = "Retry",
-                            tint = MaterialTheme.colorScheme.error,
+                            tint = MaterialTheme.colorScheme.primary,
                         )
                     }
                 }
