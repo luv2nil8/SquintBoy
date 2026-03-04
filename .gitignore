@@ -12,7 +12,7 @@
 *.aab
 *.ap_
 *.dex
-.claude/settings.local.json
+.claude/
 
 # Release signing — never commit these
 keystore.properties
