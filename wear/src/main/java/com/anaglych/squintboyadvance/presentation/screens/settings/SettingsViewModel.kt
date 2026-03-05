@@ -58,9 +58,33 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         repo.update { it.copy(preferredInput = input) }
     }
 
-    fun setOverlayAlpha(alpha: Float) {
+    fun setOverlayVisible(visible: Boolean) {
         repo.update {
-            it.copy(controllerLayout = it.controllerLayout.copy(overlayAlpha = alpha))
+            it.copy(controllerLayout = it.controllerLayout.copy(visible = visible))
+        }
+    }
+
+    fun setButtonOpacity(alpha: Float) {
+        repo.update {
+            it.copy(controllerLayout = it.controllerLayout.copy(buttonOpacity = alpha))
+        }
+    }
+
+    fun setPressedOpacity(alpha: Float) {
+        repo.update {
+            it.copy(controllerLayout = it.controllerLayout.copy(pressedOpacity = alpha))
+        }
+    }
+
+    fun setLabelOpacity(alpha: Float) {
+        repo.update {
+            it.copy(controllerLayout = it.controllerLayout.copy(labelOpacity = alpha))
+        }
+    }
+
+    fun setLabelSize(size: Float) {
+        repo.update {
+            it.copy(controllerLayout = it.controllerLayout.copy(labelSize = size))
         }
     }
 

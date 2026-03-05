@@ -21,12 +21,7 @@ object RomLibrarySignal {
     private val _transferEvent = MutableSharedFlow<TransferEvent>(extraBufferCapacity = 8)
     val transferEvent = _transferEvent.asSharedFlow()
 
-    private val _phonePong = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    val phonePong = _phonePong.asSharedFlow()
-
     fun emit() { _romChanged.tryEmit(Unit) }
-
-    fun emitPhonePong() { _phonePong.tryEmit(Unit) }
 
     fun emitTransfer(filename: String, success: Boolean, errorMessage: String? = null) {
         _transferEvent.tryEmit(TransferEvent(filename, success, errorMessage))

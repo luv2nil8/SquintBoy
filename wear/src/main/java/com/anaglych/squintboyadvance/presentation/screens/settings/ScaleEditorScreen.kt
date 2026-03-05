@@ -133,7 +133,7 @@ fun ScaleEditorScreen(
         }
     }
 
-    var overlayVisible by remember { mutableStateOf(true) }
+    var overlayVisible by remember { mutableStateOf(settings.controllerLayout.visible) }
     var isSliding by remember { mutableStateOf(false) }
     val labelAlpha = remember { Animatable(1f) }
 
@@ -200,6 +200,9 @@ fun ScaleEditorScreen(
                 isGba = isGba,
                 screenPx = screenWidthPx,
                 overlayVisible = overlayVisible,
+                buttonOpacity = settings.controllerLayout.buttonOpacity,
+                labelOpacity = settings.controllerLayout.labelOpacity,
+                labelSize = settings.controllerLayout.labelSize,
                 onToggleVisibility = { overlayVisible = !overlayVisible }
             )
         }
@@ -385,7 +388,10 @@ fun ScaleEditorScreen(
                     .padding(top = 8.dp)
                     .clip(RoundedCornerShape(50))
                     .background(Color(0xFF1A1A1A).copy(alpha = 0.85f))
-                    .clickable { onDismiss() }
+                    .clickable {
+                        viewModel.setOverlayVisible(overlayVisible)
+                        onDismiss()
+                    }
                     .padding(horizontal = 14.dp, vertical = 6.dp),
             ) {
                 Text(
@@ -403,6 +409,9 @@ private fun StaticOverlayPreview(
     isGba: Boolean,
     screenPx: Float,
     overlayVisible: Boolean,
+    buttonOpacity: Float = 0.3f,
+    labelOpacity: Float = 0.8f,
+    labelSize: Float = 10f,
     onToggleVisibility: () -> Unit
 ) {
     val grid = if (isGba) GBA_GRID else GB_GRID
@@ -415,8 +424,8 @@ private fun StaticOverlayPreview(
     val eyeColor = Color(0xFF5C7A99) // darker pastel blue
     val eyeBgAlpha = if (overlayVisible) 1f else 0.25f
 
-    val bgAlpha = 0.3f * gridAlpha
-    val outlineAlpha = 0.5f * gridAlpha
+    val bgAlpha = buttonOpacity * gridAlpha
+    val outlineAlpha = buttonOpacity * 0.5f * gridAlpha
     val outlineWidth = 2f
     val cornerRadius = 16f
 
@@ -565,8 +574,8 @@ private fun StaticOverlayPreview(
                     ) {
                         Text(
                             text = labelFor(buttonId),
-                            color = Color.White.copy(alpha = 0.8f),
-                            fontSize = 10.sp,
+                            color = Color.White.copy(alpha = labelOpacity),
+                            fontSize = labelSize.sp,
                             textAlign = TextAlign.Center
                         )
                     }
@@ -586,15 +595,15 @@ private fun StaticOverlayPreview(
                 ) {
                     Text(
                         text = "SE",
-                        color = Color.White.copy(alpha = 0.9f),
-                        fontSize = 11.sp,
+                        color = Color.White.copy(alpha = labelOpacity),
+                        fontSize = (labelSize + 1).sp,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.offset(x = -(circleDp / 4))
                     )
                     Text(
                         text = "ST",
-                        color = Color.White.copy(alpha = 0.9f),
-                        fontSize = 11.sp,
+                        color = Color.White.copy(alpha = labelOpacity),
+                        fontSize = (labelSize + 1).sp,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.offset(x = circleDp / 4)
                     )

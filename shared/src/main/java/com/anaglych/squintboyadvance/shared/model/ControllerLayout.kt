@@ -15,7 +15,11 @@ data class ButtonPosition(
 data class ControllerLayout(
     val name: String = "Default",
     val buttons: List<ButtonPosition> = defaultButtons(),
-    val overlayAlpha: Float = 0.5f,
+    val visible: Boolean = true,
+    val buttonOpacity: Float = 0.3f,
+    val pressedOpacity: Float = 0.6f,
+    val labelOpacity: Float = 0.8f,
+    val labelSize: Float = 10f,
     val hapticFeedback: Boolean = true
 ) {
     companion object {

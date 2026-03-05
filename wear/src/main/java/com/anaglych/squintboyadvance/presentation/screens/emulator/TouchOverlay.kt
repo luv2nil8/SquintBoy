@@ -18,6 +18,8 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.util.lerp
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
@@ -38,7 +40,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private const val BG_ALPHA = 0.3f
 private const val OUTLINE_ALPHA = 0.5f
 private const val OUTLINE_WIDTH = 2f
 private const val LONG_PRESS_MS = 500L
@@ -75,16 +76,31 @@ fun TouchOverlay(
     onButtonPress: (ButtonId) -> Unit,
     onButtonRelease: (ButtonId) -> Unit,
     onPause: () -> Unit,
+    visible: Boolean = true,
+    buttonOpacity: Float = 0.3f,
+    pressedOpacity: Float = 0.6f,
+    labelOpacity: Float = 0.8f,
+    labelSize: Float = 10f,
+    hapticEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
     val isGba = systemType == SystemType.GBA
 
-    // Label flash animation: 0 → 1 → 0 (notify then vanish)
-    val labelAlpha = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        labelAlpha.animateTo(1f, tween(1000))
-        labelAlpha.animateTo(0f, tween(1000))
+    // Flash animation: used when overlay is hidden (visible=false) for full reminder flash
+    val flashAlpha = remember { Animatable(0f) }
+    // Pause fade: when visible, pause starts solid red then fades to match buttons
+    val pauseFade = remember { Animatable(1f) }
+    LaunchedEffect(visible) {
+        if (!visible) {
+            flashAlpha.snapTo(0f)
+            flashAlpha.animateTo(1f, tween(1000))
+            flashAlpha.animateTo(0f, tween(1000))
+        } else {
+            pauseFade.snapTo(1f)
+            delay(500)
+            pauseFade.animateTo(0f, tween(1500))
+        }
     }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
@@ -98,8 +114,19 @@ fun TouchOverlay(
         // Track which pointers are pressing which buttons
         val activeButtons = remember { mutableStateMapOf<PointerId, ButtonId>() }
 
-        val alpha = labelAlpha.value
+        // Derive the set of currently pressed button IDs for visual feedback
+        val pressedButtons = activeButtons.values.toSet()
         val density = LocalDensity.current
+
+        // When visible: steady display with configured settings
+        // When hidden: brief flash with default values
+        val drawAlpha = if (visible) 1f else flashAlpha.value
+        val drawButtonOpacity = if (visible) buttonOpacity else 0.3f
+        val drawPressedOpacity = if (visible) pressedOpacity else 0.6f
+        val drawLabelOpacity = if (visible) labelOpacity else 0.8f
+        val drawLabelSize = if (visible) labelSize else 10f
+        // Pause fade: 1 = solid red, 0 = matches button style
+        val pf = if (visible) pauseFade.value else 1f
 
         Box(
             modifier = Modifier
@@ -153,7 +180,7 @@ fun TouchOverlay(
                                                         // Release any active button first
                                                         val btn = activeButtons.remove(change.id)
                                                         if (btn != null) onButtonRelease(btn)
-                                                        haptic.performHapticFeedback(
+                                                        if (hapticEnabled) haptic.performHapticFeedback(
                                                             HapticFeedbackType.LongPress
                                                         )
                                                         onPause()
@@ -176,7 +203,7 @@ fun TouchOverlay(
                                                     activeButtons[change.id] = btn
                                                     onButtonPress(btn)
                                                     if (event.type == PointerEventType.Press) {
-                                                        haptic.performHapticFeedback(
+                                                        if (hapticEnabled) haptic.performHapticFeedback(
                                                             HapticFeedbackType.TextHandleMove
                                                         )
                                                     }
@@ -202,10 +229,11 @@ fun TouchOverlay(
                     }
                 }
                 .drawBehind {
+                    if (drawAlpha == 0f) return@drawBehind
+
                     val cx = screenPx / 2f
                     val cy = screenPx / 2f
                     val pauseRadius = cellSize * 0.22f
-                    val pauseRed = Color(0xFFFF1744)
 
                     // Pause circle clip path (used by both modes)
                     val pausePath = Path().apply {
@@ -235,21 +263,23 @@ fun TouchOverlay(
                     for (row in 0..2) {
                         for (col in 0..2) {
                             val idx = row * 3 + col
-                            if (grid[idx] == null) continue
+                            val btnId = grid[idx] ?: continue
 
                             val cellX = col * cellSize
                             val cellY = row * cellSize
                             val cellRect = Size(cellSize, cellSize)
+                            val isPressed = btnId in pressedButtons
+                            val cellAlpha = if (isPressed) drawPressedOpacity else drawButtonOpacity
 
                             val drawCell = {
                                 drawRoundRect(
-                                    color = Color.White.copy(alpha = alpha * BG_ALPHA),
+                                    color = Color.White.copy(alpha = drawAlpha * cellAlpha),
                                     topLeft = Offset(cellX, cellY),
                                     size = cellRect,
                                     cornerRadius = CornerRadius(CORNER_RADIUS_PX)
                                 )
                                 drawRoundRect(
-                                    color = Color.Black.copy(alpha = alpha * OUTLINE_ALPHA),
+                                    color = Color.Black.copy(alpha = drawAlpha * cellAlpha * OUTLINE_ALPHA),
                                     topLeft = Offset(cellX, cellY),
                                     size = cellRect,
                                     cornerRadius = CornerRadius(CORNER_RADIUS_PX),
@@ -258,12 +288,10 @@ fun TouchOverlay(
                             }
 
                             if (circlePath != null) {
-                                // GBA: clip out both split circle and pause circle
                                 clipPath(circlePath, clipOp = androidx.compose.ui.graphics.ClipOp.Difference) {
                                     drawCell()
                                 }
                             } else {
-                                // GB/GBC: clip out pause circle from center-adjacent cells
                                 clipPath(pausePath, clipOp = androidx.compose.ui.graphics.ClipOp.Difference) {
                                     drawCell()
                                 }
@@ -271,23 +299,73 @@ fun TouchOverlay(
                         }
                     }
 
-                    // 2) GBA split circle — clip out pause circle
+                    // 2) GBA SE/ST — two independent semi-circles
                     if (isGba) {
+                        val sePressed = ButtonId.SELECT in pressedButtons
+                        val stPressed = ButtonId.START in pressedButtons
+                        val seAlpha = if (sePressed) drawPressedOpacity else drawButtonOpacity
+                        val stAlpha = if (stPressed) drawPressedOpacity else drawButtonOpacity
+
+                        val circleRect = androidx.compose.ui.geometry.Rect(
+                            circleCenter - circleRadius,
+                            circleCenter - circleRadius,
+                            circleCenter + circleRadius,
+                            circleCenter + circleRadius
+                        )
+
+                        // Left half (SE) — clip to left of center, then clip out pause
+                        val leftClip = Path().apply {
+                            addRect(androidx.compose.ui.geometry.Rect(
+                                0f, 0f, circleCenter, screenPx
+                            ))
+                        }
                         clipPath(pausePath, clipOp = androidx.compose.ui.graphics.ClipOp.Difference) {
-                            drawCircle(
-                                color = Color.White.copy(alpha = alpha * BG_ALPHA),
-                                radius = circleRadius,
-                                center = Offset(circleCenter, circleCenter)
-                            )
-                            drawCircle(
-                                color = Color.Black.copy(alpha = alpha * OUTLINE_ALPHA),
-                                radius = circleRadius,
-                                center = Offset(circleCenter, circleCenter),
-                                style = Stroke(width = OUTLINE_WIDTH)
-                            )
-                            // Divider line — full height of circle
+                            clipPath(leftClip) {
+                                drawArc(
+                                    color = Color.White.copy(alpha = drawAlpha * seAlpha),
+                                    startAngle = 90f, sweepAngle = 180f, useCenter = true,
+                                    topLeft = Offset(circleRect.left, circleRect.top),
+                                    size = Size(circleRect.width, circleRect.height)
+                                )
+                                drawArc(
+                                    color = Color.Black.copy(alpha = drawAlpha * seAlpha * OUTLINE_ALPHA),
+                                    startAngle = 90f, sweepAngle = 180f, useCenter = false,
+                                    topLeft = Offset(circleRect.left, circleRect.top),
+                                    size = Size(circleRect.width, circleRect.height),
+                                    style = Stroke(width = OUTLINE_WIDTH)
+                                )
+                            }
+                        }
+
+                        // Right half (ST) — clip to right of center, then clip out pause
+                        val rightClip = Path().apply {
+                            addRect(androidx.compose.ui.geometry.Rect(
+                                circleCenter, 0f, screenPx, screenPx
+                            ))
+                        }
+                        clipPath(pausePath, clipOp = androidx.compose.ui.graphics.ClipOp.Difference) {
+                            clipPath(rightClip) {
+                                drawArc(
+                                    color = Color.White.copy(alpha = drawAlpha * stAlpha),
+                                    startAngle = 270f, sweepAngle = 180f, useCenter = true,
+                                    topLeft = Offset(circleRect.left, circleRect.top),
+                                    size = Size(circleRect.width, circleRect.height)
+                                )
+                                drawArc(
+                                    color = Color.Black.copy(alpha = drawAlpha * stAlpha * OUTLINE_ALPHA),
+                                    startAngle = 270f, sweepAngle = 180f, useCenter = false,
+                                    topLeft = Offset(circleRect.left, circleRect.top),
+                                    size = Size(circleRect.width, circleRect.height),
+                                    style = Stroke(width = OUTLINE_WIDTH)
+                                )
+                            }
+                        }
+
+                        // Divider line between SE/ST
+                        val divAlpha = (seAlpha + stAlpha) / 2f
+                        clipPath(pausePath, clipOp = androidx.compose.ui.graphics.ClipOp.Difference) {
                             drawLine(
-                                color = Color.Black.copy(alpha = alpha * OUTLINE_ALPHA),
+                                color = Color.Black.copy(alpha = drawAlpha * divAlpha * OUTLINE_ALPHA),
                                 start = Offset(circleCenter, circleCenter - circleRadius),
                                 end = Offset(circleCenter, circleCenter + circleRadius),
                                 strokeWidth = 3f
@@ -295,88 +373,95 @@ fun TouchOverlay(
                         }
                     }
 
-                    // 3) Pause button circle — red fill + dark outline
+                    // 3) Pause button — starts solid red, fades to match buttons
+                    val pauseRed = Color(0xFFFF1744)
+                    // Lerp fill: solid red → White at buttonOpacity
+                    val pauseFillColor = lerp(Color.White, pauseRed, pf)
+                    val pauseFillAlpha = drawAlpha * lerp(drawButtonOpacity, 1f, pf)
                     drawCircle(
-                        color = pauseRed.copy(alpha = alpha),
+                        color = pauseFillColor.copy(alpha = pauseFillAlpha),
                         radius = pauseRadius,
                         center = Offset(cx, cy)
                     )
                     drawCircle(
-                        color = Color.Black.copy(alpha = alpha * OUTLINE_ALPHA),
+                        color = Color.Black.copy(alpha = drawAlpha * pauseFillAlpha * OUTLINE_ALPHA),
                         radius = pauseRadius,
                         center = Offset(cx, cy),
                         style = Stroke(width = OUTLINE_WIDTH)
                     )
 
-                    // Pause bars (white icon on red circle)
+                    // Pause bars — fade from bright to label opacity
                     val barW = 3f
                     val barH = pauseRadius * 0.7f
                     val barGap = 3.5f
+                    val barAlpha = drawAlpha * lerp(drawLabelOpacity, 0.9f, pf)
                     drawRect(
-                        color = Color.White.copy(alpha = alpha * 0.9f),
+                        color = Color.White.copy(alpha = barAlpha),
                         topLeft = Offset(cx - barGap - barW, cy - barH / 2),
                         size = Size(barW, barH)
                     )
                     drawRect(
-                        color = Color.White.copy(alpha = alpha * 0.9f),
+                        color = Color.White.copy(alpha = barAlpha),
                         topLeft = Offset(cx + barGap, cy - barH / 2),
                         size = Size(barW, barH)
                     )
                 }
         ) {
-            // Text labels for grid cells
-            for (row in 0..2) {
-                for (col in 0..2) {
-                    val idx = row * 3 + col
-                    val buttonId = grid[idx] ?: continue
+            // Text labels — shown when visible or during flash
+            if (drawAlpha > 0f) {
+                for (row in 0..2) {
+                    for (col in 0..2) {
+                        val idx = row * 3 + col
+                        val buttonId = grid[idx] ?: continue
 
-                    val cellX = col * cellSize
-                    val cellY = row * cellSize
-                    val cellDp = with(density) { cellSize.toDp() }
-                    val offsetXDp = with(density) { cellX.toDp() }
-                    val offsetYDp = with(density) { cellY.toDp() }
+                        val cellX = col * cellSize
+                        val cellY = row * cellSize
+                        val cellDp = with(density) { cellSize.toDp() }
+                        val offsetXDp = with(density) { cellX.toDp() }
+                        val offsetYDp = with(density) { cellY.toDp() }
+
+                        Box(
+                            modifier = Modifier
+                                .offset(x = offsetXDp, y = offsetYDp)
+                                .size(cellDp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = labelFor(buttonId),
+                                color = Color.White.copy(alpha = drawAlpha * drawLabelOpacity),
+                                fontSize = drawLabelSize.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+
+                // GBA: SE/ST labels in circle halves
+                if (isGba) {
+                    val circleDp = with(density) { (circleRadius * 2f).toDp() }
+                    val circleOffDp = with(density) { (circleCenter - circleRadius).toDp() }
 
                     Box(
                         modifier = Modifier
-                            .offset(x = offsetXDp, y = offsetYDp)
-                            .size(cellDp),
+                            .offset(x = circleOffDp, y = circleOffDp)
+                            .size(circleDp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = labelFor(buttonId),
-                            color = Color.White.copy(alpha = alpha * 0.8f),
-                            fontSize = 10.sp,
-                            textAlign = TextAlign.Center
+                            text = "SE",
+                            color = Color.White.copy(alpha = drawAlpha * drawLabelOpacity),
+                            fontSize = (drawLabelSize + 1).sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.offset(x = -(circleDp / 4))
+                        )
+                        Text(
+                            text = "ST",
+                            color = Color.White.copy(alpha = drawAlpha * drawLabelOpacity),
+                            fontSize = (drawLabelSize + 1).sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.offset(x = circleDp / 4)
                         )
                     }
-                }
-            }
-
-            // GBA: SE/ST labels in circle halves
-            if (isGba) {
-                val circleDp = with(density) { (circleRadius * 2f).toDp() }
-                val circleOffDp = with(density) { (circleCenter - circleRadius).toDp() }
-
-                Box(
-                    modifier = Modifier
-                        .offset(x = circleOffDp, y = circleOffDp)
-                        .size(circleDp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "SE",
-                        color = Color.White.copy(alpha = alpha * 0.9f),
-                        fontSize = 11.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.offset(x = -(circleDp / 4))
-                    )
-                    Text(
-                        text = "ST",
-                        color = Color.White.copy(alpha = alpha * 0.9f),
-                        fontSize = 11.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.offset(x = circleDp / 4)
-                    )
                 }
             }
         }

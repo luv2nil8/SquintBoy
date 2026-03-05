@@ -52,18 +52,26 @@ class RomLibraryViewModel(application: Application) : AndroidViewModel(applicati
 
     @Volatile private var pongReceived = false
 
+    // Live listener for pong — only active while this ViewModel exists
+    private val pongListener = com.google.android.gms.wearable.MessageClient.OnMessageReceivedListener { event ->
+        if (event.path == WearMessageConstants.PATH_PHONE_PONG) {
+            pongReceived = true
+            _phoneAppInstalled.value = true
+        }
+    }
+
     init {
         scanRoms()
+        messageClient.addListener(pongListener)
         pingPhone()
         viewModelScope.launch {
             RomLibrarySignal.romChanged.collect { scanRoms() }
         }
-        viewModelScope.launch {
-            RomLibrarySignal.phonePong.collect {
-                pongReceived = true
-                _phoneAppInstalled.value = true
-            }
-        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        messageClient.removeListener(pongListener)
     }
 
     fun pingPhone() {

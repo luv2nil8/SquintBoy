@@ -47,7 +47,7 @@ class RomReceiverService : WearableListenerService() {
         val powerManager = getSystemService(POWER_SERVICE) as PowerManager
         val wakeLock = powerManager.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK, "SquintBoy:RomTransfer"
-        ).apply { acquire(10 * 60 * 1000L) } // 10-min safety timeout
+        ) // acquired after we know file size
 
         val romsDir = File(filesDir, "roms").apply { mkdirs() }
         var tempFile: File? = null
@@ -67,6 +67,10 @@ class RomReceiverService : WearableListenerService() {
             expectedSize = sizeStr.toLongOrNull()
                 ?: throw Exception("Invalid filesize header: $sizeStr")
 
+            // Acquire wake lock scaled to file size: ~100KB/s min BT + 30s overhead, min 60s
+            val timeoutMs = maxOf((expectedSize / 100_000) * 1000 + 30_000, 60_000L)
+            wakeLock.acquire(timeoutMs)
+
             safeName = filename.replace('/', '_').replace('\\', '_')
             tempFile = File(romsDir, ".transferring_$safeName")
             tempFile.createNewFile() // must exist on disk before signal
@@ -79,7 +83,9 @@ class RomReceiverService : WearableListenerService() {
                 val lastDataTime = java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis())
 
                 // Watchdog closes the stream if no progress for 30s
-                val watchdog = java.util.concurrent.Executors.newSingleThreadScheduledExecutor()
+                val watchdog = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+                    Thread(r, "transfer-watchdog").apply { isDaemon = true }
+                }
                 watchdog.scheduleAtFixedRate({
                     if (System.currentTimeMillis() - lastDataTime.get() > STALL_TIMEOUT_MS) {
                         try { inputStream.close() } catch (_: Exception) {}
@@ -233,10 +239,6 @@ class RomReceiverService : WearableListenerService() {
                 WearMessageConstants.PATH_SAVE_LIST_REQUEST -> handleSaveListRequest(event)
                 WearMessageConstants.PATH_SAVE_CLEAR_STACKS -> handleSaveClearStacks(event)
                 WearMessageConstants.PATH_ROM_RENAME -> handleRomRename(event)
-                WearMessageConstants.PATH_PHONE_PONG -> {
-                    Log.d(TAG, "Received pong from phone")
-                    RomLibrarySignal.emitPhonePong()
-                }
                 else -> Log.w(TAG, "Unknown message path: ${event.path}")
             }
         } catch (e: Exception) {

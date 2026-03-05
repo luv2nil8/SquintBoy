@@ -58,6 +58,13 @@ fun SettingsScreen(
             }
             item {
                 SettingsChip(
+                    label = "Controls",
+                    description = "Overlay, haptics",
+                    onClick = { onNavigate(Screen.ControllerSettings) }
+                )
+            }
+            item {
+                SettingsChip(
                     label = "GB Palette",
                     description = "Color presets",
                     onClick = { onNavigate(Screen.PaletteSettings) }

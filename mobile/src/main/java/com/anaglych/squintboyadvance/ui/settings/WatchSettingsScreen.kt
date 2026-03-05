@@ -159,6 +159,41 @@ fun WatchSettingsScreen(
             }
         }
 
+        // ── Controls ──
+        item { SectionHeader("Controls") }
+        item {
+            SwitchSetting("Overlay Visible", s.controllerLayout.visible) {
+                viewModel.updateLocal { it.copy(controllerLayout = it.controllerLayout.copy(visible = !it.controllerLayout.visible)) }
+            }
+        }
+        if (s.controllerLayout.visible) {
+            item {
+                SliderSetting("Button Opacity", "${(s.controllerLayout.buttonOpacity * 100).toInt()}%", s.controllerLayout.buttonOpacity, 0f..1f, steps = 9) { v ->
+                    viewModel.updateLocal { it.copy(controllerLayout = it.controllerLayout.copy(buttonOpacity = v)) }
+                }
+            }
+            item {
+                SliderSetting("Pressed Opacity", "${(s.controllerLayout.pressedOpacity * 100).toInt()}%", s.controllerLayout.pressedOpacity, 0f..1f, steps = 9) { v ->
+                    viewModel.updateLocal { it.copy(controllerLayout = it.controllerLayout.copy(pressedOpacity = v)) }
+                }
+            }
+            item {
+                SliderSetting("Label Opacity", "${(s.controllerLayout.labelOpacity * 100).toInt()}%", s.controllerLayout.labelOpacity, 0f..1f, steps = 9) { v ->
+                    viewModel.updateLocal { it.copy(controllerLayout = it.controllerLayout.copy(labelOpacity = v)) }
+                }
+            }
+            item {
+                SliderSetting("Label Size", "${s.controllerLayout.labelSize.toInt()}sp", s.controllerLayout.labelSize, 8f..16f, steps = 7) { v ->
+                    viewModel.updateLocal { it.copy(controllerLayout = it.controllerLayout.copy(labelSize = v)) }
+                }
+            }
+        }
+        item {
+            SwitchSetting("Haptic Feedback", s.controllerLayout.hapticFeedback) {
+                viewModel.updateLocal { it.copy(controllerLayout = it.controllerLayout.copy(hapticFeedback = !it.controllerLayout.hapticFeedback)) }
+            }
+        }
+
         // ── GB Palette ──
         item { SectionHeader("GB Palette") }
         item {

@@ -82,6 +82,12 @@ fun EmulatorScreen(
                     onButtonPress = viewModel::pressButton,
                     onButtonRelease = viewModel::releaseButton,
                     onPause = viewModel::pause,
+                    visible = settings.controllerLayout.visible,
+                    buttonOpacity = settings.controllerLayout.buttonOpacity,
+                    pressedOpacity = settings.controllerLayout.pressedOpacity,
+                    labelOpacity = settings.controllerLayout.labelOpacity,
+                    labelSize = settings.controllerLayout.labelSize,
+                    hapticEnabled = settings.controllerLayout.hapticFeedback,
                 )
             }
 

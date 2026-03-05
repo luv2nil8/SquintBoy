@@ -1,16 +1,12 @@
 package com.anaglych.squintboyadvance.presentation.screens.settings
 
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
@@ -88,49 +84,133 @@ fun ControllerSettingsScreen(
                 }
             }
             item {
+                ToggleChip(
+                    checked = settings.controllerLayout.visible,
+                    onCheckedChange = { viewModel.setOverlayVisible(it) },
+                    label = { Text("Visibility") },
+                    toggleControl = {
+                        Icon(
+                            imageVector = ToggleChipDefaults.switchIcon(
+                                checked = settings.controllerLayout.visible
+                            ),
+                            contentDescription = null,
+                            modifier = Modifier.size(ToggleChipDefaults.IconSize)
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            item {
                 Text(
-                    text = "Opacity: ${(settings.controllerLayout.overlayAlpha * 100).toInt()}%",
+                    text = "Button Opacity: ${(settings.controllerLayout.buttonOpacity * 100).toInt()}%",
                     style = MaterialTheme.typography.body1,
                     color = MaterialTheme.colors.onSurfaceVariant
                 )
             }
             item {
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    InlineSlider(
-                        value = settings.controllerLayout.overlayAlpha,
-                        onValueChange = { viewModel.setOverlayAlpha(it) },
-                        valueRange = 0f..1f,
-                        steps = 9,
-                        decreaseIcon = {
-                            Icon(
-                                imageVector = InlineSliderDefaults.Decrease,
-                                contentDescription = "Decrease"
-                            )
-                        },
-                        increaseIcon = {
-                            Icon(
-                                imageVector = InlineSliderDefaults.Increase,
-                                contentDescription = "Increase"
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    // Drag overlay — padded to only cover the track, leaving +/- buttons exposed
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .padding(horizontal = 52.dp)
-                            .pointerInput(Unit) {
-                                detectHorizontalDragGestures { change, _ ->
-                                    change.consume()
-                                    val fraction = (change.position.x / size.width)
-                                        .coerceIn(0f, 1f)
-                                    val snapped = (fraction * 10).toInt() / 10f
-                                    viewModel.setOverlayAlpha(snapped)
-                                }
-                            }
-                    )
-                }
+                InlineSlider(
+                    value = settings.controllerLayout.buttonOpacity,
+                    onValueChange = { viewModel.setButtonOpacity(it) },
+                    valueRange = 0f..1f,
+                    steps = 9,
+                    decreaseIcon = {
+                        Icon(
+                            imageVector = InlineSliderDefaults.Decrease,
+                            contentDescription = "Decrease"
+                        )
+                    },
+                    increaseIcon = {
+                        Icon(
+                            imageVector = InlineSliderDefaults.Increase,
+                            contentDescription = "Increase"
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            item {
+                Text(
+                    text = "Pressed Opacity: ${(settings.controllerLayout.pressedOpacity * 100).toInt()}%",
+                    style = MaterialTheme.typography.body1,
+                    color = MaterialTheme.colors.onSurfaceVariant
+                )
+            }
+            item {
+                InlineSlider(
+                    value = settings.controllerLayout.pressedOpacity,
+                    onValueChange = { viewModel.setPressedOpacity(it) },
+                    valueRange = 0f..1f,
+                    steps = 9,
+                    decreaseIcon = {
+                        Icon(
+                            imageVector = InlineSliderDefaults.Decrease,
+                            contentDescription = "Decrease"
+                        )
+                    },
+                    increaseIcon = {
+                        Icon(
+                            imageVector = InlineSliderDefaults.Increase,
+                            contentDescription = "Increase"
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            item {
+                Text(
+                    text = "Label Opacity: ${(settings.controllerLayout.labelOpacity * 100).toInt()}%",
+                    style = MaterialTheme.typography.body1,
+                    color = MaterialTheme.colors.onSurfaceVariant
+                )
+            }
+            item {
+                InlineSlider(
+                    value = settings.controllerLayout.labelOpacity,
+                    onValueChange = { viewModel.setLabelOpacity(it) },
+                    valueRange = 0f..1f,
+                    steps = 9,
+                    decreaseIcon = {
+                        Icon(
+                            imageVector = InlineSliderDefaults.Decrease,
+                            contentDescription = "Decrease"
+                        )
+                    },
+                    increaseIcon = {
+                        Icon(
+                            imageVector = InlineSliderDefaults.Increase,
+                            contentDescription = "Increase"
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            item {
+                Text(
+                    text = "Label Size: ${settings.controllerLayout.labelSize.toInt()}sp",
+                    style = MaterialTheme.typography.body1,
+                    color = MaterialTheme.colors.onSurfaceVariant
+                )
+            }
+            item {
+                InlineSlider(
+                    value = settings.controllerLayout.labelSize,
+                    onValueChange = { viewModel.setLabelSize(it) },
+                    valueRange = 8f..16f,
+                    steps = 7,
+                    decreaseIcon = {
+                        Icon(
+                            imageVector = InlineSliderDefaults.Decrease,
+                            contentDescription = "Decrease"
+                        )
+                    },
+                    increaseIcon = {
+                        Icon(
+                            imageVector = InlineSliderDefaults.Increase,
+                            contentDescription = "Increase"
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
             item {
                 ToggleChip(
