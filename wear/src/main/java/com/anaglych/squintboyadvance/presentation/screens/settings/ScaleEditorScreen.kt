@@ -41,9 +41,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -66,8 +64,15 @@ import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import com.anaglych.squintboyadvance.shared.model.ButtonId
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
+import com.anaglych.squintboyadvance.presentation.ui.GB_GRID
+import com.anaglych.squintboyadvance.presentation.ui.GBA_GRID
+import com.anaglych.squintboyadvance.presentation.ui.OUTLINE_ALPHA
+import com.anaglych.squintboyadvance.presentation.ui.OUTLINE_WIDTH
+import com.anaglych.squintboyadvance.presentation.ui.drawOverlayGrid
+import com.anaglych.squintboyadvance.presentation.ui.drawGbaCircle
+import com.anaglych.squintboyadvance.presentation.ui.OverlayLabels
+import com.anaglych.squintboyadvance.presentation.ui.GbaCircleLabels
 import kotlin.math.roundToInt
 
 // GBA: 240x160, GB/GBC: 160x144
@@ -75,31 +80,6 @@ private const val GBA_W = 240
 private const val GBA_H = 160
 private const val GB_W = 160
 private const val GB_H = 144
-
-private val GB_GRID = arrayOf(
-    ButtonId.SELECT, ButtonId.DPAD_UP, ButtonId.START,
-    ButtonId.DPAD_LEFT, null, ButtonId.DPAD_RIGHT,
-    ButtonId.B, ButtonId.DPAD_DOWN, ButtonId.A,
-)
-
-private val GBA_GRID = arrayOf(
-    ButtonId.L, ButtonId.DPAD_UP, ButtonId.R,
-    ButtonId.DPAD_LEFT, null, ButtonId.DPAD_RIGHT,
-    ButtonId.B, ButtonId.DPAD_DOWN, ButtonId.A,
-)
-
-private fun labelFor(id: ButtonId): String = when (id) {
-    ButtonId.A -> "A"
-    ButtonId.B -> "B"
-    ButtonId.START -> "ST"
-    ButtonId.SELECT -> "SE"
-    ButtonId.DPAD_UP -> "\u25B2"
-    ButtonId.DPAD_DOWN -> "\u25BC"
-    ButtonId.DPAD_LEFT -> "\u25C0"
-    ButtonId.DPAD_RIGHT -> "\u25B6"
-    ButtonId.L -> "L"
-    ButtonId.R -> "R"
-}
 
 /**
  * Scale editor screen / overlay.
@@ -411,7 +391,7 @@ private fun StaticOverlayPreview(
     overlayVisible: Boolean,
     buttonOpacity: Float = 0.3f,
     labelOpacity: Float = 0.8f,
-    labelSize: Float = 10f,
+    labelSize: Float = 14f,
     onToggleVisibility: () -> Unit
 ) {
     val grid = if (isGba) GBA_GRID else GB_GRID
@@ -423,11 +403,6 @@ private fun StaticOverlayPreview(
     val gridAlpha = if (overlayVisible) 1f else 0f
     val eyeColor = Color(0xFF5C7A99) // darker pastel blue
     val eyeBgAlpha = if (overlayVisible) 1f else 0.25f
-
-    val bgAlpha = buttonOpacity * gridAlpha
-    val outlineAlpha = buttonOpacity * 0.5f * gridAlpha
-    val outlineWidth = 2f
-    val cornerRadius = 16f
 
     Box(
         modifier = Modifier
@@ -441,75 +416,41 @@ private fun StaticOverlayPreview(
                     addOval(Rect(cx - btnRadius, cy - btnRadius, cx + btnRadius, cy + btnRadius))
                 }
 
-                val circlePath = if (isGba) {
-                    Path().apply {
-                        addOval(
-                            Rect(
+                // Grid cells + GBA circle (hidden when overlay not visible)
+                if (overlayVisible) {
+                    val gridClipPath = if (isGba) {
+                        Path().apply {
+                            addOval(Rect(
                                 circleCenter - circleRadius,
                                 circleCenter - circleRadius,
                                 circleCenter + circleRadius,
                                 circleCenter + circleRadius
-                            )
-                        )
-                    }
-                } else null
-
-                // Grid cells (hidden when overlay not visible)
-                if (overlayVisible) {
-                    for (row in 0..2) {
-                        for (col in 0..2) {
-                            val idx = row * 3 + col
-                            if (grid[idx] == null) continue
-
-                            val cellX = col * cellSize
-                            val cellY = row * cellSize
-                            val cellRect = Size(cellSize, cellSize)
-
-                            val drawCell = {
-                                drawRoundRect(
-                                    color = Color.White.copy(alpha = bgAlpha),
-                                    topLeft = Offset(cellX, cellY),
-                                    size = cellRect,
-                                    cornerRadius = CornerRadius(cornerRadius)
-                                )
-                                drawRoundRect(
-                                    color = Color.Black.copy(alpha = outlineAlpha),
-                                    topLeft = Offset(cellX, cellY),
-                                    size = cellRect,
-                                    cornerRadius = CornerRadius(cornerRadius),
-                                    style = Stroke(width = outlineWidth)
-                                )
-                            }
-
-                            if (circlePath != null) {
-                                clipPath(circlePath, clipOp = ClipOp.Difference) { drawCell() }
-                            } else {
-                                clipPath(btnPath, clipOp = ClipOp.Difference) { drawCell() }
-                            }
+                            ))
                         }
+                    } else {
+                        btnPath
                     }
 
-                    // GBA split circle
+                    drawOverlayGrid(
+                        grid = grid,
+                        cellSize = cellSize,
+                        alpha = 1f,
+                        buttonOpacity = buttonOpacity,
+                        clipPath = gridClipPath,
+                        outlineColor = Color.Black
+                    )
+
                     if (isGba) {
-                        clipPath(btnPath, clipOp = ClipOp.Difference) {
-                            drawCircle(
-                                color = Color.White.copy(alpha = bgAlpha),
-                                radius = circleRadius,
-                                center = Offset(circleCenter, circleCenter)
-                            )
-                            drawCircle(
-                                color = Color.Black.copy(alpha = outlineAlpha),
-                                radius = circleRadius,
-                                center = Offset(circleCenter, circleCenter),
-                                style = Stroke(width = outlineWidth)
-                            )
-                            drawLine(
-                                color = Color.Black.copy(alpha = outlineAlpha),
-                                start = Offset(circleCenter, circleCenter - circleRadius),
-                                end = Offset(circleCenter, circleCenter + circleRadius),
-                                strokeWidth = 3f
-                            )
-                        }
+                        drawGbaCircle(
+                            circleCenter = circleCenter,
+                            circleRadius = circleRadius,
+                            screenPx = screenPx,
+                            alpha = 1f,
+                            pausePath = btnPath,
+                            seAlpha = buttonOpacity,
+                            stAlpha = buttonOpacity,
+                            outlineColor = Color.Black
+                        )
                     }
                 }
 
@@ -523,7 +464,7 @@ private fun StaticOverlayPreview(
                     color = Color.Black.copy(alpha = 0.5f * eyeBgAlpha),
                     radius = btnRadius,
                     center = Offset(cx, cy),
-                    style = Stroke(width = outlineWidth)
+                    style = Stroke(width = OUTLINE_WIDTH)
                 )
             }
             .pointerInput(Unit) {
@@ -555,59 +496,22 @@ private fun StaticOverlayPreview(
 
         // Text labels (only when visible)
         if (overlayVisible) {
-            for (row in 0..2) {
-                for (col in 0..2) {
-                    val idx = row * 3 + col
-                    val buttonId = grid[idx] ?: continue
+            OverlayLabels(
+                grid = grid,
+                screenPx = screenPx,
+                alpha = 1f,
+                labelOpacity = labelOpacity,
+                labelSize = labelSize
+            )
 
-                    val cellX = col * cellSize
-                    val cellY = row * cellSize
-                    val cellDp = with(density) { cellSize.toDp() }
-                    val offsetXDp = with(density) { cellX.toDp() }
-                    val offsetYDp = with(density) { cellY.toDp() }
-
-                    Box(
-                        modifier = Modifier
-                            .offset(x = offsetXDp, y = offsetYDp)
-                            .size(cellDp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = labelFor(buttonId),
-                            color = Color.White.copy(alpha = labelOpacity),
-                            fontSize = labelSize.sp,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            }
-
-            // GBA circle labels
             if (isGba) {
-                val circleDp = with(density) { (circleRadius * 2f).toDp() }
-                val circleOffDp = with(density) { (circleCenter - circleRadius).toDp() }
-
-                Box(
-                    modifier = Modifier
-                        .offset(x = circleOffDp, y = circleOffDp)
-                        .size(circleDp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "SE",
-                        color = Color.White.copy(alpha = labelOpacity),
-                        fontSize = (labelSize + 1).sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.offset(x = -(circleDp / 4))
-                    )
-                    Text(
-                        text = "ST",
-                        color = Color.White.copy(alpha = labelOpacity),
-                        fontSize = (labelSize + 1).sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.offset(x = circleDp / 4)
-                    )
-                }
+                GbaCircleLabels(
+                    circleRadius = circleRadius,
+                    circleCenter = circleCenter,
+                    alpha = 1f,
+                    labelOpacity = labelOpacity,
+                    labelSize = labelSize
+                )
             }
         }
     }

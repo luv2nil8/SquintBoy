@@ -51,7 +51,7 @@ import kotlin.math.roundToInt
 @Composable
 fun SlideToConfirm(
     text: String = "Slide to confirm",
-    accentColor: Color = Color(0xFFD32F2F),
+    accentColor: Color = Color(0xFFEC1358),
     enabled: Boolean = true,
     onConfirmed: () -> Unit,
     modifier: Modifier = Modifier,

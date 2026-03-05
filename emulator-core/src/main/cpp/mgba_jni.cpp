@@ -26,6 +26,20 @@ static unsigned g_width = 0;         // Actual display size (e.g. 160x144 for GB
 static unsigned g_height = 0;
 static unsigned g_bufferStride = 0;  // Stride for pixel offset calculation
 
+// Convert from mGBA's XBGR8888 to Android's ARGB8888, handling stride.
+static void convertVideoBuffer(const mColor* src, unsigned stride,
+                               unsigned width, unsigned height, jint* dst) {
+    for (unsigned y = 0; y < height; y++) {
+        for (unsigned x = 0; x < width; x++) {
+            uint32_t xbgr = src[y * stride + x];
+            uint8_t r = (xbgr >>  0) & 0xFF;
+            uint8_t g = (xbgr >>  8) & 0xFF;
+            uint8_t b = (xbgr >> 16) & 0xFF;
+            dst[y * width + x] = (int32_t)(0xFF000000u | (r << 16) | (g << 8) | b);
+        }
+    }
+}
+
 extern "C" {
 
 JNIEXPORT jboolean JNICALL
@@ -150,6 +164,7 @@ Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeRunFrameWithAudio(
 
     if (!buffer) return 0;
     jshort* samples = env->GetShortArrayElements(buffer, nullptr);
+    if (!samples) return 0;
     size_t read = audioBridgeRead(samples, (size_t)maxFrames);
     env->ReleaseShortArrayElements(buffer, samples, 0);
     return (jint)read;
@@ -172,15 +187,8 @@ Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeGetVideoBuffer(
     // Convert from mGBA's XBGR8888 to Android's ARGB8888
     // Handle stride: buffer may be wider than display (e.g. SGB 256-wide buffer, 160 display)
     jint* pixels = env->GetIntArrayElements(result, nullptr);
-    for (unsigned y = 0; y < g_height; y++) {
-        for (unsigned x = 0; x < g_width; x++) {
-            uint32_t xbgr = g_videoBuffer[y * g_bufferStride + x];
-            uint8_t r = (xbgr >>  0) & 0xFF;
-            uint8_t g = (xbgr >>  8) & 0xFF;
-            uint8_t b = (xbgr >> 16) & 0xFF;
-            pixels[y * g_width + x] = (int32_t)(0xFF000000u | (r << 16) | (g << 8) | b);
-        }
-    }
+    if (!pixels) return nullptr;
+    convertVideoBuffer(g_videoBuffer, g_bufferStride, g_width, g_height, pixels);
     env->ReleaseIntArrayElements(result, pixels, 0);
 
     return result;
@@ -201,15 +209,8 @@ Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeGetVideoBufferInto(
     }
 
     jint* pixels = env->GetIntArrayElements(outBuffer, nullptr);
-    for (unsigned y = 0; y < g_height; y++) {
-        for (unsigned x = 0; x < g_width; x++) {
-            uint32_t xbgr = g_videoBuffer[y * g_bufferStride + x];
-            uint8_t r = (xbgr >>  0) & 0xFF;
-            uint8_t g = (xbgr >>  8) & 0xFF;
-            uint8_t b = (xbgr >> 16) & 0xFF;
-            pixels[y * g_width + x] = (int32_t)(0xFF000000u | (r << 16) | (g << 8) | b);
-        }
-    }
+    if (!pixels) return;
+    convertVideoBuffer(g_videoBuffer, g_bufferStride, g_width, g_height, pixels);
     env->ReleaseIntArrayElements(outBuffer, pixels, 0);
 }
 
@@ -352,6 +353,12 @@ Java_com_anaglych_squintboyadvance_core_NativeBridge_nativeSetGbPalette(
         JNIEnv* env, jobject /* this */, jintArray colors) {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (!g_core) return;
+
+    jint arrayLen = env->GetArrayLength(colors);
+    if (arrayLen < 4) {
+        LOGE("Palette array too short: expected >= 4, got %d", arrayLen);
+        return;
+    }
 
     jint* c = env->GetIntArrayElements(colors, nullptr);
     if (!c) return;

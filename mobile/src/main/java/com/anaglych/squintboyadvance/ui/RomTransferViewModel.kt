@@ -17,20 +17,18 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import java.util.concurrent.ConcurrentHashMap
+import com.anaglych.squintboyadvance.shared.model.SystemType
 import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
 import java.io.OutputStream
 
 enum class TransferStatus { PENDING, SENDING, COMPLETE, ERROR }
 
-enum class SystemType(val label: String) {
-    GB("GB"), GBC("GBC"), GBA("GBA"), UNKNOWN("?")
-}
-
 data class RomTransferItem(
     val uri: Uri,
     val displayName: String,
     val size: Long,
-    val systemType: SystemType,
+    val systemType: SystemType?,
     val status: TransferStatus = TransferStatus.PENDING,
     val progress: Float = 0f,
     val errorMessage: String? = null,
@@ -57,7 +55,7 @@ class RomTransferViewModel(application: Application) : AndroidViewModel(applicat
     private val channelClient = Wearable.getChannelClient(application)
 
     // Track pending confirmation timeouts by filename
-    private val pendingTimeouts = mutableMapOf<String, Job>()
+    private val pendingTimeouts = ConcurrentHashMap<String, Job>()
 
     init {
         refreshConnectionStatus()
@@ -106,12 +104,7 @@ class RomTransferViewModel(application: Application) : AndroidViewModel(applicat
                         uri = uri,
                         displayName = name,
                         size = size,
-                        systemType = when (ext) {
-                            "gb" -> SystemType.GB
-                            "gbc" -> SystemType.GBC
-                            "gba" -> SystemType.GBA
-                            else -> SystemType.UNKNOWN
-                        },
+                        systemType = SystemType.fromExtension(ext),
                     )
                 }
             }

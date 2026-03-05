@@ -27,8 +27,16 @@ import kotlin.math.roundToInt
 
 class EmulatorViewModel(application: Application) : AndroidViewModel(application) {
 
+    companion object {
+        private const val OUTPUT_SAMPLE_RATE = 48000
+    }
+
     private val settingsRepo = SettingsRepository.getInstance(application)
     private val metadataStore = RomMetadataStore.getInstance(application)
+    private val screenshotManager = ScreenshotManager(
+        File(application.filesDir, "screenshots"), metadataStore
+    )
+    private val playTimeTracker = PlayTimeTracker(metadataStore)
 
     private val _state = MutableStateFlow(EmulatorState.IDLE)
     val state: StateFlow<EmulatorState> = _state.asStateFlow()
@@ -50,14 +58,11 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
     private var audioPlayer: AudioPlayer? = null
     private var saveStateManager: SaveStateManager? = null
     private var audioEnabled = false
+    private var currentRomId: String? = null
 
     // Reusable bitmap to avoid GC pressure
     private var renderBitmap: Bitmap? = null
     private var pixelBuffer: IntArray? = null
-
-    // Play time tracking
-    private var currentRomId: String? = null
-    private var sessionStartTime: Long = 0L
 
     init {
         // Apply GB palette changes from the companion app immediately while a game is running.
@@ -80,10 +85,6 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
                     audioPlayer?.setVolume(volume)
                 }
         }
-    }
-
-    companion object {
-        private const val OUTPUT_SAMPLE_RATE = 48000
     }
 
     fun loadRom(romId: String, romTitle: String) {
@@ -158,8 +159,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             if (palette != null) emu.setGbPalette(palette.mgbaOrder())
         }
 
-        // Start tracking play time
-        sessionStartTime = System.currentTimeMillis()
+        playTimeTracker.start(romId)
 
         // Start emulation thread
         _state.value = EmulatorState.RUNNING
@@ -186,50 +186,6 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         emu.getVideoBufferInto(pixels)
         bitmap.setPixels(pixels, 0, emu.width, 0, 0, emu.width, emu.height)
         _frame.value = bitmap.asImageBitmap()
-    }
-
-    private fun saveScreenshot() {
-        val emu = emulator ?: return
-        val romId = currentRomId ?: return
-        val pixels = emu.captureScreenshot() ?: return
-        val w = emu.width
-        val h = emu.height
-        if (w <= 0 || h <= 0) return
-
-        try {
-            val context = getApplication<Application>()
-            val screenshotDir = File(context.filesDir, "screenshots")
-            screenshotDir.mkdirs()
-            val screenshotFile = File(screenshotDir, "${romId.substringBeforeLast('.')}.png")
-
-            val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-            bitmap.setPixels(pixels, 0, w, 0, 0, w, h)
-            screenshotFile.outputStream().use { out ->
-                bitmap.compress(Bitmap.CompressFormat.PNG, 80, out)
-            }
-            bitmap.recycle()
-
-            // Update metadata with screenshot path
-            metadataStore.update(romId) { meta ->
-                meta.copy(thumbnailPath = screenshotFile.absolutePath)
-            }
-        } catch (_: Exception) {
-            // Screenshot is non-critical
-        }
-    }
-
-    private fun updatePlayTime() {
-        val romId = currentRomId ?: return
-        if (sessionStartTime == 0L) return
-
-        val sessionMs = System.currentTimeMillis() - sessionStartTime
-        metadataStore.update(romId) { meta ->
-            meta.copy(
-                lastPlayed = System.currentTimeMillis(),
-                totalPlayTimeMs = meta.totalPlayTimeMs + sessionMs
-            )
-        }
-        sessionStartTime = System.currentTimeMillis() // Reset for next session segment
     }
 
     /** Applies a GB palette immediately and persists the index. GB/GBC only. */
@@ -278,8 +234,10 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             _state.value = EmulatorState.PAUSED
             emulatorThread?.stop()
             audioPlayer?.pause()
-            saveScreenshot()
-            updatePlayTime()
+            emulator?.let { emu ->
+                currentRomId?.let { screenshotManager.capture(emu, it) }
+            }
+            playTimeTracker.flush()
             saveStateManager?.onFocusLost()
         }
     }
@@ -290,8 +248,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             val wasAudioEnabled = audioEnabled
             audioEnabled = settings.audioEnabled
 
-            // Reset session timer for the resumed segment
-            sessionStartTime = System.currentTimeMillis()
+            playTimeTracker.start(currentRomId ?: return)
             _state.value = EmulatorState.RUNNING
 
             if (audioEnabled && !wasAudioEnabled) {
@@ -320,8 +277,10 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         _state.value = EmulatorState.IDLE
         emulatorThread?.stop()
         if (wasRunning && emulator != null) {
-            saveScreenshot()
-            updatePlayTime()
+            emulator?.let { emu ->
+                currentRomId?.let { screenshotManager.capture(emu, it) }
+            }
+            playTimeTracker.stop()
             saveStateManager?.onFocusLost()
         }
         emulatorThread = null
@@ -335,7 +294,6 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         pixelBuffer = null
         saveStateManager = null
         currentRomId = null
-        sessionStartTime = 0L
     }
 
     override fun onCleared() {

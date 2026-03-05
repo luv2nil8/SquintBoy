@@ -3,6 +3,7 @@ package com.anaglych.squintboyadvance.presentation.screens.settings
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import com.anaglych.squintboyadvance.presentation.SettingsRepository
+import com.anaglych.squintboyadvance.shared.model.ControllerLayout
 import com.anaglych.squintboyadvance.shared.model.EmulatorSettings
 import com.anaglych.squintboyadvance.shared.model.InputDevice
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
@@ -96,6 +97,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setGbPaletteIndex(index: Int) {
         repo.update { it.copy(gbPaletteIndex = index) }
+    }
+
+    fun resetControls() {
+        repo.update { it.copy(controllerLayout = ControllerLayout()) }
     }
 
 }

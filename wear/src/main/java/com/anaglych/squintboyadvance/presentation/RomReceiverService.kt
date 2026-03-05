@@ -4,6 +4,7 @@ import android.os.PowerManager
 import android.util.Log
 import com.anaglych.squintboyadvance.shared.model.*
 import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
+import com.anaglych.squintboyadvance.shared.util.readLine
 import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Wearable
@@ -60,9 +61,9 @@ class RomReceiverService : WearableListenerService() {
                 Tasks.await(Wearable.getChannelClient(this).getInputStream(channel))
             )
 
-            val filename = readHeaderLine(inputStream)
+            val filename = readLine(inputStream)
                 ?: throw Exception("Missing filename header")
-            val sizeStr = readHeaderLine(inputStream)
+            val sizeStr = readLine(inputStream)
                 ?: throw Exception("Missing filesize header")
             expectedSize = sizeStr.toLongOrNull()
                 ?: throw Exception("Invalid filesize header: $sizeStr")
@@ -170,7 +171,7 @@ class RomReceiverService : WearableListenerService() {
         )
 
         // Header: "romId/filename\n"
-        val header = readHeaderLine(inputStream) ?: return
+        val header = readLine(inputStream) ?: return
         val slashIdx = header.indexOf('/')
         if (slashIdx < 0) return
         val romId = header.substring(0, slashIdx)
@@ -192,7 +193,7 @@ class RomReceiverService : WearableListenerService() {
         val outputStream = Tasks.await(channelClient.getOutputStream(channel))
 
         // Header: "romId\n"
-        val romId = readHeaderLine(inputStream) ?: return
+        val romId = readLine(inputStream) ?: return
         val romBaseName = romId.substringBeforeLast('.')
 
         // Collect SRAM save files for this ROM (flat in saves/, matched by prefix)
@@ -366,17 +367,6 @@ class RomReceiverService : WearableListenerService() {
     }
 
     // ── Helpers ────────────────────────────────────────────────────────
-
-    private fun readHeaderLine(input: BufferedInputStream): String? {
-        val bytes = mutableListOf<Byte>()
-        while (true) {
-            val b = input.read()
-            if (b == -1 || b == '\n'.code) break
-            bytes.add(b.toByte())
-        }
-        val line = String(bytes.toByteArray(), Charsets.UTF_8).trim()
-        return line.ifEmpty { null }
-    }
 
     private fun classifySaveFile(name: String): SaveFileType {
         return when {

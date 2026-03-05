@@ -324,10 +324,10 @@ private fun TransferRomCard(
 ) {
     val context = LocalContext.current
     val badgeColor = when (item.systemType) {
-        com.anaglych.squintboyadvance.ui.SystemType.GB -> Color(0xFF306230)
-        com.anaglych.squintboyadvance.ui.SystemType.GBC -> Color(0xFFDA70D6)
-        com.anaglych.squintboyadvance.ui.SystemType.GBA -> Color(0xFF6A5ACD)
-        com.anaglych.squintboyadvance.ui.SystemType.UNKNOWN -> MaterialTheme.colorScheme.surfaceVariant
+        com.anaglych.squintboyadvance.shared.model.SystemType.GB -> Color(0xFF306230)
+        com.anaglych.squintboyadvance.shared.model.SystemType.GBC -> Color(0xFFDA70D6)
+        com.anaglych.squintboyadvance.shared.model.SystemType.GBA -> Color(0xFF6A5ACD)
+        null -> MaterialTheme.colorScheme.surfaceVariant
     }
 
     Card(
@@ -345,7 +345,7 @@ private fun TransferRomCard(
                 Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Badge(containerColor = badgeColor, contentColor = Color.White) {
-                        Text(item.systemType.label, style = MaterialTheme.typography.labelSmall)
+                        Text(item.systemType?.displayName ?: "?", style = MaterialTheme.typography.labelSmall)
                     }
                     Spacer(Modifier.width(8.dp))
                     Text(

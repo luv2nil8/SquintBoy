@@ -74,7 +74,11 @@ class SaveStateManager(
             val src = stateFile(i - 1)
             val dst = stateFile(i)
             if (src.exists()) {
-                src.renameTo(dst)
+                if (!src.renameTo(dst)) {
+                    Log.w(TAG, "Failed to shift save state ${i-1} → $i, falling back to copy")
+                    try { src.copyTo(dst, overwrite = true); src.delete() }
+                    catch (e: Exception) { Log.e(TAG, "Copy fallback failed", e) }
+                }
             } else {
                 dst.delete()
             }
@@ -114,7 +118,11 @@ class SaveStateManager(
             val src = sramBackup(i - 1)
             val dst = sramBackup(i)
             if (src.exists()) {
-                src.renameTo(dst)
+                if (!src.renameTo(dst)) {
+                    Log.w(TAG, "Failed to shift SRAM backup ${i-1} → $i, falling back to copy")
+                    try { src.copyTo(dst, overwrite = true); src.delete() }
+                    catch (e: Exception) { Log.e(TAG, "Copy fallback failed", e) }
+                }
             } else {
                 dst.delete()
             }

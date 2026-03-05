@@ -9,10 +9,15 @@ class EmulatorThread(
     private val isRunning: () -> Boolean,
     private val frameskip: Int = -1
 ) {
+    companion object {
+        /** ~60 fps target (nanoseconds per frame). */
+        private const val TARGET_FRAME_TIME_NS = 16_666_667L
+        /** Audio buffer size: ~2 frames at 48 kHz (~1600 samples/frame stereo). */
+        private const val AUDIO_BUFFER_SIZE = 4096
+    }
 
     private var thread: Thread? = null
-    // Enough for ~2 frames at 48000 Hz (~1600 samples/frame stereo)
-    private val audioBuffer = ShortArray(4096)
+    private val audioBuffer = ShortArray(AUDIO_BUFFER_SIZE)
 
     fun start() {
         if (thread?.isAlive == true) return
@@ -60,14 +65,14 @@ class EmulatorThread(
                     // Auto frameskip: if this frame took >16.7ms, skip next frame's video
                     if (frameskip == -1) {
                         val elapsed = System.nanoTime() - frameStart
-                        if (elapsed > 16_666_667L) {
+                        if (elapsed > TARGET_FRAME_TIME_NS) {
                             autoSkipNext = true
                         }
                     }
                 }
             } else {
                 // No audio: fall back to sleep-based pacing
-                val targetFrameTimeNs = 16_666_667L // ~60fps
+                val targetFrameTimeNs = TARGET_FRAME_TIME_NS
                 var autoSkipNext = false
                 var fixedSkipCounter = 0
 

@@ -3,6 +3,8 @@ package com.anaglych.squintboyadvance.presentation.screens.settings
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -12,8 +14,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.rotary.onRotaryScrollEvent
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -28,6 +36,7 @@ import androidx.wear.compose.material.TimeText
 import androidx.wear.compose.material.Vignette
 import androidx.wear.compose.material.VignettePosition
 import com.anaglych.squintboyadvance.shared.model.GbColorPalette
+import kotlinx.coroutines.launch
 
 private val SWATCH_SIZE = 44.dp
 private val SWATCH_SPACING = 6.dp
@@ -66,8 +75,12 @@ fun PaletteGrid(
     onSelected: (Int) -> Unit,
 ) {
     val listState = rememberScalingLazyListState()
+    val focusRequester = remember { FocusRequester() }
+    val coroutineScope = rememberCoroutineScope()
     val palettes = GbColorPalette.ALL
     val rows = palettes.chunked(4)
+
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
     Scaffold(
         timeText = { TimeText() },
@@ -76,7 +89,14 @@ fun PaletteGrid(
     ) {
         ScalingLazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .onRotaryScrollEvent {
+                    coroutineScope.launch { listState.scrollBy(it.verticalScrollPixels) }
+                    true
+                }
+                .focusRequester(focusRequester)
+                .focusable(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             itemsIndexed(rows) { rowIndex, rowPalettes ->

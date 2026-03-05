@@ -2,6 +2,8 @@ package com.anaglych.squintboyadvance.presentation.screens.library
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,9 +26,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.rotary.onRotaryScrollEvent
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
@@ -55,6 +61,7 @@ import com.anaglych.squintboyadvance.presentation.RomLibrarySignal
 import com.anaglych.squintboyadvance.presentation.TransferEvent
 import com.anaglych.squintboyadvance.shared.model.RomMetadata
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun RomLibraryScreen(
@@ -67,6 +74,8 @@ fun RomLibraryScreen(
     val pickerState by viewModel.pickerState.collectAsStateWithLifecycle()
     val phoneAppInstalled by viewModel.phoneAppInstalled.collectAsStateWithLifecycle()
     val listState = rememberScalingLazyListState(initialCenterItemIndex = 2)
+    val focusRequester = remember { FocusRequester() }
+    val coroutineScope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
     var transferEvent by remember { mutableStateOf<TransferEvent?>(null) }
 
@@ -84,6 +93,8 @@ fun RomLibraryScreen(
         }
     }
 
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
     Box(modifier = Modifier.fillMaxSize()) {
 
         Scaffold(
@@ -93,7 +104,14 @@ fun RomLibraryScreen(
         ) {
             ScalingLazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onRotaryScrollEvent {
+                        coroutineScope.launch { listState.scrollBy(it.verticalScrollPixels) }
+                        true
+                    }
+                    .focusRequester(focusRequester)
+                    .focusable(),
                 autoCentering = AutoCenteringParams(itemIndex = 2),
             ) {
                 item { Spacer(Modifier.height(48.dp)) }

@@ -11,6 +11,7 @@ import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Wearable
+import com.anaglych.squintboyadvance.ui.sendWearableRequest
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,7 +27,6 @@ class WatchRomListViewModel(application: Application) : AndroidViewModel(applica
 
     companion object {
         private const val TAG = "WatchRomListVM"
-        private const val TIMEOUT_MS = 5000L
         private const val PREFS_NAME = "rom_list_cache"
         private const val KEY_ROM_LIST = "rom_list_json"
         private const val DISPLAY_NAMES_PREFS = "rom_display_names"
@@ -78,21 +78,14 @@ class WatchRomListViewModel(application: Application) : AndroidViewModel(applica
     fun requestRomList() {
         viewModelScope.launch {
             _isLoading.value = true
-            try {
-                val nodes = nodeClient.connectedNodes.await()
-                val nodeId = nodes.firstOrNull()?.id ?: run {
-                    _isLoading.value = false
-                    return@launch
-                }
-                messageClient.sendMessage(nodeId, WearMessageConstants.PATH_ROM_LIST_REQUEST, byteArrayOf()).await()
-                timeoutJob = viewModelScope.launch {
-                    delay(TIMEOUT_MS)
-                    _isLoading.value = false
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to request ROM list", e)
-                _isLoading.value = false
-            }
+            timeoutJob = sendWearableRequest(
+                nodeClient, messageClient,
+                path = WearMessageConstants.PATH_ROM_LIST_REQUEST,
+                scope = viewModelScope, tag = TAG,
+                onNoNode = { _isLoading.value = false },
+                onTimeout = { _isLoading.value = false },
+                onError = { _isLoading.value = false },
+            )
         }
     }
 

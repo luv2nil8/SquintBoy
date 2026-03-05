@@ -1,6 +1,8 @@
 package com.anaglych.squintboyadvance.presentation.screens.settings
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -9,13 +11,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.rotary.onRotaryScrollEvent
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -37,6 +45,7 @@ import androidx.wear.compose.material.ToggleChipDefaults
 import androidx.wear.compose.material.Vignette
 import androidx.wear.compose.material.VignettePosition
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
+import kotlinx.coroutines.launch
 
 @Composable
 fun VideoSettingsScreen(
@@ -45,7 +54,11 @@ fun VideoSettingsScreen(
 ) {
     val settings by viewModel.settings.collectAsState()
     val listState = rememberScalingLazyListState()
+    val focusRequester = remember { FocusRequester() }
+    val coroutineScope = rememberCoroutineScope()
     var isGba by rememberSaveable { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
     val scaleMode = if (isGba) settings.gbaScaleMode else settings.gbScaleMode
     val filterEnabled = if (isGba) settings.gbaFilterEnabled else settings.gbFilterEnabled
@@ -57,7 +70,14 @@ fun VideoSettingsScreen(
     ) {
         ScalingLazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .onRotaryScrollEvent {
+                    coroutineScope.launch { listState.scrollBy(it.verticalScrollPixels) }
+                    true
+                }
+                .focusRequester(focusRequester)
+                .focusable()
         ) {
             // Header
             item {

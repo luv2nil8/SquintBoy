@@ -1,9 +1,18 @@
 package com.anaglych.squintboyadvance.presentation.screens.settings
 
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.rotary.onRotaryScrollEvent
+import kotlinx.coroutines.launch
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material.Chip
@@ -23,6 +32,10 @@ fun SettingsScreen(
     onNavigate: (Screen) -> Unit
 ) {
     val listState = rememberScalingLazyListState()
+    val focusRequester = remember { FocusRequester() }
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
     Scaffold(
         timeText = { TimeText() },
@@ -31,7 +44,14 @@ fun SettingsScreen(
     ) {
         ScalingLazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .onRotaryScrollEvent {
+                    coroutineScope.launch { listState.scrollBy(it.verticalScrollPixels) }
+                    true
+                }
+                .focusRequester(focusRequester)
+                .focusable()
         ) {
             item {
                 ListHeader {

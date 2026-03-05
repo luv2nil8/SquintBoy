@@ -50,7 +50,7 @@ import kotlin.math.roundToInt
 fun WearSlideToConfirm(
     slideText: String = "Slide to confirm",
     warningText: String? = null,
-    confirmColor: Color = Color(0xFFD32F2F),
+    confirmColor: Color = Color(0xFFEC1358),
     onConfirmed: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,

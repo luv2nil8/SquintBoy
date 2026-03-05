@@ -14,7 +14,6 @@ import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,6 +21,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import com.anaglych.squintboyadvance.shared.util.readLine
+import com.anaglych.squintboyadvance.ui.sendWearableRequest
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.OutputStream
@@ -36,7 +37,6 @@ class SaveSyncViewModel(application: Application) : AndroidViewModel(application
 
     companion object {
         private const val TAG = "SaveSyncVM"
-        private const val TIMEOUT_MS = 5000L
         private const val PREFS_NAME = "save_list_cache"
         private const val KEY_SAVE_LIST = "save_list_json"
     }
@@ -62,7 +62,11 @@ class SaveSyncViewModel(application: Application) : AndroidViewModel(application
     private var timeoutJob: Job? = null
 
     private val savesBaseDir: File
-        get() = File(getApplication<Application>().getExternalFilesDir(null), "saves")
+        get() {
+            val app = getApplication<Application>()
+            val base = app.getExternalFilesDir(null) ?: app.filesDir
+            return File(base, "saves")
+        }
 
     init {
         messageClient.addListener(this)
@@ -93,20 +97,14 @@ class SaveSyncViewModel(application: Application) : AndroidViewModel(application
     fun requestSaveList() {
         viewModelScope.launch {
             _isLoading.value = true
-            try {
-                val nodeId = nodeClient.connectedNodes.await().firstOrNull()?.id ?: run {
-                    _isLoading.value = false
-                    return@launch
-                }
-                messageClient.sendMessage(nodeId, WearMessageConstants.PATH_SAVE_LIST_REQUEST, byteArrayOf()).await()
-                timeoutJob = viewModelScope.launch {
-                    delay(TIMEOUT_MS)
-                    _isLoading.value = false
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to request save list", e)
-                _isLoading.value = false
-            }
+            timeoutJob = sendWearableRequest(
+                nodeClient, messageClient,
+                path = WearMessageConstants.PATH_SAVE_LIST_REQUEST,
+                scope = viewModelScope, tag = TAG,
+                onNoNode = { _isLoading.value = false },
+                onTimeout = { _isLoading.value = false },
+                onError = { _isLoading.value = false },
+            )
         }
     }
 
@@ -132,6 +130,7 @@ class SaveSyncViewModel(application: Application) : AndroidViewModel(application
 
                     // Read JSON manifest line
                     val manifestLine = readLine(inputStream)
+                        ?: throw Exception("Empty response from watch")
                     val manifest = json.decodeFromString(SaveListResponse.serializer(), manifestLine)
 
                     val romSaveDir = File(savesBaseDir, romId).apply { mkdirs() }
@@ -241,15 +240,5 @@ class SaveSyncViewModel(application: Application) : AndroidViewModel(application
 
     private fun setTransferStatus(key: String, status: TransferStatus) {
         _transferStatus.value = _transferStatus.value + (key to status)
-    }
-
-    private fun readLine(input: BufferedInputStream): String {
-        val bytes = mutableListOf<Byte>()
-        while (true) {
-            val b = input.read()
-            if (b == -1 || b == '\n'.code) break
-            bytes.add(b.toByte())
-        }
-        return String(bytes.toByteArray(), Charsets.UTF_8)
     }
 }

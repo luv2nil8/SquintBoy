@@ -28,7 +28,7 @@ import androidx.wear.compose.material.ButtonDefaults
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
 
-private val RED = Color(0xFFD32F2F)
+private val RED = Color(0xFFEC1358)
 private val BUTTON_SIZE = 52.dp
 private val BUTTON_SPACING = 14.dp
 

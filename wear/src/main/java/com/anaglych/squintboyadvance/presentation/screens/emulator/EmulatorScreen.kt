@@ -126,7 +126,7 @@ fun EmulatorScreen(
                     PauseUiState.CONFIRM_RESET -> WearSlideToConfirm(
                         slideText = "Slide to reset",
                         warningText = "The game will restart from the beginning. Your save file is preserved.",
-                        confirmColor = Color(0xFFD32F2F),
+                        confirmColor = Color(0xFFEC1358),
                         onConfirmed = { viewModel.resetRom() },
                         onDismiss = { pauseUiState = PauseUiState.MENU },
                     )
@@ -145,7 +145,7 @@ fun EmulatorScreen(
             EmulatorState.ERROR -> {
                 Text(
                     text = errorMessage ?: "Unknown error",
-                    color = Color.Red,
+                    color = Color(0xFFEC1358),
                     style = MaterialTheme.typography.body2,
                 )
             }

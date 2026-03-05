@@ -1,6 +1,7 @@
 package com.anaglych.squintboyadvance.core
 
 import com.anaglych.squintboyadvance.shared.model.ButtonId
+import java.util.concurrent.atomic.AtomicInteger
 
 class MgbaEmulator {
 
@@ -19,8 +20,7 @@ class MgbaEmulator {
         ButtonId.L to 9
     )
 
-    @Volatile
-    private var keysBitmask: Int = 0
+    private val keysBitmask = AtomicInteger(0)
 
     val width: Int get() = NativeBridge.nativeGetWidth()
     val height: Int get() = NativeBridge.nativeGetHeight()
@@ -35,12 +35,12 @@ class MgbaEmulator {
     }
 
     fun runFrame() {
-        NativeBridge.nativeSetKeys(keysBitmask)
+        NativeBridge.nativeSetKeys(keysBitmask.get())
         NativeBridge.nativeRunFrame()
     }
 
     fun runFrameWithAudio(buffer: ShortArray, maxFrames: Int): Int {
-        NativeBridge.nativeSetKeys(keysBitmask)
+        NativeBridge.nativeSetKeys(keysBitmask.get())
         return NativeBridge.nativeRunFrameWithAudio(buffer, maxFrames)
     }
 
@@ -50,12 +50,12 @@ class MgbaEmulator {
 
     fun pressButton(button: ButtonId) {
         val bit = keyMap[button] ?: return
-        keysBitmask = keysBitmask or (1 shl bit)
+        keysBitmask.getAndUpdate { it or (1 shl bit) }
     }
 
     fun releaseButton(button: ButtonId) {
         val bit = keyMap[button] ?: return
-        keysBitmask = keysBitmask and (1 shl bit).inv()
+        keysBitmask.getAndUpdate { it and (1 shl bit).inv() }
     }
 
     fun saveState(path: String): Boolean {

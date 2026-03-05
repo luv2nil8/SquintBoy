@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.anaglych.squintboyadvance.shared.model.EmulatorSettings
 import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
+import com.anaglych.squintboyadvance.ui.sendWearableRequest
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Wearable
@@ -25,7 +26,6 @@ class WatchSettingsViewModel(application: Application) : AndroidViewModel(applic
 
     companion object {
         private const val TAG = "WatchSettingsVM"
-        private const val TIMEOUT_MS = 5000L
         private const val PUSH_DEBOUNCE_MS = 400L
         private const val PREFS_NAME = "watch_settings_cache"
         private const val KEY_SETTINGS = "settings_json"
@@ -76,20 +76,14 @@ class WatchSettingsViewModel(application: Application) : AndroidViewModel(applic
     fun loadSettings() {
         viewModelScope.launch {
             _isLoading.value = true
-            try {
-                val nodeId = nodeClient.connectedNodes.await().firstOrNull()?.id ?: run {
-                    _isLoading.value = false
-                    return@launch
-                }
-                messageClient.sendMessage(nodeId, WearMessageConstants.PATH_SETTINGS_REQUEST, byteArrayOf()).await()
-                timeoutJob = viewModelScope.launch {
-                    delay(TIMEOUT_MS)
-                    _isLoading.value = false
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to request settings", e)
-                _isLoading.value = false
-            }
+            timeoutJob = sendWearableRequest(
+                nodeClient, messageClient,
+                path = WearMessageConstants.PATH_SETTINGS_REQUEST,
+                scope = viewModelScope, tag = TAG,
+                onNoNode = { _isLoading.value = false },
+                onTimeout = { _isLoading.value = false },
+                onError = { _isLoading.value = false },
+            )
         }
     }
 

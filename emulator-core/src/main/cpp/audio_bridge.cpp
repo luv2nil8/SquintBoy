@@ -33,6 +33,7 @@ void audioBridgeProcess(struct mCore* core) {
     if (!g_audioInitialized || !core) return;
 
     struct mAudioBuffer* srcBuffer = core->getAudioBuffer(core);
+    if (!srcBuffer) return;
     double sampleRate = (double)core->audioSampleRate(core);
 
     mAudioResamplerSetSource(&g_resampler, srcBuffer, sampleRate, true);

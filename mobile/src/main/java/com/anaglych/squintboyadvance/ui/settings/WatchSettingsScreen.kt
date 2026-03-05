@@ -36,6 +36,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -81,6 +83,7 @@ fun WatchSettingsScreen(
     }
 
     val s = settings!!
+    val haptic = LocalHapticFeedback.current
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -166,31 +169,35 @@ fun WatchSettingsScreen(
                 viewModel.updateLocal { it.copy(controllerLayout = it.controllerLayout.copy(visible = !it.controllerLayout.visible)) }
             }
         }
-        if (s.controllerLayout.visible) {
-            item {
-                SliderSetting("Button Opacity", "${(s.controllerLayout.buttonOpacity * 100).toInt()}%", s.controllerLayout.buttonOpacity, 0f..1f, steps = 9) { v ->
-                    viewModel.updateLocal { it.copy(controllerLayout = it.controllerLayout.copy(buttonOpacity = v)) }
-                }
+        item {
+            SliderSetting("Outline Opacity", "${(s.controllerLayout.buttonOpacity * 100).toInt()}%", s.controllerLayout.buttonOpacity, 0f..1f, steps = 9) { v ->
+                viewModel.updateLocal { it.copy(controllerLayout = it.controllerLayout.copy(buttonOpacity = v)) }
             }
-            item {
-                SliderSetting("Pressed Opacity", "${(s.controllerLayout.pressedOpacity * 100).toInt()}%", s.controllerLayout.pressedOpacity, 0f..1f, steps = 9) { v ->
-                    viewModel.updateLocal { it.copy(controllerLayout = it.controllerLayout.copy(pressedOpacity = v)) }
-                }
+        }
+        item {
+            SliderSetting("Pressed Opacity", "${(s.controllerLayout.pressedOpacity * 100).toInt()}%", s.controllerLayout.pressedOpacity, 0f..0.5f, steps = 4) { v ->
+                viewModel.updateLocal { it.copy(controllerLayout = it.controllerLayout.copy(pressedOpacity = v)) }
             }
-            item {
-                SliderSetting("Label Opacity", "${(s.controllerLayout.labelOpacity * 100).toInt()}%", s.controllerLayout.labelOpacity, 0f..1f, steps = 9) { v ->
-                    viewModel.updateLocal { it.copy(controllerLayout = it.controllerLayout.copy(labelOpacity = v)) }
-                }
+        }
+        item {
+            SliderSetting("Label Opacity", "${(s.controllerLayout.labelOpacity * 100).toInt()}%", s.controllerLayout.labelOpacity, 0f..1f, steps = 9) { v ->
+                viewModel.updateLocal { it.copy(controllerLayout = it.controllerLayout.copy(labelOpacity = v)) }
             }
-            item {
-                SliderSetting("Label Size", "${s.controllerLayout.labelSize.toInt()}sp", s.controllerLayout.labelSize, 8f..16f, steps = 7) { v ->
-                    viewModel.updateLocal { it.copy(controllerLayout = it.controllerLayout.copy(labelSize = v)) }
-                }
+        }
+        item {
+            val labelSizeName = when (s.controllerLayout.labelSize.toInt()) {
+                9 -> "Tiny"; 11 -> "Small"; 13 -> "Normal"; 15 -> "Large"; 17 -> "Huge"
+                else -> "${s.controllerLayout.labelSize.toInt()}sp"
+            }
+            SliderSetting("Label Size", labelSizeName, s.controllerLayout.labelSize, 9f..17f, steps = 3) { v ->
+                viewModel.updateLocal { it.copy(controllerLayout = it.controllerLayout.copy(labelSize = v)) }
             }
         }
         item {
             SwitchSetting("Haptic Feedback", s.controllerLayout.hapticFeedback) {
-                viewModel.updateLocal { it.copy(controllerLayout = it.controllerLayout.copy(hapticFeedback = !it.controllerLayout.hapticFeedback)) }
+                val newValue = !s.controllerLayout.hapticFeedback
+                viewModel.updateLocal { it.copy(controllerLayout = it.controllerLayout.copy(hapticFeedback = newValue)) }
+                if (newValue) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
             }
         }
 
