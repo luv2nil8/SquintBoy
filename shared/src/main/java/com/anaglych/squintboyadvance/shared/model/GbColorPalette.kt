@@ -24,33 +24,41 @@ data class GbColorPalette(
 
     companion object {
         val ALL: List<GbColorPalette> = listOf(
-            // Top 24 most-downloaded 4-color GB palettes from lospec.com
+            // Classics
+            GbColorPalette("DMG Green",           0xFF0F380F.toInt(), 0xFF306230.toInt(), 0xFF8BAC0F.toInt(), 0xFF9BBC0F.toInt()),
+            GbColorPalette("Hallownest",          0xFF0F0F1B.toInt(), 0xFF565A75.toInt(), 0xFFC6B7BE.toInt(), 0xFFFAFBF6.toInt()),
             GbColorPalette("Ice Cream GB",        0xFF7C3F58.toInt(), 0xFFEB6B6F.toInt(), 0xFFF9A875.toInt(), 0xFFFFF6D3.toInt()),
-            GbColorPalette("Kirokaze Gameboy",    0xFF332C50.toInt(), 0xFF46878F.toInt(), 0xFF94E344.toInt(), 0xFFE2F3E4.toInt()),
-            GbColorPalette("2bit Demichrome",     0xFF211E20.toInt(), 0xFF555568.toInt(), 0xFFA0A08B.toInt(), 0xFFE9EFEC.toInt()),
-            GbColorPalette("Hollow",              0xFF0F0F1B.toInt(), 0xFF565A75.toInt(), 0xFFC6B7BE.toInt(), 0xFFFAFBF6.toInt()),
-            GbColorPalette("Mist GB",             0xFF2D1B00.toInt(), 0xFF1E606E.toInt(), 0xFF5AB9A8.toInt(), 0xFFC4F0C2.toInt()),
-            GbColorPalette("Rustic GB",           0xFF2C2137.toInt(), 0xFF764462.toInt(), 0xFFEDB4A1.toInt(), 0xFFA96868.toInt()),
-            GbColorPalette("AYY4",                0xFF00303B.toInt(), 0xFFFF7777.toInt(), 0xFFFFCE96.toInt(), 0xFFF1F2DA.toInt()),
-            GbColorPalette("Wish GB",             0xFF622E4C.toInt(), 0xFF7550E8.toInt(), 0xFF608FCF.toInt(), 0xFF8BE5FF.toInt()),
-            GbColorPalette("BLK AQU4",            0xFF002B59.toInt(), 0xFF005F8C.toInt(), 0xFF00B9BE.toInt(), 0xFF9FF4E5.toInt()),
-            GbColorPalette("Arq4",                0xFF000000.toInt(), 0xFF3A3277.toInt(), 0xFF6772A9.toInt(), 0xFFFFFFFF.toInt()),
-            GbColorPalette("EN4",                 0xFF20283D.toInt(), 0xFF426E5D.toInt(), 0xFFE5B083.toInt(), 0xFFFBF7F3.toInt()),
-            GbColorPalette("Blood Crow",          0xFF190000.toInt(), 0xFF560909.toInt(), 0xFFAD2020.toInt(), 0xFFF2E6E6.toInt()),
-            GbColorPalette("Mokky",               0xFF332920.toInt(), 0xFF664930.toInt(), 0xFF99683D.toInt(), 0xFFCCA66E.toInt()),
-            GbColorPalette("Dreamful Space",      0xFF21193C.toInt(), 0xFF932F7B.toInt(), 0xFFE67B8B.toInt(), 0xFFF5D2B8.toInt()),
-            GbColorPalette("Italy-4",             0xFF100F24.toInt(), 0xFFC74634.toInt(), 0xFF5D8D60.toInt(), 0xFFEDEADA.toInt()),
-            GbColorPalette("Qameboy",             0xFF353D46.toInt(), 0xFF42665A.toInt(), 0xFF739A56.toInt(), 0xFFB2C27D.toInt()),
-            GbColorPalette("Technobike",          0xFF1D2938.toInt(), 0xFF2A616E.toInt(), 0xFF13B37E.toInt(), 0xFF07EF5C.toInt()),
-            GbColorPalette("Crimson Blood 4",     0xFF290707.toInt(), 0xFF766161.toInt(), 0xFFBB9D9D.toInt(), 0xFFBA0000.toInt()),
-            GbColorPalette("RABBIT5PM",           0xFF4C3457.toInt(), 0xFF629098.toInt(), 0xFFE4A39F.toInt(), 0xFFFFE7CD.toInt()),
-            GbColorPalette("Soulscape",           0xFF051E45.toInt(), 0xFF0B586E.toInt(), 0xFF1CB099.toInt(), 0xFF42F4AF.toInt()),
-            GbColorPalette("Calccurate GB",       0xFF000000.toInt(), 0xFF005500.toInt(), 0xFF55AA55.toInt(), 0xFFAAFFAA.toInt()),
-            GbColorPalette("Snooker GB",          0xFF40242F.toInt(), 0xFF075040.toInt(), 0xFFE1A847.toInt(), 0xFFC9DFB1.toInt()),
-            GbColorPalette("Slate",               0xFF292736.toInt(), 0xFF49556C.toInt(), 0xFF608189.toInt(), 0xFFBEB09F.toInt()),
-            GbColorPalette("Nintendo GB",         0xFF081820.toInt(), 0xFF346856.toInt(), 0xFF88C070.toInt(), 0xFFE0F8D0.toInt()),
+            // Warm & earthy
+            GbColorPalette("Pelican Town",        0xFF2A1808.toInt(), 0xFF7A5C28.toInt(), 0xFFC8A850.toInt(), 0xFFF0E8B0.toInt()),
+            GbColorPalette("The Ruins",           0xFF100808.toInt(), 0xFF5C1818.toInt(), 0xFFB04828.toInt(), 0xFFF8D8A0.toInt()),
+            GbColorPalette("Plague Potion",       0xFF000000.toInt(), 0xFF422136.toInt(), 0xFFAB5236.toInt(), 0xFFFFEC27.toInt()),
+            // Reds & fire
+            GbColorPalette("Ember Cavern",        0xFF000000.toInt(), 0xFF7E2553.toInt(), 0xFFFF004D.toInt(), 0xFFFFA300.toInt()),
+            GbColorPalette("Crimson Biome",       0xFF180006.toInt(), 0xFF780020.toInt(), 0xFFD80040.toInt(), 0xFFFF8868.toInt()),
+            GbColorPalette("Neon Midnight",       0xFF000000.toInt(), 0xFF1D2B53.toInt(), 0xFFFF004D.toInt(), 0xFFFFEC27.toInt()),
+            // Pinks & magentas
+            GbColorPalette("Phantom Dusk",        0xFF0D0821.toInt(), 0xFF3D1C56.toInt(), 0xFFC80048.toInt(), 0xFFFF6EB4.toInt()),
+            GbColorPalette("Blushing Summit",     0xFF1D2B53.toInt(), 0xFF29ADFF.toInt(), 0xFFFF77A8.toInt(), 0xFFFFF1E8.toInt()),
+            GbColorPalette("Clock Tower",         0xFF0A0810.toInt(), 0xFF382868.toInt(), 0xFFE04018.toInt(), 0xFFFFD840.toInt()),
+            // Purples
+            GbColorPalette("Corruption",          0xFF080018.toInt(), 0xFF3A0878.toInt(), 0xFF8840E0.toInt(), 0xFFE0B0FF.toInt()),
+            GbColorPalette("Black Bridge",        0xFF060408.toInt(), 0xFF301830.toInt(), 0xFF9820A8.toInt(), 0xFFF030F0.toInt()),
+            GbColorPalette("Fungal Wastes",       0xFF0A0C18.toInt(), 0xFF2A1E4A.toInt(), 0xFF8030C0.toInt(), 0xFFD0F060.toInt()),
+            // Blues & cyans
+            GbColorPalette("Snowdin",             0xFF080C18.toInt(), 0xFF1830A0.toInt(), 0xFF80C8F8.toInt(), 0xFFF0F8FF.toInt()),
+            GbColorPalette("Azure Valor",         0xFF000000.toInt(), 0xFF1D2B53.toInt(), 0xFF29ADFF.toInt(), 0xFFFFF1E8.toInt()),
+            GbColorPalette("Northern Waste",      0xFF06040E.toInt(), 0xFF280868.toInt(), 0xFF6020E0.toInt(), 0xFF40E8FF.toInt()),
+            // Teals & neons
+            GbColorPalette("Pulse Neon",          0xFF07111E.toInt(), 0xFF0A3A5C.toInt(), 0xFF00C8E8.toInt(), 0xFFE8FC50.toInt()),
+            GbColorPalette("Pixel Jungle",         0xFF1D2B53.toInt(), 0xFF7E2553.toInt(), 0xFFD4C800.toInt(), 0xFF00B84A.toInt()),
+            GbColorPalette("Mega Taiga",          0xFF100F24.toInt(), 0xFFC74634.toInt(), 0xFF5D8D60.toInt(), 0xFFEDEADA.toInt()),
+            // Greens
+            GbColorPalette("Spring Farm",         0xFF1A3010.toInt(), 0xFF3A7830.toInt(), 0xFF88CC40.toInt(), 0xFFF0F8D0.toInt()),
+            GbColorPalette("Promenade",           0xFF060C18.toInt(), 0xFF1A4830.toInt(), 0xFF28C858.toInt(), 0xFFF8E840.toInt()),
+            GbColorPalette("Southern Reach",      0xFF03080E.toInt(), 0xFF0C3020.toInt(), 0xFF20A858.toInt(), 0xFFB8FF70.toInt()),
+            GbColorPalette("Toxic Sewers",        0xFF080E04.toInt(), 0xFF184808.toInt(), 0xFF60D010.toInt(), 0xFFD8FF40.toInt()),
         )
 
-        val DEFAULT_INDEX = 23  // Nintendo GB — the classic green
+        val DEFAULT_INDEX = 0  // DMG Green — the classic
     }
 }
