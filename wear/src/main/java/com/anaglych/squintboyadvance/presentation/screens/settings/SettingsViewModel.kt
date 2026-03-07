@@ -5,7 +5,6 @@ import androidx.lifecycle.AndroidViewModel
 import com.anaglych.squintboyadvance.presentation.SettingsRepository
 import com.anaglych.squintboyadvance.shared.model.ControllerLayout
 import com.anaglych.squintboyadvance.shared.model.EmulatorSettings
-import com.anaglych.squintboyadvance.shared.model.InputDevice
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 import kotlinx.coroutines.flow.StateFlow
 
@@ -53,10 +52,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setGbFrameskip(frameskip: Int) {
         repo.update { it.copy(gbFrameskip = frameskip) }
-    }
-
-    fun setPreferredInput(input: InputDevice) {
-        repo.update { it.copy(preferredInput = input) }
     }
 
     fun setOverlayVisible(visible: Boolean) {

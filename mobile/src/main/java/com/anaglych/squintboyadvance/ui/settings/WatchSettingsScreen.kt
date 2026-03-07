@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.anaglych.squintboyadvance.shared.model.ControllerLayout
 import com.anaglych.squintboyadvance.shared.model.GbColorPalette
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 
@@ -199,6 +200,12 @@ fun WatchSettingsScreen(
                 viewModel.updateLocal { it.copy(controllerLayout = it.controllerLayout.copy(hapticFeedback = newValue)) }
                 if (newValue) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
             }
+        }
+
+        item {
+            ResetControlsButton(onClick = {
+                viewModel.updateLocal { it.copy(controllerLayout = ControllerLayout()) }
+            })
         }
 
         // ── GB Palette ──
@@ -382,6 +389,19 @@ private fun SliderSetting(
             steps = steps,
             modifier = Modifier.fillMaxWidth(),
         )
+    }
+}
+
+@Composable
+private fun ResetControlsButton(onClick: () -> Unit) {
+    val crimson = Color(0xFFEC1358)
+    androidx.compose.material3.OutlinedButton(
+        onClick = onClick,
+        border = androidx.compose.foundation.BorderStroke(1.dp, crimson),
+        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = crimson),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text("Reset Controls to Defaults")
     }
 }
 

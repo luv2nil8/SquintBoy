@@ -37,8 +37,18 @@ import com.anaglych.squintboyadvance.shared.model.GbColorPalette
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.sign
 
 private val SWATCH_GAP = 6.dp
+
+private object GridTuning {
+    const val DEAD_ZONE = 0.25f
+    const val FADE_ZONE = 1.1f
+    const val SCALE_AMOUNT = 0.60f
+    const val ALPHA_AMOUNT = 0.50f
+    const val SIDE_COLUMN_BIAS = 0.20f
+    fun ease(t: Float): Float = t * t  // quadratic ease-in
+}
 
 /**
  * Full-screen overlay palette picker for use from the pause menu.
@@ -175,9 +185,9 @@ private fun HexLayout(
             )
         ) }
 
-        // Scaling dead zone: no effect in middle 1/3, fades toward edges
-        val deadZone = viewportHeight / 6f
-        val fadeZone = (viewportHeight / 2f - deadZone).coerceAtLeast(1f)
+        val halfViewport = viewportHeight / 2f
+        val deadZone = halfViewport * GridTuning.DEAD_ZONE
+        val fadeZone = (halfViewport * GridTuning.FADE_ZONE).coerceAtLeast(1f)
 
         layout(constraints.maxWidth, contentHeightPx) {
             // Layout order per trio: center (col 1), left (col 0), right (col 2)
@@ -192,17 +202,31 @@ private fun HexLayout(
                 val x = offsetX + col * stepPx
                 val y = topPad + trio * stepPx + if (col != 1) halfStep else 0
 
-                // Viewport-relative position for scaling
+                // Viewport-relative position for scaling — side columns get extra bias
                 val viewportY = y - scrollOffset + cellPx / 2f
-                val distFromCenter = abs(viewportY - viewportHeight / 2f)
-                val fraction = ((distFromCenter - deadZone) / fadeZone).coerceIn(0f, 1f)
-                val scale = 1f - fraction * 0.3f
-                val itemAlpha = 1f - fraction * 0.5f
+                val vertDist = abs(viewportY - viewportHeight / 2f)
+                val sidePenalty = if (col != 1) halfViewport * GridTuning.SIDE_COLUMN_BIAS else 0f
+                val distFromCenter = vertDist + sidePenalty
+                val linear = ((distFromCenter - deadZone) / fadeZone).coerceIn(0f, 1f)
+                val eased = GridTuning.ease(linear)
+                val scale = 1f - eased * GridTuning.SCALE_AMOUNT
+                val itemAlpha = 1f - eased * GridTuning.ALPHA_AMOUNT
+
+                // Translate to maintain visual gap with unchanged siblings:
+                // - center col: shift down (toward viewport center)
+                // - side cols: shift down and toward center column
+                val shrinkPx = (1f - scale) * cellPx * 0.5f
+                val centerX = constraints.maxWidth / 2f
+                val itemCenterX = x + cellPx / 2f
+                val txX = if (col != 1) (centerX - itemCenterX).sign * shrinkPx else 0f
+                val txY = if (viewportY < viewportHeight / 2f) shrinkPx else -shrinkPx
 
                 placeable.placeRelativeWithLayer(x, y) {
                     scaleX = scale
                     scaleY = scale
                     alpha = itemAlpha
+                    translationX = txX
+                    translationY = txY
                 }
             }
         }

@@ -15,7 +15,6 @@ data class EmulatorSettings(
     val gbPaletteIndex: Int = GbColorPalette.DEFAULT_INDEX,
     val gbaFrameskip: Int = 0,
     val gbFrameskip: Int = 0,
-    val preferredInput: InputDevice = InputDevice.TOUCH,
     val controllerLayout: ControllerLayout = ControllerLayout(),
 )
 
@@ -24,3 +23,4 @@ enum class ScaleMode(val displayName: String) {
     INTEGER("Integer 2x"),
     CUSTOM("Custom")
 }
+

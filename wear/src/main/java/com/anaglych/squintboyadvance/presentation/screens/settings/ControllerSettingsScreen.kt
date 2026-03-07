@@ -41,7 +41,6 @@ import androidx.wear.compose.material.ToggleChipDefaults
 import androidx.wear.compose.material.Vignette
 import androidx.wear.compose.material.VignettePosition
 import com.anaglych.squintboyadvance.presentation.components.WearSlideToConfirm
-import com.anaglych.squintboyadvance.shared.model.InputDevice
 
 @Composable
 fun ControllerSettingsScreen(

@@ -104,7 +104,7 @@ fun EmulatorScreen(
                 when (pauseUiState) {
                     PauseUiState.MENU -> PauseOverlay(
                         isMuted = !settings.audioEnabled,
-                        isGb = !isGba,
+                        isGb = systemType == SystemType.GB,
                         onToggleMute = viewModel::toggleMute,
                         onResume = viewModel::resume,
                         onInterface = { pauseUiState = PauseUiState.SCALE_EDITOR },
