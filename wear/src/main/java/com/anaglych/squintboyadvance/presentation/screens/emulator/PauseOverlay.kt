@@ -1,5 +1,6 @@
 package com.anaglych.squintboyadvance.presentation.screens.emulator
 
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -69,11 +70,15 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.rotary.onRotaryScrollEvent
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material.Button
 import androidx.wear.compose.material.ButtonDefaults
@@ -511,29 +516,121 @@ private fun ScrollableHexGrid(
     var viewportWidth  by remember { mutableStateOf(0) }
     var viewportHeight by remember { mutableStateOf(0) }
 
-    // Resume is actions index 3; scroll so it lands at viewport center on open.
-    LaunchedEffect(viewportWidth, viewportHeight) {
-        if (viewportWidth == 0 || viewportHeight == 0) return@LaunchedEffect
+    // ── Drag-to-dismiss state ──
+    var resistOffset by remember { mutableStateOf(0f) }
+    var dragTotal    by remember { mutableStateOf(0f) }
+
+    // Threshold = one cell height in px
+    val threshold = remember(viewportWidth) {
+        if (viewportWidth == 0) 0f
+        else {
+            val edgePx = with(density) { 8.dp.toPx() }
+            val gapPx  = with(density) { CELL_GAP.toPx() }
+            (viewportWidth - 2f * edgePx - 2f * gapPx) / 3f
+        }
+    }
+
+    // Helper: compute scroll target to center a button index
+    fun scrollTargetFor(index: Int): Int {
         val edgePx    = with(density) { 8.dp.toPx() }
         val gapPx     = with(density) { CELL_GAP.toPx() }
         val available = viewportWidth - 2f * edgePx
         val cellPx    = (available - 2f * gapPx) / 3f
         val stepPx    = cellPx + gapPx
+        val halfStep  = stepPx / 2f
         val topPad    = viewportHeight / 6f
-        // Resume is index 3 → trio 1, col 1 (center)
-        val resumeY   = topPad + 1 * stepPx + cellPx / 2f
-        val target    = (resumeY - viewportHeight / 2f).coerceAtLeast(0f).toInt()
-        scrollState.scrollTo(target)
+        val trio = index / 3
+        val col  = when (index % 3) { 0 -> 1; 1 -> 0; else -> 2 }
+        val y = topPad + trio * stepPx + if (col != 1) halfStep else 0f
+        return (y + cellPx / 2f - viewportHeight / 2f).coerceAtLeast(0f).toInt()
+    }
+
+    // Scroll to center expanded panel, or Resume on close / initial open
+    LaunchedEffect(expandedIndex, viewportWidth, viewportHeight) {
+        if (viewportWidth == 0 || viewportHeight == 0) return@LaunchedEffect
+
+        if (expandedIndex != null) {
+            // Opening: reset drag, center on panel
+            dragTotal = 0f
+            resistOffset = 0f
+            scrollState.animateScrollTo(scrollTargetFor(expandedIndex))
+        } else {
+            // Closing or initial: spring back resist offset, center Resume
+            if (resistOffset != 0f) {
+                launch {
+                    val start = resistOffset
+                    animate(start, 0f, animationSpec = tween(150, easing = FastOutSlowInEasing)) { v, _ ->
+                        resistOffset = v
+                    }
+                }
+            }
+            dragTotal = 0f
+            val target = scrollTargetFor(3) // Resume is index 3
+            scrollState.scrollTo(target)
+        }
     }
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+    // ── Nested scroll: block normal scroll when expanded, track drag ──
+    val expandedRef  = rememberUpdatedState(expandedIndex)
+    val thresholdRef = rememberUpdatedState(threshold)
+    val onToggleRef  = rememberUpdatedState(onExpandToggle)
+
+    val nestedScroll = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val expanded = expandedRef.value ?: return Offset.Zero
+                val t = thresholdRef.value
+                if (t <= 0f) return Offset(0f, available.y)
+
+                dragTotal += available.y
+                val progress = (abs(dragTotal) / t).coerceIn(0f, 1f)
+                // Quadratic ease-out: moves freely at first, decelerates
+                resistOffset = dragTotal.sign * t * 0.3f *
+                    (1f - (1f - progress) * (1f - progress))
+
+                if (progress >= 1f) {
+                    onToggleRef.value(null)
+                }
+                return Offset(0f, available.y) // consume all vertical scroll
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (expandedRef.value != null && abs(dragTotal) > 0f && abs(dragTotal) < thresholdRef.value) {
+                    // Below threshold — spring back
+                    val start = resistOffset
+                    animate(start, 0f, animationSpec = tween(200, easing = FastOutSlowInEasing)) { v, _ ->
+                        resistOffset = v
+                    }
+                    dragTotal = 0f
+                }
+                return if (expandedRef.value != null) available else Velocity.Zero
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .onSizeChanged { viewportWidth = it.width; viewportHeight = it.height }
+            .nestedScroll(nestedScroll)
             .onRotaryScrollEvent {
-                coroutineScope.launch { scrollState.scrollBy(it.verticalScrollPixels) }
+                if (expandedIndex != null) {
+                    // Rotary counts as drag when expanded
+                    val t = threshold
+                    if (t > 0f) {
+                        dragTotal += it.verticalScrollPixels
+                        val progress = (abs(dragTotal) / t).coerceIn(0f, 1f)
+                        resistOffset = dragTotal.sign * t * 0.3f *
+                            (1f - (1f - progress) * (1f - progress))
+                        if (progress >= 1f) {
+                            onExpandToggle(null)
+                        }
+                    }
+                } else {
+                    coroutineScope.launch { scrollState.scrollBy(it.verticalScrollPixels) }
+                }
                 true
             }
             .focusRequester(focusRequester)
@@ -541,7 +638,9 @@ private fun ScrollableHexGrid(
         contentAlignment = Alignment.TopCenter,
     ) {
         Column(
-            modifier = Modifier.verticalScroll(scrollState),
+            modifier = Modifier
+                .verticalScroll(scrollState)
+                .graphicsLayer { translationY = resistOffset },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             HexButtonLayout(
