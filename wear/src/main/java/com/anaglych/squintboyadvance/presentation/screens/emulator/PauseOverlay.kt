@@ -12,7 +12,9 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -76,7 +78,9 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.rotary.onRotaryScrollEvent
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
@@ -94,7 +98,11 @@ import kotlin.math.ceil
 import kotlin.math.roundToInt
 import kotlin.math.sign
 import kotlin.math.sin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.snapshotFlow
+import com.anaglych.squintboyadvance.presentation.screens.settings.PaletteSwatch
+import com.anaglych.squintboyadvance.shared.model.GbColorPalette
 
 private val RED = Color(0xFFEC1358)
 private val BLUE = Color(0xFF6A5ACD)
@@ -120,6 +128,7 @@ private data class PauseAction(
     val enabled: Boolean = false,
     val shimmerStyle: ShimmerStyle = ShimmerStyle.NONE,
     val expandContent: (@Composable () -> Unit)? = null,
+    val onLongClick: (() -> Unit)? = null,
 )
 
 /**
@@ -148,17 +157,49 @@ fun PauseOverlay(
     onFastForward: () -> Unit,
     onLinkCable: () -> Unit,
     onReset: () -> Unit,
-    onPalette: () -> Unit,
+    selectedPaletteIndex: Int,
+    onPaletteSelected: (Int) -> Unit,
     onExit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val green = MaterialTheme.colors.primary
+    val haptic = LocalHapticFeedback.current
 
     var linkEnabled by remember { mutableStateOf(false) }
     var expandedIndex by remember { mutableStateOf<Int?>(null) }
+    var paletteExpanded by remember { mutableStateOf(false) }
+
+    // Haptic on collapse
+    var prevExpandedIndex by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(expandedIndex) {
+        if (prevExpandedIndex != null && expandedIndex == null) {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
+        prevExpandedIndex = expandedIndex
+    }
+    var prevPaletteExpanded by remember { mutableStateOf(false) }
+    LaunchedEffect(paletteExpanded) {
+        if (prevPaletteExpanded && !paletteExpanded) {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
+        prevPaletteExpanded = paletteExpanded
+    }
+
+    // Palette collapse animation bookkeeping
+    var lastPaletteExpanded by remember { mutableStateOf(false) }
+    LaunchedEffect(paletteExpanded) {
+        if (paletteExpanded) lastPaletteExpanded = true
+    }
+    val showPalettes = paletteExpanded || lastPaletteExpanded
+    val paletteProgress by animateFloatAsState(
+        targetValue = if (paletteExpanded) 1f else 0f,
+        animationSpec = tween(300, easing = FastOutSlowInEasing),
+        finishedListener = { if (it == 0f) lastPaletteExpanded = false },
+        label = "paletteProgress",
+    )
 
     val actions = buildList {
-        // 0: Audio (expandable)
+        // 0: Audio (long-press to expand slider, tap toggles mute)
         add(PauseAction(
             if (isMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
             if (isMuted) "Unmute" else "Mute",
@@ -168,13 +209,13 @@ fun PauseOverlay(
             enabled = !isMuted,
             shimmerStyle = ShimmerStyle.HEARTBEAT,
             expandContent = {
-                AudioExpandContent(
-                    isMuted = isMuted,
+                CompactVolumeSlider(
                     volume = volume,
-                    onToggleMute = onToggleMute,
                     onVolumeChange = onVolumeChange,
+                    enabled = !isMuted,
                 )
             },
+            onLongClick = {}, // placeholder, overridden in layout to toggle expand
         ))
         // 1: Save (expandable)
         add(PauseAction(
@@ -208,7 +249,12 @@ fun PauseOverlay(
         add(PauseAction(Icons.Default.Close, "Exit", onExit, backgroundColor = RED.copy(alpha = 0.85f)))
         // 9: Palette (GB only)
         if (isGb) {
-            add(PauseAction(Icons.Default.Brush, "Palette", onPalette, backgroundColor = green.copy(alpha = 0.85f)))
+            add(PauseAction(
+                Icons.Default.Brush, "Palette",
+                onClick = { paletteExpanded = !paletteExpanded; expandedIndex = null },
+                backgroundColor = green.copy(alpha = 0.85f),
+                enabled = paletteExpanded,
+            ))
         }
     }
 
@@ -221,54 +267,17 @@ fun PauseOverlay(
         ScrollableHexGrid(
             actions = actions,
             expandedIndex = expandedIndex,
-            onExpandToggle = { expandedIndex = it },
-        )
-    }
-}
-
-// ── Audio expand content ────────────────────────────────────────────
-
-@Composable
-private fun AudioExpandContent(
-    isMuted: Boolean,
-    volume: Float,
-    onToggleMute: () -> Unit,
-    onVolumeChange: (Float) -> Unit,
-) {
-    val green = MaterialTheme.colors.primary
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Button(
-                onClick = onToggleMute,
-                modifier = Modifier.size(32.dp),
-                colors = ButtonDefaults.buttonColors(
-                    backgroundColor = if (isMuted) RED.copy(alpha = 0.85f) else green.copy(alpha = 0.85f),
-                ),
-            ) {
-                Icon(
-                    imageVector = if (isMuted) Icons.AutoMirrored.Filled.VolumeOff
-                        else Icons.AutoMirrored.Filled.VolumeUp,
-                    contentDescription = if (isMuted) "Unmute" else "Mute",
-                    tint = Color.White,
-                    modifier = Modifier.size(16.dp),
-                )
-            }
-            Text(
-                text = if (isMuted) "Muted" else "${(volume * 100).roundToInt()}%",
-                color = Color.White,
-                style = MaterialTheme.typography.body2,
-            )
-        }
-        CompactVolumeSlider(
-            volume = volume,
-            onVolumeChange = onVolumeChange,
-            enabled = !isMuted,
+            onExpandToggle = { expandedIndex = it; if (it != null) paletteExpanded = false },
+            paletteExpanded = paletteExpanded,
+            onPaletteClose = { paletteExpanded = false },
+            showPalettes = showPalettes,
+            paletteProgress = paletteProgress,
+            selectedPaletteIndex = selectedPaletteIndex,
+            onPaletteSelected = { index ->
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                paletteExpanded = false
+                onPaletteSelected(index)
+            },
         )
     }
 }
@@ -507,6 +516,12 @@ private fun ScrollableHexGrid(
     actions: List<PauseAction>,
     expandedIndex: Int?,
     onExpandToggle: (Int?) -> Unit,
+    paletteExpanded: Boolean,
+    onPaletteClose: () -> Unit,
+    showPalettes: Boolean,
+    paletteProgress: Float,
+    selectedPaletteIndex: Int,
+    onPaletteSelected: (Int) -> Unit,
 ) {
     val scrollState    = rememberScrollState()
     val focusRequester = remember { FocusRequester() }
@@ -567,6 +582,29 @@ private fun ScrollableHexGrid(
             dragTotal = 0f
             val target = scrollTargetFor(3) // Resume is index 3
             scrollState.scrollTo(target)
+        }
+    }
+
+    // Palette auto-scroll and scroll-to-dismiss
+    LaunchedEffect(paletteExpanded) {
+        if (!paletteExpanded) return@LaunchedEffect
+        if (viewportWidth == 0 || viewportHeight == 0) return@LaunchedEffect
+        // Snap to palette button area, wait for content to expand
+        scrollState.scrollTo(scrollTargetFor(actions.lastIndex))
+        delay(320) // let paletteProgress (300ms tween) finish
+        // Dismiss when palette button is back at/above center
+        val dismissScrollY = scrollTargetFor(actions.lastIndex)
+        // Center on the currently selected palette swatch
+        val selectedGridIdx = actions.lastIndex + selectedPaletteIndex
+        scrollState.animateScrollTo(scrollTargetFor(selectedGridIdx))
+        // Only watch for dismiss if we actually scrolled past the palette button
+        if (scrollState.value > dismissScrollY) {
+            snapshotFlow { scrollState.value }
+                .collect { scrollY ->
+                    if (scrollY <= dismissScrollY) {
+                        onPaletteClose()
+                    }
+                }
         }
     }
 
@@ -644,12 +682,16 @@ private fun ScrollableHexGrid(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             HexButtonLayout(
-                actions        = actions,
-                gap            = CELL_GAP,
-                scrollOffset   = scrollState.value,
-                viewportHeight = viewportHeight,
-                expandedIndex  = expandedIndex,
-                onExpandToggle = onExpandToggle,
+                actions              = actions,
+                gap                  = CELL_GAP,
+                scrollOffset         = scrollState.value,
+                viewportHeight       = viewportHeight,
+                expandedIndex        = expandedIndex,
+                onExpandToggle       = onExpandToggle,
+                showPalettes         = showPalettes,
+                paletteProgress      = paletteProgress,
+                selectedPaletteIndex = selectedPaletteIndex,
+                onPaletteSelected    = onPaletteSelected,
             )
         }
     }
@@ -665,6 +707,10 @@ private fun HexButtonLayout(
     viewportHeight: Int,
     expandedIndex: Int?,
     onExpandToggle: (Int?) -> Unit,
+    showPalettes: Boolean,
+    paletteProgress: Float,
+    selectedPaletteIndex: Int,
+    onPaletteSelected: (Int) -> Unit,
 ) {
     // Track last expanded index so collapse animation has content to render.
     var lastExpandedIndex by remember { mutableStateOf<Int?>(null) }
@@ -682,12 +728,17 @@ private fun HexButtonLayout(
 
     Layout(
         content = {
-            // Hex buttons — expandable ones get their onClick overridden to toggle expansion.
+            // Hex buttons — expandable ones get click/long-press wired to toggle expansion.
             actions.forEachIndexed { index, action ->
                 val effectiveAction = if (action.expandContent != null) {
-                    action.copy(onClick = {
-                        onExpandToggle(if (expandedIndex == index) null else index)
-                    })
+                    val toggleExpand = { onExpandToggle(if (expandedIndex == index) null else index) }
+                    if (action.onLongClick != null) {
+                        // Long press to expand; tap uses original onClick
+                        action.copy(onLongClick = toggleExpand)
+                    } else {
+                        // Tap to expand
+                        action.copy(onClick = toggleExpand)
+                    }
                 } else action
                 HexButton(effectiveAction)
             }
@@ -695,6 +746,16 @@ private fun HexButtonLayout(
             MorphPanel(expandProgress) {
                 if (activeExpandedIndex != null && expandProgress > 0f) {
                     actions.getOrNull(activeExpandedIndex)?.expandContent?.invoke()
+                }
+            }
+            // Palette swatches (when palette is expanding or collapsing)
+            if (showPalettes) {
+                GbColorPalette.ALL.forEachIndexed { index, palette ->
+                    PaletteSwatch(
+                        palette = palette,
+                        selected = index == selectedPaletteIndex,
+                        onClick = { onPaletteSelected(index) },
+                    )
                 }
             }
         },
@@ -729,10 +790,20 @@ private fun HexButtonLayout(
 
         // Panel measurement — width interpolates from cell to full row
         val panelWidth = cellPx + ((totalWidth - cellPx) * expandProgress).toInt()
-        val panelPlaceable = measurables.last().measure(
+        val panelPlaceable = measurables[actions.size].measure(
             constraints.copy(minWidth = panelWidth, maxWidth = panelWidth, minHeight = 0)
         )
         val panelExtra = (panelPlaceable.height - cellPx).coerceAtLeast(0)
+
+        // Measure palette swatches at cell size
+        val palettePlaceables = if (showPalettes) {
+            measurables.drop(actions.size + 1).map {
+                it.measure(constraints.copy(
+                    minWidth = cellPx, maxWidth = cellPx,
+                    minHeight = cellPx, maxHeight = cellPx,
+                ))
+            }
+        } else emptyList()
 
         // ── Cohort displacement system ──────────────────────────────
         // Each column (left/center/right) splits into above and below
@@ -782,7 +853,14 @@ private fun HexButtonLayout(
             (maxOf(belowDisp[0], belowDisp[1], belowDisp[2]) * expandProgress).toInt()
         } else 0
 
-        val contentH = topPad + stepPx * rows + halfStep + topPad + insertHeight
+        // Extra height for inline palette swatches (first swatch replaces palette button)
+        val paletteCount = palettePlaceables.size
+        val totalRows = if (paletteCount > 0) {
+            ceil(((actions.size - 1) + paletteCount) / 3f).toInt()
+        } else rows
+        val paletteExtraH = ((totalRows - rows) * stepPx * paletteProgress).toInt()
+
+        val contentH = topPad + stepPx * rows + halfStep + topPad + insertHeight + paletteExtraH
 
         val halfViewport = viewportHeight / 2f
         val deadZone = halfViewport * PauseTuning.DEAD_ZONE
@@ -808,9 +886,16 @@ private fun HexButtonLayout(
 
                 val y = baseY + yOffset
 
-                // Fade out the button being replaced by the panel
+                // Fade out buttons replaced by panel/palette; dim others
                 val isExpandedButton = index == activeExpandedIndex
-                val buttonAlpha = if (isExpandedButton) 1f - expandProgress else 1f
+                val isPaletteReplaced = showPalettes && index == actions.lastIndex
+                val dimProgress = maxOf(expandProgress, paletteProgress)
+                val buttonAlpha = when {
+                    isExpandedButton -> 1f - expandProgress
+                    isPaletteReplaced -> 1f - paletteProgress
+                    dimProgress > 0f -> 1f - 0.3f * dimProgress
+                    else -> 1f
+                }
 
                 val viewportY   = y - scrollOffset + cellPx / 2f
                 val vertDist    = abs(viewportY - viewportHeight / 2f)
@@ -843,6 +928,56 @@ private fun HexButtonLayout(
 
                 panelPlaceable.placeRelativeWithLayer(panelX, expandedBaseY) {
                     alpha = expandProgress
+                }
+            }
+
+            // Place palette swatches, animating from palette button origin
+            if (palettePlaceables.isNotEmpty()) {
+                val palBtnIdx = actions.size - 1
+                val palBtnTrio = palBtnIdx / 3
+                val palBtnSlot = palBtnIdx % 3
+                val palBtnCol = when (palBtnSlot) { 0 -> 1; 1 -> 0; else -> 2 }
+                val palBtnX = offsetX + palBtnCol * stepPx
+                val palBtnY = topPad + palBtnTrio * stepPx +
+                    if (palBtnCol != 1) halfStep else 0
+
+                palettePlaceables.forEachIndexed { pIdx, placeable ->
+                    val gridIdx = (actions.size - 1) + pIdx
+                    val trio = gridIdx / 3
+                    val slot = gridIdx % 3
+                    val col = when (slot) { 0 -> 1; 1 -> 0; else -> 2 }
+                    val targetX = offsetX + col * stepPx
+                    val targetY = topPad + trio * stepPx +
+                        if (col != 1) halfStep else 0
+
+                    val x = palBtnX + ((targetX - palBtnX) * paletteProgress).toInt()
+                    val y = palBtnY + ((targetY - palBtnY) * paletteProgress).toInt()
+
+                    val viewportY = y - scrollOffset + cellPx / 2f
+                    val vertDist = abs(viewportY - viewportHeight / 2f)
+                    val sidePenalty = if (col != 1)
+                        halfViewport * PauseTuning.SIDE_BIAS else 0f
+                    val distCenter = vertDist + sidePenalty
+                    val linear = ((distCenter - deadZone) / fadeZone)
+                        .coerceIn(0f, 1f)
+                    val eased = PauseTuning.ease(linear)
+                    val scale = 1f - eased * PauseTuning.SCALE_AMOUNT
+                    val itemAlpha = (1f - eased * PauseTuning.ALPHA_AMOUNT) *
+                        paletteProgress
+
+                    val shrinkPx = (1f - scale) * cellPx * 0.5f
+                    val ctrX = constraints.maxWidth / 2f
+                    val itemCtrX = x + cellPx / 2f
+                    val txX = if (col != 1) (ctrX - itemCtrX).sign * shrinkPx
+                        else 0f
+                    val txY = if (viewportY < viewportHeight / 2f) shrinkPx
+                        else -shrinkPx
+
+                    placeable.placeRelativeWithLayer(x, y) {
+                        scaleX = scale; scaleY = scale
+                        alpha = itemAlpha
+                        translationX = txX; translationY = txY
+                    }
                 }
             }
         }
@@ -957,6 +1092,7 @@ private fun FfRippleIcon() {
 
 // ── Hex button ──────────────────────────────────────────────────────
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HexButton(action: PauseAction) {
     val green = MaterialTheme.colors.primary
@@ -1002,11 +1138,7 @@ private fun HexButton(action: PauseAction) {
         else                                          -> Pair(1f, 1f)
     }
 
-    Button(
-        onClick = action.onClick,
-        modifier = Modifier.size(48.dp),
-        colors = ButtonDefaults.buttonColors(backgroundColor = effectiveBg),
-    ) {
+    val iconContent: @Composable () -> Unit = {
         if (action.shimmerStyle == ShimmerStyle.WAVE && action.enabled) {
             FfRippleIcon()
         } else {
@@ -1023,5 +1155,29 @@ private fun HexButton(action: PauseAction) {
                     },
             )
         }
+    }
+
+    if (action.onLongClick != null) {
+        val haptic = LocalHapticFeedback.current
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(CircleShape)
+                .background(effectiveBg)
+                .combinedClickable(
+                    onClick = action.onClick,
+                    onLongClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        action.onLongClick.invoke()
+                    },
+                ),
+            contentAlignment = Alignment.Center,
+        ) { iconContent() }
+    } else {
+        Button(
+            onClick = action.onClick,
+            modifier = Modifier.size(48.dp),
+            colors = ButtonDefaults.buttonColors(backgroundColor = effectiveBg),
+        ) { iconContent() }
     }
 }

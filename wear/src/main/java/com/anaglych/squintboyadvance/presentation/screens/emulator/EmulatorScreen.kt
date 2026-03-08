@@ -25,13 +25,12 @@ import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import com.anaglych.squintboyadvance.presentation.SettingsRepository
 import com.anaglych.squintboyadvance.presentation.components.WearSlideToConfirm
-import com.anaglych.squintboyadvance.presentation.screens.settings.PalettePickerOverlay
 import com.anaglych.squintboyadvance.presentation.screens.settings.ScaleEditorScreen
 import com.anaglych.squintboyadvance.shared.emulator.EmulatorState
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 import com.anaglych.squintboyadvance.shared.model.SystemType
 
-private enum class PauseUiState { MENU, SCALE_EDITOR, CONFIRM_RESET, PALETTE_PICKER }
+private enum class PauseUiState { MENU, SCALE_EDITOR, CONFIRM_RESET }
 
 @Composable
 fun EmulatorScreen(
@@ -136,14 +135,15 @@ fun EmulatorScreen(
                         onResume = viewModel::resume,
                         onScale = { pauseUiState = PauseUiState.SCALE_EDITOR },
                         onController = { /* TODO */ },
-                        onSave = { viewModel.saveState() },
-                        onLoad = { viewModel.loadState() },
-                        onUndoSave = { viewModel.undoSave() },
-                        onUndoLoad = { viewModel.undoLoad() },
+                        onSave = { viewModel.saveState(); viewModel.resume() },
+                        onLoad = { viewModel.loadState(); viewModel.resume() },
+                        onUndoSave = { viewModel.undoSave(); viewModel.resume() },
+                        onUndoLoad = { viewModel.undoLoad(); viewModel.resume() },
                         onFastForward = viewModel::toggleFastForward,
                         onLinkCable = { /* TODO */ },
                         onReset = { pauseUiState = PauseUiState.CONFIRM_RESET },
-                        onPalette = { pauseUiState = PauseUiState.PALETTE_PICKER },
+                        selectedPaletteIndex = settings.gbPaletteIndex,
+                        onPaletteSelected = { viewModel.setGbPalette(it); viewModel.resume() },
                         onExit = {
                             viewModel.stop()
                             onExit()
@@ -165,14 +165,6 @@ fun EmulatorScreen(
                         onDismiss = { pauseUiState = PauseUiState.MENU },
                     )
 
-                    PauseUiState.PALETTE_PICKER -> PalettePickerOverlay(
-                        selectedIndex = settings.gbPaletteIndex,
-                        onSelected = { index ->
-                            viewModel.setGbPalette(index)
-                            pauseUiState = PauseUiState.MENU
-                        },
-                        onDismiss = { pauseUiState = PauseUiState.MENU },
-                    )
                 }
             }
 

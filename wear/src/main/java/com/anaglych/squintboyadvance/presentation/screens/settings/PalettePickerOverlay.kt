@@ -239,7 +239,7 @@ private fun HexLayout(
  * A white ring is drawn when selected.
  */
 @Composable
-private fun PaletteSwatch(
+internal fun PaletteSwatch(
     palette: GbColorPalette,
     selected: Boolean,
     onClick: () -> Unit,
