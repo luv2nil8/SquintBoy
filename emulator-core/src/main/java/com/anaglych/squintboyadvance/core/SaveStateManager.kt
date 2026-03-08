@@ -136,6 +136,63 @@ class SaveStateManager(
         }
     }
 
+    // ── Explicit user-facing save/load/undo ─────────────────────────────
+    //
+    // These operate on a dedicated .usersave file, completely separate from
+    // the auto-save stack (.ss0–.ss4). Auto-saves are background redundancy only.
+
+    /** True if the user has ever explicitly saved this ROM. */
+    fun hasSaveState(): Boolean = userSaveFile().exists() && userSaveFile().length() > 0
+
+    /**
+     * User-triggered save. Backs up any existing user save for undo,
+     * then writes the current emulator state to the user save slot.
+     */
+    fun saveExplicit(): Boolean {
+        if (userSaveFile().exists()) {
+            try { userSaveFile().copyTo(undoSaveFile(), overwrite = true) } catch (_: Exception) {}
+        } else {
+            undoSaveFile().delete()
+        }
+        return emulator.saveState(userSaveFile().absolutePath) && hasSaveState()
+    }
+
+    /**
+     * User-triggered load. Snapshots current state to an undo file first so
+     * [undoLoad] can take the user back to where they were.
+     */
+    fun loadExplicit(): Boolean {
+        if (!hasSaveState()) return false
+        emulator.saveState(undoLoadFile().absolutePath)
+        return emulator.loadState(userSaveFile().absolutePath)
+    }
+
+    /**
+     * Undo the last explicit save — restores the previous user save (or deletes
+     * the slot if there was none). Emulator state is NOT changed.
+     */
+    fun undoSave(): Boolean {
+        val undo = undoSaveFile()
+        if (undo.exists() && undo.length() > 0) {
+            undo.copyTo(userSaveFile(), overwrite = true)
+            undo.delete()
+        } else {
+            userSaveFile().delete()
+        }
+        return true
+    }
+
+    /** Undo the last explicit load — restores the snapshot taken before loading. */
+    fun undoLoad(): Boolean {
+        val undo = undoLoadFile()
+        if (!undo.exists() || undo.length() == 0L) return false
+        return emulator.loadState(undo.absolutePath)
+    }
+
+    private fun userSaveFile(): File = File(stateDir, "$romId.usersave")
+    private fun undoSaveFile(): File = File(stateDir, "$romId.undosave")
+    private fun undoLoadFile(): File = File(stateDir, "$romId.undoload")
+
     private fun restoreSram() {
         val live = liveSramFile()
 

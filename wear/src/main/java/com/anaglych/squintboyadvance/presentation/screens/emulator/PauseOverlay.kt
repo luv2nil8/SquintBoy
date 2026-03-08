@@ -1,155 +1,928 @@
 package com.anaglych.squintboyadvance.presentation.screens.emulator
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.horizontalDrag
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Brush
+import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.Gamepad
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.rotary.onRotaryScrollEvent
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material.Button
 import androidx.wear.compose.material.ButtonDefaults
+import androidx.wear.compose.material.Chip
+import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.Icon
+import androidx.wear.compose.material.InlineSliderDefaults
 import androidx.wear.compose.material.MaterialTheme
+import androidx.wear.compose.material.Text
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.roundToInt
+import kotlin.math.sign
+import kotlin.math.sin
+import kotlinx.coroutines.launch
 
 private val RED = Color(0xFFEC1358)
-private val BUTTON_SIZE = 52.dp
-private val BUTTON_SPACING = 14.dp
+private val BLUE = Color(0xFF6A5ACD)
+private val CELL_GAP = 6.dp
+
+private object PauseTuning {
+    const val DEAD_ZONE    = 0.25f
+    const val FADE_ZONE    = 1.1f
+    const val SCALE_AMOUNT = 0.50f
+    const val ALPHA_AMOUNT = 0.40f
+    const val SIDE_BIAS    = 0.20f
+    fun ease(t: Float): Float = t * t
+}
+
+private enum class ShimmerStyle { NONE, PULSE, WAVE, HEARTBEAT }
+
+private data class PauseAction(
+    val icon: ImageVector,
+    val label: String,
+    val onClick: () -> Unit,
+    val backgroundColor: Color = Color.White.copy(alpha = 0.12f),
+    val iconColor: Color = Color.White,
+    val enabled: Boolean = false,
+    val shimmerStyle: ShimmerStyle = ShimmerStyle.NONE,
+    val expandContent: (@Composable () -> Unit)? = null,
+)
 
 /**
- * Pause menu overlay.
+ * Pause menu: scrollable honeycomb grid, same layout engine as the palette picker.
  *
- * For GBA (isGb = false):        For GB/GBC (isGb = true):
- * ```                             ```
- * [🔇 Mute]   [▶ Resume]         [🔇 Mute]   [▶ Resume]
- * [⊡ Display] [↺ Reset]          [⊡ Display] [↺ Reset]
- *      [✕ Exit]                   [🎨 Palette] [✕ Exit]
- * ```                             ```
+ * Slot order: Volume · Save · FF · Resume · Scale · Controls · Link · Reset · Exit · [Palette]
  */
 @Composable
 fun PauseOverlay(
     isMuted: Boolean,
+    isFastForward: Boolean,
     isGb: Boolean,
+    volume: Float,
+    hasSaveState: Boolean,
+    canUndoSave: Boolean,
+    canUndoLoad: Boolean,
     onToggleMute: () -> Unit,
+    onVolumeChange: (Float) -> Unit,
     onResume: () -> Unit,
-    onInterface: () -> Unit,
+    onScale: () -> Unit,
+    onController: () -> Unit,
+    onSave: () -> Unit,
+    onLoad: () -> Unit,
+    onUndoSave: () -> Unit,
+    onUndoLoad: () -> Unit,
+    onFastForward: () -> Unit,
+    onLinkCable: () -> Unit,
     onReset: () -> Unit,
     onPalette: () -> Unit,
     onExit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val green = MaterialTheme.colors.primary
+
+    var linkEnabled by remember { mutableStateOf(false) }
+    var expandedIndex by remember { mutableStateOf<Int?>(null) }
+
+    val actions = buildList {
+        // 0: Audio (expandable)
+        add(PauseAction(
+            if (isMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+            if (isMuted) "Unmute" else "Mute",
+            onToggleMute,
+            backgroundColor = if (isMuted) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.12f),
+            iconColor = if (isMuted) RED else Color.White,
+            enabled = !isMuted,
+            shimmerStyle = ShimmerStyle.HEARTBEAT,
+            expandContent = {
+                AudioExpandContent(
+                    isMuted = isMuted,
+                    volume = volume,
+                    onToggleMute = onToggleMute,
+                    onVolumeChange = onVolumeChange,
+                )
+            },
+        ))
+        // 1: Save (expandable)
+        add(PauseAction(
+            Icons.Default.Save, "Save", {},
+            backgroundColor = green.copy(alpha = 0.85f),
+            expandContent = {
+                SaveExpandContent(
+                    hasSaveState = hasSaveState,
+                    canUndoSave = canUndoSave,
+                    canUndoLoad = canUndoLoad,
+                    onSave = onSave,
+                    onLoad = onLoad,
+                    onUndoSave = onUndoSave,
+                    onUndoLoad = onUndoLoad,
+                )
+            },
+        ))
+        // 2: Fast Forward
+        add(PauseAction(Icons.Default.FastForward, "Fast Fwd", onClick = onFastForward, enabled = isFastForward, shimmerStyle = ShimmerStyle.WAVE))
+        // 3: Resume
+        add(PauseAction(Icons.Default.PlayArrow, "Resume", onResume, iconColor = green))
+        // 4: Scale
+        add(PauseAction(Icons.Default.AspectRatio, "Scale", onScale, backgroundColor = green.copy(alpha = 0.85f)))
+        // 5: Controls
+        add(PauseAction(Icons.Default.Gamepad, "Controls", onController, backgroundColor = green.copy(alpha = 0.85f)))
+        // 6: Link Cable (expandable placeholder)
+        add(PauseAction(Icons.Default.Cable, "Link Cable", onClick = { linkEnabled = !linkEnabled }, enabled = linkEnabled, shimmerStyle = ShimmerStyle.PULSE))
+        // 7: Reset
+        add(PauseAction(Icons.Default.Refresh, "Reset", onReset, iconColor = RED))
+        // 8: Exit
+        add(PauseAction(Icons.Default.Close, "Exit", onExit, backgroundColor = RED.copy(alpha = 0.85f)))
+        // 9: Palette (GB only)
+        if (isGb) {
+            add(PauseAction(Icons.Default.Brush, "Palette", onPalette, backgroundColor = green.copy(alpha = 0.85f)))
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.82f)),
         contentAlignment = Alignment.Center,
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ScrollableHexGrid(
+            actions = actions,
+            expandedIndex = expandedIndex,
+            onExpandToggle = { expandedIndex = it },
+        )
+    }
+}
+
+// ── Audio expand content ────────────────────────────────────────────
+
+@Composable
+private fun AudioExpandContent(
+    isMuted: Boolean,
+    volume: Float,
+    onToggleMute: () -> Unit,
+    onVolumeChange: (Float) -> Unit,
+) {
+    val green = MaterialTheme.colors.primary
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            val primaryGreen = MaterialTheme.colors.primary
-
-            // Row 1: Mute + Resume
-            Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_SPACING)) {
-                PauseButton(
-                    icon = if (isMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
-                    label = if (isMuted) "Unmute" else "Mute",
-                    onClick = onToggleMute,
-                    backgroundColor = primaryGreen.copy(alpha = 0.85f),
-                )
-                PauseButton(
-                    icon = Icons.Default.PlayArrow,
-                    label = "Resume",
-                    onClick = onResume,
-                    iconColor = primaryGreen,
+            Button(
+                onClick = onToggleMute,
+                modifier = Modifier.size(32.dp),
+                colors = ButtonDefaults.buttonColors(
+                    backgroundColor = if (isMuted) RED.copy(alpha = 0.85f) else green.copy(alpha = 0.85f),
+                ),
+            ) {
+                Icon(
+                    imageVector = if (isMuted) Icons.AutoMirrored.Filled.VolumeOff
+                        else Icons.AutoMirrored.Filled.VolumeUp,
+                    contentDescription = if (isMuted) "Unmute" else "Mute",
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp),
                 )
             }
+            Text(
+                text = if (isMuted) "Muted" else "${(volume * 100).roundToInt()}%",
+                color = Color.White,
+                style = MaterialTheme.typography.body2,
+            )
+        }
+        CompactVolumeSlider(
+            volume = volume,
+            onVolumeChange = onVolumeChange,
+            enabled = !isMuted,
+        )
+    }
+}
 
-            Spacer(Modifier.height(2.dp))
+@Composable
+private fun CompactVolumeSlider(
+    volume: Float,
+    onVolumeChange: (Float) -> Unit,
+    enabled: Boolean,
+) {
+    val primaryColor = MaterialTheme.colors.primary
+    val disabledColor = Color.White.copy(alpha = 0.3f)
+    val activeColor = if (enabled) primaryColor else disabledColor
+    val trackColor = Color.White.copy(alpha = if (enabled) 0.12f else 0.06f)
+    val volumeState = rememberUpdatedState(volume)
 
-            // Row 2: Display + Reset
-            Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_SPACING)) {
-                PauseButton(
-                    icon = Icons.Default.AspectRatio,
-                    label = "Display",
-                    onClick = onInterface,
-                    backgroundColor = primaryGreen.copy(alpha = 0.85f),
-                )
-                PauseButton(
-                    icon = Icons.Default.Refresh,
-                    label = "Reset",
-                    onClick = onReset,
-                    iconColor = RED,
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(36.dp)
+            .background(
+                color = Color.White.copy(alpha = 0.06f),
+                shape = RoundedCornerShape(18.dp),
+            )
+            .padding(horizontal = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .then(if (enabled) Modifier.clickable {
+                    val stepped = ((volumeState.value * 10).roundToInt() - 1)
+                        .coerceIn(0, 10) / 10f
+                    onVolumeChange(stepped)
+                } else Modifier),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = InlineSliderDefaults.Decrease,
+                contentDescription = "Decrease",
+                tint = activeColor,
+            )
+        }
+
+        Canvas(
+            modifier = Modifier
+                .weight(1f)
+                .height(20.dp)
+                .then(if (enabled) Modifier.pointerInput(Unit) {
+                    val thumbR = 6.dp.toPx()
+                    val usable = size.width - thumbR * 2
+
+                    fun fractionToVolume(x: Float): Float {
+                        val f = ((x - thumbR) / usable).coerceIn(0f, 1f)
+                        return (f * 10).roundToInt() / 10f
+                    }
+
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val drag = awaitTouchSlopOrCancellation(down.id) { change, _ ->
+                            change.consume()
+                        }
+                        if (drag != null) {
+                            onVolumeChange(fractionToVolume(drag.position.x))
+                            horizontalDrag(drag.id) { change ->
+                                change.consume()
+                                onVolumeChange(fractionToVolume(change.position.x))
+                            }
+                        } else {
+                            onVolumeChange(fractionToVolume(down.position.x))
+                        }
+                    }
+                } else Modifier),
+        ) {
+            val trackH = 3.dp.toPx()
+            val trackY = (size.height - trackH) / 2
+            val thumbRadius = 6.dp.toPx()
+            val trackLeft = thumbRadius
+            val trackRight = size.width - thumbRadius
+            val trackW = trackRight - trackLeft
+            val fraction = volume.coerceIn(0f, 1f)
+            val thumbX = trackLeft + fraction * trackW
+
+            drawRoundRect(
+                color = trackColor,
+                topLeft = Offset(trackLeft, trackY),
+                size = Size(trackW, trackH),
+                cornerRadius = CornerRadius(trackH / 2),
+            )
+            if (fraction > 0f) {
+                drawRoundRect(
+                    color = activeColor,
+                    topLeft = Offset(trackLeft, trackY),
+                    size = Size(thumbX - trackLeft, trackH),
+                    cornerRadius = CornerRadius(trackH / 2),
                 )
             }
+            val tickRadius = 1.5f.dp.toPx() / 2
+            val tickColor = Color.White.copy(alpha = 0.25f)
+            for (i in 0..10) {
+                val tickFrac = i / 10f
+                val tickX = trackLeft + tickFrac * trackW
+                drawCircle(
+                    color = if (tickFrac <= fraction) activeColor.copy(alpha = 0.5f) else tickColor,
+                    radius = tickRadius,
+                    center = Offset(tickX, size.height / 2),
+                )
+            }
+            drawCircle(
+                color = activeColor,
+                radius = thumbRadius,
+                center = Offset(thumbX, size.height / 2),
+            )
+        }
 
-            Spacer(Modifier.height(2.dp))
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .then(if (enabled) Modifier.clickable {
+                    val stepped = ((volumeState.value * 10).roundToInt() + 1)
+                        .coerceIn(0, 10) / 10f
+                    onVolumeChange(stepped)
+                } else Modifier),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = InlineSliderDefaults.Increase,
+                contentDescription = "Increase",
+                tint = activeColor,
+            )
+        }
+    }
+}
 
-            // Row 3: Palette + Exit (GB) or just Exit (GBA)
-            if (isGb) {
-                Row(horizontalArrangement = Arrangement.spacedBy(BUTTON_SPACING)) {
-                    PauseButton(
-                        icon = Icons.Default.Brush,
-                        label = "Palette",
-                        onClick = onPalette,
-                        backgroundColor = primaryGreen.copy(alpha = 0.85f),
-                    )
-                    PauseButton(
-                        icon = Icons.Default.Close,
-                        label = "Exit",
-                        onClick = onExit,
-                        backgroundColor = RED.copy(alpha = 0.85f),
-                        iconColor = Color.White,
-                    )
+// ── Save expand content ─────────────────────────────────────────────
+
+@Composable
+private fun SaveExpandContent(
+    hasSaveState: Boolean,
+    canUndoSave: Boolean,
+    canUndoLoad: Boolean,
+    onSave: () -> Unit,
+    onLoad: () -> Unit,
+    onUndoSave: () -> Unit,
+    onUndoLoad: () -> Unit,
+) {
+    val green = MaterialTheme.colors.primary
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        CompactSaveLoadRow(
+            label = "Save",
+            icon = Icons.Default.Save,
+            chipBg = green.copy(alpha = 0.85f),
+            chipEnabled = true,
+            onChip = onSave,
+            accentColor = green,
+            undoEnabled = canUndoSave,
+            onUndo = onUndoSave,
+        )
+        CompactSaveLoadRow(
+            label = "Load",
+            icon = Icons.Default.Restore,
+            chipBg = BLUE.copy(alpha = 0.85f),
+            disabledChipBg = BLUE.copy(alpha = 0.15f),
+            chipEnabled = hasSaveState,
+            onChip = onLoad,
+            accentColor = BLUE,
+            undoEnabled = canUndoLoad,
+            onUndo = onUndoLoad,
+        )
+    }
+}
+
+@Composable
+private fun CompactSaveLoadRow(
+    label: String,
+    icon: ImageVector,
+    chipBg: Color,
+    disabledChipBg: Color = chipBg.copy(alpha = 0.10f),
+    chipEnabled: Boolean,
+    onChip: () -> Unit,
+    accentColor: Color,
+    undoEnabled: Boolean,
+    onUndo: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Chip(
+            modifier = Modifier.weight(1f).height(36.dp),
+            onClick = onChip,
+            enabled = chipEnabled,
+            colors = ChipDefaults.chipColors(
+                backgroundColor = chipBg,
+                disabledBackgroundColor = disabledChipBg,
+            ),
+            label = { Text(label, style = MaterialTheme.typography.body2) },
+            icon = {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+            },
+        )
+        Spacer(Modifier.width(4.dp))
+        Button(
+            onClick = onUndo,
+            enabled = undoEnabled,
+            modifier = Modifier.size(36.dp),
+            colors = ButtonDefaults.buttonColors(
+                backgroundColor = Color.White.copy(alpha = 0.12f),
+                disabledBackgroundColor = Color.White.copy(alpha = 0.06f),
+            ),
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.Undo,
+                contentDescription = "Undo",
+                tint = accentColor,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+    }
+}
+
+// ── Scrollable hex grid ─────────────────────────────────────────────
+
+@Composable
+private fun ScrollableHexGrid(
+    actions: List<PauseAction>,
+    expandedIndex: Int?,
+    onExpandToggle: (Int?) -> Unit,
+) {
+    val scrollState    = rememberScrollState()
+    val focusRequester = remember { FocusRequester() }
+    val coroutineScope = rememberCoroutineScope()
+    val density        = LocalDensity.current
+
+    var viewportWidth  by remember { mutableStateOf(0) }
+    var viewportHeight by remember { mutableStateOf(0) }
+
+    // Resume is actions index 3; scroll so it lands at viewport center on open.
+    LaunchedEffect(viewportWidth, viewportHeight) {
+        if (viewportWidth == 0 || viewportHeight == 0) return@LaunchedEffect
+        val edgePx    = with(density) { 8.dp.toPx() }
+        val gapPx     = with(density) { CELL_GAP.toPx() }
+        val available = viewportWidth - 2f * edgePx
+        val cellPx    = (available - 2f * gapPx) / 3f
+        val stepPx    = cellPx + gapPx
+        val topPad    = viewportHeight / 6f
+        // Resume is index 3 → trio 1, col 1 (center)
+        val resumeY   = topPad + 1 * stepPx + cellPx / 2f
+        val target    = (resumeY - viewportHeight / 2f).coerceAtLeast(0f).toInt()
+        scrollState.scrollTo(target)
+    }
+
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onSizeChanged { viewportWidth = it.width; viewportHeight = it.height }
+            .onRotaryScrollEvent {
+                coroutineScope.launch { scrollState.scrollBy(it.verticalScrollPixels) }
+                true
+            }
+            .focusRequester(focusRequester)
+            .focusable(),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Column(
+            modifier = Modifier.verticalScroll(scrollState),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            HexButtonLayout(
+                actions        = actions,
+                gap            = CELL_GAP,
+                scrollOffset   = scrollState.value,
+                viewportHeight = viewportHeight,
+                expandedIndex  = expandedIndex,
+                onExpandToggle = onExpandToggle,
+            )
+        }
+    }
+}
+
+// ── Hex layout with morphing expand ─────────────────────────────────
+
+@Composable
+private fun HexButtonLayout(
+    actions: List<PauseAction>,
+    gap: Dp,
+    scrollOffset: Int,
+    viewportHeight: Int,
+    expandedIndex: Int?,
+    onExpandToggle: (Int?) -> Unit,
+) {
+    // Track last expanded index so collapse animation has content to render.
+    var lastExpandedIndex by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(expandedIndex) {
+        if (expandedIndex != null) lastExpandedIndex = expandedIndex
+    }
+    val activeExpandedIndex = expandedIndex ?: lastExpandedIndex
+
+    val expandProgress by animateFloatAsState(
+        targetValue = if (expandedIndex != null) 1f else 0f,
+        animationSpec = tween(300, easing = FastOutSlowInEasing),
+        finishedListener = { if (it == 0f) lastExpandedIndex = null },
+        label = "expandProgress",
+    )
+
+    Layout(
+        content = {
+            // Hex buttons — expandable ones get their onClick overridden to toggle expansion.
+            actions.forEachIndexed { index, action ->
+                val effectiveAction = if (action.expandContent != null) {
+                    action.copy(onClick = {
+                        onExpandToggle(if (expandedIndex == index) null else index)
+                    })
+                } else action
+                HexButton(effectiveAction)
+            }
+            // Morphing expanded panel — measured at interpolated width.
+            MorphPanel(expandProgress) {
+                if (activeExpandedIndex != null && expandProgress > 0f) {
+                    actions.getOrNull(activeExpandedIndex)?.expandContent?.invoke()
                 }
-            } else {
-                PauseButton(
-                    icon = Icons.Default.Close,
-                    label = "Exit",
-                    onClick = onExit,
-                    backgroundColor = RED.copy(alpha = 0.85f),
-                    iconColor = Color.White,
-                )
+            }
+        },
+    ) { measurables, constraints ->
+        val gapPx      = gap.roundToPx()
+        val edgePad    = (8.dp).roundToPx()
+        val available  = constraints.maxWidth - 2 * edgePad
+        val cellPx     = (available - 2 * gapPx) / 3
+        val stepPx     = cellPx + gapPx
+        val halfStep   = stepPx / 2
+        val totalWidth = 3 * cellPx + 2 * gapPx
+        val offsetX    = edgePad + (available - totalWidth) / 2
+        val topPad     = viewportHeight / 6
+        val rows       = ceil(actions.size / 3f).toInt()
+
+        // Expanded button geometry
+        val expandedTrio = activeExpandedIndex?.let { it / 3 }
+        val expandedCol = activeExpandedIndex?.let {
+            when (it % 3) { 0 -> 1; 1 -> 0; else -> 2 }
+        }
+        val expandedBaseY = if (expandedTrio != null && expandedCol != null) {
+            topPad + expandedTrio * stepPx + if (expandedCol != 1) halfStep else 0
+        } else 0
+
+        // Measure hex buttons at cell size
+        val hexPlaceables = measurables.take(actions.size).map {
+            it.measure(constraints.copy(
+                minWidth = cellPx, maxWidth = cellPx,
+                minHeight = cellPx, maxHeight = cellPx,
+            ))
+        }
+
+        // Panel measurement — width interpolates from cell to full row
+        val panelWidth = cellPx + ((totalWidth - cellPx) * expandProgress).toInt()
+        val panelPlaceable = measurables.last().measure(
+            constraints.copy(minWidth = panelWidth, maxWidth = panelWidth, minHeight = 0)
+        )
+        val panelExtra = (panelPlaceable.height - cellPx).coerceAtLeast(0)
+
+        // ── Cohort displacement system ──────────────────────────────
+        // Each column (left/center/right) splits into above and below
+        // cohorts at the expanding button's Y. All buttons in a cohort
+        // shift by the same amount — the block moves as one unit.
+        // Displacement is derived from geometry: below-cohort's first
+        // button must clear panelBottom + gapPx; above-cohort's last
+        // button must clear expandedBaseY - gapPx. The own-column is
+        // the 1× baseline; other columns' displacements are whatever
+        // the geometry requires, giving natural speed multipliers so
+        // all cohorts arrive at their destinations simultaneously.
+
+        val belowDisp = IntArray(3) // col 0=left, 1=center, 2=right
+        val aboveDisp = IntArray(3)
+
+        if (activeExpandedIndex != null) {
+            val panelBottom = expandedBaseY + cellPx + panelExtra
+
+            for (col in 0..2) {
+                var firstBelowY = Int.MAX_VALUE
+                var lastAboveY  = Int.MIN_VALUE
+
+                for (i in actions.indices) {
+                    if (i == activeExpandedIndex) continue
+                    val c = when (i % 3) { 0 -> 1; 1 -> 0; else -> 2 }
+                    if (c != col) continue
+                    val y = topPad + (i / 3) * stepPx + if (c != 1) halfStep else 0
+                    val isBelow = y > expandedBaseY ||
+                                  (y == expandedBaseY && i > activeExpandedIndex)
+                    if (isBelow  && y < firstBelowY) firstBelowY = y
+                    if (!isBelow && y > lastAboveY)  lastAboveY  = y
+                }
+
+                // Below: first button clears panel bottom with gapPx spacing
+                belowDisp[col] = if (firstBelowY != Int.MAX_VALUE) {
+                    (panelBottom + gapPx - firstBelowY).coerceAtLeast(0)
+                } else 0
+
+                // Above: last button's bottom edge clears panel top with gapPx
+                aboveDisp[col] = if (lastAboveY != Int.MIN_VALUE) {
+                    (lastAboveY + cellPx + gapPx - expandedBaseY).coerceAtLeast(0)
+                } else 0
+            }
+        }
+
+        val insertHeight = if (activeExpandedIndex != null) {
+            (maxOf(belowDisp[0], belowDisp[1], belowDisp[2]) * expandProgress).toInt()
+        } else 0
+
+        val contentH = topPad + stepPx * rows + halfStep + topPad + insertHeight
+
+        val halfViewport = viewportHeight / 2f
+        val deadZone = halfViewport * PauseTuning.DEAD_ZONE
+        val fadeZone = (halfViewport * PauseTuning.FADE_ZONE).coerceAtLeast(1f)
+
+        layout(constraints.maxWidth, contentH) {
+            hexPlaceables.forEachIndexed { index, placeable ->
+                val trio = index / 3
+                val col  = when (index % 3) { 0 -> 1; 1 -> 0; else -> 2 }
+                val x = offsetX + col * stepPx
+                val baseY = topPad + trio * stepPx + if (col != 1) halfStep else 0
+
+                // Look up this button's cohort displacement
+                val yOffset = if (activeExpandedIndex != null && index != activeExpandedIndex) {
+                    val isAbove = baseY < expandedBaseY ||
+                                  (baseY == expandedBaseY && index < activeExpandedIndex)
+                    if (isAbove) {
+                        (-aboveDisp[col] * expandProgress).toInt()
+                    } else {
+                        (belowDisp[col] * expandProgress).toInt()
+                    }
+                } else 0
+
+                val y = baseY + yOffset
+
+                // Fade out the button being replaced by the panel
+                val isExpandedButton = index == activeExpandedIndex
+                val buttonAlpha = if (isExpandedButton) 1f - expandProgress else 1f
+
+                val viewportY   = y - scrollOffset + cellPx / 2f
+                val vertDist    = abs(viewportY - viewportHeight / 2f)
+                val sidePenalty = if (col != 1) halfViewport * PauseTuning.SIDE_BIAS else 0f
+                val distCenter  = vertDist + sidePenalty
+                val linear      = ((distCenter - deadZone) / fadeZone).coerceIn(0f, 1f)
+                val eased       = PauseTuning.ease(linear)
+                val scale       = 1f - eased * PauseTuning.SCALE_AMOUNT
+                val itemAlpha   = (1f - eased * PauseTuning.ALPHA_AMOUNT) * buttonAlpha
+
+                val shrinkPx    = (1f - scale) * cellPx * 0.5f
+                val centerX     = constraints.maxWidth / 2f
+                val itemCenterX = x + cellPx / 2f
+                val txX = if (col != 1) (centerX - itemCenterX).sign * shrinkPx else 0f
+                val txY = if (viewportY < viewportHeight / 2f) shrinkPx else -shrinkPx
+
+                placeable.placeRelativeWithLayer(x, y) {
+                    scaleX = scale; scaleY = scale
+                    alpha = itemAlpha
+                    translationX = txX; translationY = txY
+                }
+            }
+
+            // Place expanded panel centered on the originating button
+            if (expandedTrio != null && expandedCol != null && expandProgress > 0f) {
+                val buttonX = offsetX + expandedCol * stepPx
+                val buttonCenterX = buttonX + cellPx / 2
+                val panelX = (buttonCenterX - panelWidth / 2)
+                    .coerceIn(offsetX, offsetX + totalWidth - panelWidth)
+
+                panelPlaceable.placeRelativeWithLayer(panelX, expandedBaseY) {
+                    alpha = expandProgress
+                }
             }
         }
     }
 }
 
+/**
+ * Morphing panel that transitions from hex-button shape to pill.
+ * Corner radius and background interpolate with [expandProgress].
+ */
 @Composable
-private fun PauseButton(
-    icon: ImageVector,
-    label: String,
-    onClick: () -> Unit,
-    backgroundColor: Color = Color.White.copy(alpha = 0.12f),
-    iconColor: Color = Color.White,
-) {
-    Button(
-        onClick = onClick,
-        modifier = Modifier.size(BUTTON_SIZE),
-        colors = ButtonDefaults.buttonColors(backgroundColor = backgroundColor),
+private fun MorphPanel(expandProgress: Float, content: @Composable () -> Unit) {
+    val cornerRadius = androidx.compose.ui.unit.lerp(24.dp, 20.dp, expandProgress)
+    val bg = lerp(Color.Transparent, Color.White.copy(alpha = 0.12f), expandProgress)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(bg, RoundedCornerShape(cornerRadius))
+            .padding(
+                horizontal = (12 * expandProgress).dp,
+                vertical = (8 * expandProgress).dp,
+            ),
+        contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = iconColor,
-            modifier = Modifier.size(22.dp),
-        )
+        content()
+    }
+}
+
+// ── Fast-forward ripple icon ────────────────────────────────────────
+
+@Composable
+private fun FfRippleIcon() {
+    val transition = rememberInfiniteTransition(label = "ff_ripple")
+
+    val scale1 by transition.animateFloat(
+        initialValue  = 1f,
+        targetValue   = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 1400
+                1f   at 0
+                1.3f at 125
+                1f   at 250
+            },
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "ff1",
+    )
+    val scale2 by transition.animateFloat(
+        initialValue  = 1f,
+        targetValue   = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 1400
+                1f   at 0
+                1f   at 125
+                1.3f at 250
+                1f   at 375
+            },
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "ff2",
+    )
+    val scale3 by transition.animateFloat(
+        initialValue  = 1f,
+        targetValue   = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 1400
+                1f   at 0
+                1f   at 250
+                1.3f at 375
+                1f   at 500
+            },
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "ff3",
+    )
+
+    BoxWithConstraints(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        val iconSize = maxWidth * 0.34f
+        val overlap  = iconSize * 0.54f
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(-overlap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Default.PlayArrow,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(iconSize).graphicsLayer { scaleX = scale1; scaleY = scale1 },
+            )
+            Icon(
+                imageVector = Icons.Default.PlayArrow,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(iconSize).graphicsLayer { scaleX = scale2; scaleY = scale2 },
+            )
+            Icon(
+                imageVector = Icons.Default.PlayArrow,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(iconSize).graphicsLayer { scaleX = scale3; scaleY = scale3 },
+            )
+        }
+    }
+}
+
+// ── Hex button ──────────────────────────────────────────────────────
+
+@Composable
+private fun HexButton(action: PauseAction) {
+    val green = MaterialTheme.colors.primary
+
+    val effectiveBg = if (action.enabled) green else action.backgroundColor
+
+    val pulseTransition = rememberInfiniteTransition(label = "pulse")
+    val pulsePhase by pulseTransition.animateFloat(
+        initialValue  = 0f,
+        targetValue   = (2.0 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation  = tween(2200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "pulsePhase",
+    )
+    val sinVal    = sin(pulsePhase)
+    val pulseAlpha = 0.875f + 0.125f * sinVal
+    val pulseScale = 0.910f + 0.090f * sinVal
+
+    val heartbeatTransition = rememberInfiniteTransition(label = "heartbeat")
+    val heartbeatScale by heartbeatTransition.animateFloat(
+        initialValue  = 1f,
+        targetValue   = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 1400
+                1f    at 0
+                1.18f at 100
+                1f    at 230
+                1.12f at 330
+                1f    at 460
+            },
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "heartbeatScale",
+    )
+
+    val (iconAlpha, iconScale) = when {
+        !action.enabled                               -> Pair(1f, 1f)
+        action.shimmerStyle == ShimmerStyle.PULSE     -> Pair(pulseAlpha, pulseScale)
+        action.shimmerStyle == ShimmerStyle.HEARTBEAT -> Pair(1f, heartbeatScale)
+        else                                          -> Pair(1f, 1f)
+    }
+
+    Button(
+        onClick = action.onClick,
+        modifier = Modifier.size(48.dp),
+        colors = ButtonDefaults.buttonColors(backgroundColor = effectiveBg),
+    ) {
+        if (action.shimmerStyle == ShimmerStyle.WAVE && action.enabled) {
+            FfRippleIcon()
+        } else {
+            Icon(
+                imageVector = action.icon,
+                contentDescription = action.label,
+                tint = action.iconColor,
+                modifier = Modifier
+                    .size(22.dp)
+                    .graphicsLayer {
+                        alpha = iconAlpha
+                        scaleX = iconScale
+                        scaleY = iconScale
+                    },
+            )
+        }
     }
 }

@@ -53,6 +53,18 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
     private val _systemType = MutableStateFlow<SystemType?>(null)
     val systemType: StateFlow<SystemType?> = _systemType.asStateFlow()
 
+    private val _isFastForward = MutableStateFlow(false)
+    val isFastForward: StateFlow<Boolean> = _isFastForward.asStateFlow()
+
+    private val _hasSaveState = MutableStateFlow(false)
+    val hasSaveState: StateFlow<Boolean> = _hasSaveState.asStateFlow()
+
+    private val _canUndoSave = MutableStateFlow(false)
+    val canUndoSave: StateFlow<Boolean> = _canUndoSave.asStateFlow()
+
+    private val _canUndoLoad = MutableStateFlow(false)
+    val canUndoLoad: StateFlow<Boolean> = _canUndoLoad.asStateFlow()
+
     private var emulator: MgbaEmulator? = null
     private var emulatorThread: EmulatorThread? = null
     private var audioPlayer: AudioPlayer? = null
@@ -143,6 +155,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
 
         // Restore SRAM backup (if live .sav missing) then load newest valid save state
         saveStateManager?.restoreAll()
+        refreshSaveStateAvailability()
 
         // Set up audio with resampler
         if (audioEnabled) {
@@ -173,8 +186,8 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             onFrame = ::onFrameReady,
             audioPlayer = if (audioEnabled) audioPlayer else null,
             isRunning = { _state.value == EmulatorState.RUNNING },
-            frameskip = if (_systemType.value == SystemType.GBA) settings.gbaFrameskip else settings.gbFrameskip
-        )
+            frameskip = if (_systemType.value == SystemType.GBA) settings.gbaFrameskip else settings.gbFrameskip,
+        ).also { it.fastForward = _isFastForward.value }
         emulatorThread?.start()
     }
 
@@ -196,6 +209,53 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         emulator?.setGbPalette(palette.mgbaOrder())
     }
 
+    private fun refreshSaveStateAvailability() {
+        _hasSaveState.value = saveStateManager?.hasSaveState() ?: false
+    }
+
+    fun saveState() {
+        if (_state.value != EmulatorState.PAUSED) return
+        val success = saveStateManager?.saveExplicit() ?: false
+        if (success) {
+            _canUndoSave.value = true
+            _canUndoLoad.value = false
+            refreshSaveStateAvailability()
+        }
+    }
+
+    fun loadState() {
+        if (_state.value != EmulatorState.PAUSED) return
+        val success = saveStateManager?.loadExplicit() ?: false
+        if (success) {
+            _canUndoLoad.value = true
+            _canUndoSave.value = false
+            onFrameReady()
+        }
+    }
+
+    fun undoSave() {
+        if (_state.value != EmulatorState.PAUSED || !_canUndoSave.value) return
+        saveStateManager?.undoSave()
+        _canUndoSave.value = false
+        refreshSaveStateAvailability() // .usersave may now be gone or reverted
+    }
+
+    fun undoLoad() {
+        if (_state.value != EmulatorState.PAUSED || !_canUndoLoad.value) return
+        val success = saveStateManager?.undoLoad() ?: false
+        if (success) {
+            _canUndoLoad.value = false
+            onFrameReady()
+        }
+    }
+
+    /** Toggles 2× fast-forward. Takes effect immediately on the running thread. */
+    fun toggleFastForward() {
+        val next = !_isFastForward.value
+        _isFastForward.value = next
+        emulatorThread?.fastForward = next
+    }
+
     /** Toggles audio on/off and persists the setting. Takes effect on next resume(). */
     fun toggleMute() {
         settingsRepo.update { it.copy(audioEnabled = !it.audioEnabled) }
@@ -208,6 +268,11 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             val snapped = (raw * 10).roundToInt() / 10f
             it.copy(audioVolume = snapped.coerceIn(0f, 1f))
         }
+    }
+
+    /** Sets volume to an absolute value (0.0–1.0). Applied live via the settings collector. */
+    fun setVolume(volume: Float) {
+        settingsRepo.update { it.copy(audioVolume = volume.coerceIn(0f, 1f)) }
     }
 
     /**
@@ -283,6 +348,10 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             playTimeTracker.stop()
             saveStateManager?.onFocusLost()
         }
+        _isFastForward.value = false
+        _hasSaveState.value = false
+        _canUndoSave.value = false
+        _canUndoLoad.value = false
         emulatorThread = null
         audioPlayer?.stop()
         audioPlayer?.release()

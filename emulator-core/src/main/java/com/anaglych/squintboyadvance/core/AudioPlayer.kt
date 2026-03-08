@@ -58,6 +58,11 @@ class AudioPlayer(val sampleRate: Int = 48000) {
         audioTrack?.write(buffer, 0, frameCount * 2, AudioTrack.WRITE_BLOCKING)
     }
 
+    /** 2× sampleRate during fast-forward for chipmunk pacing; sampleRate restores normal. */
+    fun setPlaybackRate(rate: Int) {
+        audioTrack?.playbackRate = rate
+    }
+
     fun pause() {
         audioTrack?.pause()
     }

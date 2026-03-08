@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -15,6 +16,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FastForward
+import androidx.wear.compose.material.Icon
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.compose.material.CircularProgressIndicator
 import androidx.wear.compose.material.MaterialTheme
@@ -40,6 +44,10 @@ fun EmulatorScreen(
     val frame by viewModel.frame.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     val systemType by viewModel.systemType.collectAsState()
+    val isFastForward by viewModel.isFastForward.collectAsState()
+    val hasSaveState by viewModel.hasSaveState.collectAsState()
+    val canUndoSave by viewModel.canUndoSave.collectAsState()
+    val canUndoLoad by viewModel.canUndoLoad.collectAsState()
 
     val settingsRepo = SettingsRepository.getInstance(viewModel.getApplication())
     val settings by settingsRepo.settings.collectAsState()
@@ -89,6 +97,19 @@ fun EmulatorScreen(
                     labelSize = settings.controllerLayout.labelSize,
                     hapticEnabled = settings.controllerLayout.hapticFeedback,
                 )
+                if (isFastForward) {
+                    Box(
+                        modifier = Modifier.fillMaxSize().padding(6.dp),
+                        contentAlignment = Alignment.TopEnd,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FastForward,
+                            contentDescription = "Fast forward active",
+                            tint = Color.White.copy(alpha = 0.55f),
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
             }
 
             EmulatorState.PAUSED -> {
@@ -104,10 +125,23 @@ fun EmulatorScreen(
                 when (pauseUiState) {
                     PauseUiState.MENU -> PauseOverlay(
                         isMuted = !settings.audioEnabled,
+                        isFastForward = isFastForward,
                         isGb = systemType == SystemType.GB,
+                        volume = settings.audioVolume,
+                        hasSaveState = hasSaveState,
+                        canUndoSave = canUndoSave,
+                        canUndoLoad = canUndoLoad,
                         onToggleMute = viewModel::toggleMute,
+                        onVolumeChange = { viewModel.setVolume(it) },
                         onResume = viewModel::resume,
-                        onInterface = { pauseUiState = PauseUiState.SCALE_EDITOR },
+                        onScale = { pauseUiState = PauseUiState.SCALE_EDITOR },
+                        onController = { /* TODO */ },
+                        onSave = { viewModel.saveState() },
+                        onLoad = { viewModel.loadState() },
+                        onUndoSave = { viewModel.undoSave() },
+                        onUndoLoad = { viewModel.undoLoad() },
+                        onFastForward = viewModel::toggleFastForward,
+                        onLinkCable = { /* TODO */ },
                         onReset = { pauseUiState = PauseUiState.CONFIRM_RESET },
                         onPalette = { pauseUiState = PauseUiState.PALETTE_PICKER },
                         onExit = {
