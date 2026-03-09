@@ -43,7 +43,8 @@ fun EmulatorScreen(
     val frame by viewModel.frame.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     val systemType by viewModel.systemType.collectAsState()
-    val isFastForward by viewModel.isFastForward.collectAsState()
+    val ffSpeed by viewModel.ffSpeed.collectAsState()
+    val ffSelectedSpeed by viewModel.ffSelectedSpeed.collectAsState()
     val hasSaveState by viewModel.hasSaveState.collectAsState()
     val canUndoSave by viewModel.canUndoSave.collectAsState()
     val canUndoLoad by viewModel.canUndoLoad.collectAsState()
@@ -96,7 +97,7 @@ fun EmulatorScreen(
                     labelSize = settings.controllerLayout.labelSize,
                     hapticEnabled = settings.controllerLayout.hapticFeedback,
                 )
-                if (isFastForward) {
+                if (ffSpeed >= 2) {
                     Box(
                         modifier = Modifier.fillMaxSize().padding(6.dp),
                         contentAlignment = Alignment.TopEnd,
@@ -124,8 +125,10 @@ fun EmulatorScreen(
                 when (pauseUiState) {
                     PauseUiState.MENU -> PauseOverlay(
                         isMuted = !settings.audioEnabled,
-                        isFastForward = isFastForward,
+                        ffSpeed = ffSpeed,
+                        ffSelectedSpeed = ffSelectedSpeed,
                         isGb = systemType == SystemType.GB,
+                        isGba = isGba,
                         volume = settings.audioVolume,
                         hasSaveState = hasSaveState,
                         canUndoSave = canUndoSave,
@@ -140,6 +143,7 @@ fun EmulatorScreen(
                         onUndoSave = { viewModel.undoSave(); viewModel.resume() },
                         onUndoLoad = { viewModel.undoLoad(); viewModel.resume() },
                         onFastForward = viewModel::toggleFastForward,
+                        onSetFfSpeed = viewModel::setFfSpeed,
                         onLinkCable = { /* TODO */ },
                         onReset = { pauseUiState = PauseUiState.CONFIRM_RESET },
                         selectedPaletteIndex = settings.gbPaletteIndex,

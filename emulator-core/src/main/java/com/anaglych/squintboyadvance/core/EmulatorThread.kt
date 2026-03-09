@@ -9,8 +9,8 @@ class EmulatorThread(
     private val isRunning: () -> Boolean,
     private val frameskip: Int = -1,
 ) {
-    /** Set to true at any time to run an extra silent frame per audio write (2× speed). */
-    @Volatile var fastForward: Boolean = false
+    /** Fast-forward speed multiplier: 0 = off, 2/3/4 = speed. */
+    @Volatile var ffSpeed: Int = 0
     companion object {
         /** ~60 fps target (nanoseconds per frame). */
         private const val TARGET_FRAME_TIME_NS = 16_666_667L
@@ -28,34 +28,29 @@ class EmulatorThread(
             Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
 
             if (audioPlayer != null) {
-                // Audio-driven loop at 1×. FF skips the AudioTrack write, uses sleep-based
-                // pacing, drops thread priority off the big core, and renders every other
-                // iteration (GPU sees 60fps worth of work regardless of game speed).
+                // Audio-driven loop. FF runs extra silent frames per tick for Nx speed.
+                // AudioTrack drain rate is raised to match so pacing stays correct.
                 var autoSkipNext = false
                 var fixedSkipCounter = 0
-                // Force-sync on first frame: if a previous thread exited in FF mode the
-                // AudioTrack rate may be stale. !fastForward guarantees a rate update fires.
-                var prevFf = !fastForward
+                var prevSpeed = -1 // force sync on first frame
                 var ffFrameToggle = false
 
                 while (isRunning()) {
                     val frameStart = System.nanoTime()
-                    val ff = fastForward
+                    val speed = ffSpeed
+                    val ff = speed >= 2
 
-                    // On FF state change: adjust scheduler priority and AudioTrack drain rate.
-                    // 2× playback rate makes the write block for the same wall time even
-                    // with 2 frames of audio, so pacing stays correct and audio plays at
-                    // 2× pitch. Muted sessions use the no-audio loop so this never fires.
-                    if (ff != prevFf) {
+                    // On speed change: adjust scheduler priority and AudioTrack drain rate.
+                    if (speed != prevSpeed) {
                         Process.setThreadPriority(
                             if (ff) Process.THREAD_PRIORITY_DISPLAY
                             else    Process.THREAD_PRIORITY_URGENT_AUDIO
                         )
                         audioPlayer.setPlaybackRate(
-                            if (ff) audioPlayer.sampleRate * 2 else audioPlayer.sampleRate
+                            if (ff) audioPlayer.sampleRate * speed else audioPlayer.sampleRate
                         )
                         if (!ff) ffFrameToggle = false
-                        prevFf = ff
+                        prevSpeed = speed
                     }
 
                     val shouldSkipVideo = when {
@@ -68,10 +63,8 @@ class EmulatorThread(
                     }
 
                     if (ff) {
-                        // Extra silent frame fills ring buffer with 2 frames of audio.
-                        // runFrameWithAudio drains both; at 2× drain rate the write still
-                        // blocks ~16.7 ms → 2 frames per tick = 2× speed with audio.
-                        emulator.runFrame()
+                        // Run (speed-1) extra silent frames, then one with audio.
+                        repeat(speed - 1) { emulator.runFrame() }
                         val framesRead = emulator.runFrameWithAudio(audioBuffer, audioBuffer.size / 2)
                         if (framesRead > 0) audioPlayer.writeSamples(audioBuffer, framesRead)
                         if (!shouldSkipVideo && ffFrameToggle) onFrame()
@@ -87,24 +80,24 @@ class EmulatorThread(
                     }
                 }
             } else {
-                // No audio: sleep-based pacing. FF halves the sleep target, drops priority,
-                // and renders every other iteration.
+                // No audio: sleep-based pacing. FF runs extra frames and shortens sleep target.
                 var autoSkipNext = false
                 var fixedSkipCounter = 0
-                var prevFf = false
+                var prevSpeed = 0
                 var ffFrameToggle = false
 
                 while (isRunning()) {
                     val frameStart = System.nanoTime()
-                    val ff = fastForward
+                    val speed = ffSpeed
+                    val ff = speed >= 2
 
-                    if (ff != prevFf) {
+                    if (speed != prevSpeed) {
                         Process.setThreadPriority(
                             if (ff) Process.THREAD_PRIORITY_DISPLAY
                             else    Process.THREAD_PRIORITY_URGENT_AUDIO
                         )
                         if (!ff) ffFrameToggle = false
-                        prevFf = ff
+                        prevSpeed = speed
                     }
 
                     val shouldSkipVideo = when {
@@ -116,13 +109,13 @@ class EmulatorThread(
                         }
                     }
 
-                    if (ff) emulator.runFrame()
+                    if (ff) repeat(speed - 1) { emulator.runFrame() }
                     emulator.runFrame()
                     if (!shouldSkipVideo && (!ff || ffFrameToggle)) onFrame()
                     if (ff) ffFrameToggle = !ffFrameToggle
 
                     val elapsed = System.nanoTime() - frameStart
-                    val frameTarget = if (ff) TARGET_FRAME_TIME_NS / 2 else TARGET_FRAME_TIME_NS
+                    val frameTarget = if (ff) TARGET_FRAME_TIME_NS / speed.toLong() else TARGET_FRAME_TIME_NS
                     if (frameskip == -1 && elapsed > frameTarget) autoSkipNext = true
                     val sleepNs = frameTarget - elapsed
                     if (sleepNs > 1_000_000) {

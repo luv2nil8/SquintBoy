@@ -53,8 +53,8 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
     private val _systemType = MutableStateFlow<SystemType?>(null)
     val systemType: StateFlow<SystemType?> = _systemType.asStateFlow()
 
-    private val _isFastForward = MutableStateFlow(false)
-    val isFastForward: StateFlow<Boolean> = _isFastForward.asStateFlow()
+    private val _ffSpeed = MutableStateFlow(0)
+    val ffSpeed: StateFlow<Int> = _ffSpeed.asStateFlow()
 
     private val _hasSaveState = MutableStateFlow(false)
     val hasSaveState: StateFlow<Boolean> = _hasSaveState.asStateFlow()
@@ -187,7 +187,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             audioPlayer = if (audioEnabled) audioPlayer else null,
             isRunning = { _state.value == EmulatorState.RUNNING },
             frameskip = if (_systemType.value == SystemType.GBA) settings.gbaFrameskip else settings.gbFrameskip,
-        ).also { it.fastForward = _isFastForward.value }
+        ).also { it.ffSpeed = _ffSpeed.value }
         emulatorThread?.start()
     }
 
@@ -249,12 +249,21 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    /** Toggles 2× fast-forward. Takes effect immediately on the running thread. */
+    /** Toggles fast-forward on/off. Uses last selected speed (default 2×). */
     fun toggleFastForward() {
-        val next = !_isFastForward.value
-        _isFastForward.value = next
-        emulatorThread?.fastForward = next
+        val next = if (_ffSpeed.value == 0) _ffSelectedSpeed.value else 0
+        setFfSpeed(next)
     }
+
+    /** Sets a specific FF speed (0 = off, 2/3/4). */
+    fun setFfSpeed(speed: Int) {
+        if (speed >= 2) _ffSelectedSpeed.value = speed
+        _ffSpeed.value = speed
+        emulatorThread?.ffSpeed = speed
+    }
+
+    private val _ffSelectedSpeed = MutableStateFlow(2)
+    val ffSelectedSpeed: StateFlow<Int> = _ffSelectedSpeed.asStateFlow()
 
     /** Toggles audio on/off and persists the setting. Takes effect on next resume(). */
     fun toggleMute() {
@@ -348,7 +357,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             playTimeTracker.stop()
             saveStateManager?.onFocusLost()
         }
-        _isFastForward.value = false
+        _ffSpeed.value = 0
         _hasSaveState.value = false
         _canUndoSave.value = false
         _canUndoLoad.value = false

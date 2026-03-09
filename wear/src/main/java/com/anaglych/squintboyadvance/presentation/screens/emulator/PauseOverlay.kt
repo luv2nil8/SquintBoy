@@ -51,6 +51,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -127,6 +129,7 @@ private data class PauseAction(
     val iconColor: Color = Color.White,
     val enabled: Boolean = false,
     val shimmerStyle: ShimmerStyle = ShimmerStyle.NONE,
+    val waveArrows: Int = 3,
     val expandContent: (@Composable () -> Unit)? = null,
     val onLongClick: (() -> Unit)? = null,
 )
@@ -139,8 +142,10 @@ private data class PauseAction(
 @Composable
 fun PauseOverlay(
     isMuted: Boolean,
-    isFastForward: Boolean,
+    ffSpeed: Int,
+    ffSelectedSpeed: Int,
     isGb: Boolean,
+    isGba: Boolean,
     volume: Float,
     hasSaveState: Boolean,
     canUndoSave: Boolean,
@@ -155,6 +160,7 @@ fun PauseOverlay(
     onUndoSave: () -> Unit,
     onUndoLoad: () -> Unit,
     onFastForward: () -> Unit,
+    onSetFfSpeed: (Int) -> Unit,
     onLinkCable: () -> Unit,
     onReset: () -> Unit,
     selectedPaletteIndex: Int,
@@ -233,16 +239,39 @@ fun PauseOverlay(
                 )
             },
         ))
-        // 2: Fast Forward
-        add(PauseAction(Icons.Default.FastForward, "Fast Fwd", onClick = onFastForward, enabled = isFastForward, shimmerStyle = ShimmerStyle.WAVE))
+        // 2: Fast Forward (long-press to select speed on GB/GBC; 2× only on GBA)
+        if (isGba) {
+            add(PauseAction(Icons.Default.FastForward, "Fast Fwd", onClick = onFastForward, enabled = ffSpeed >= 2, shimmerStyle = ShimmerStyle.WAVE))
+        } else {
+            add(PauseAction(
+                Icons.Default.FastForward, "Fast Fwd",
+                onClick = onFastForward,
+                enabled = ffSpeed >= 2,
+                shimmerStyle = ShimmerStyle.WAVE,
+                waveArrows = if (ffSpeed >= 2) ffSpeed else 2,
+                expandContent = {
+                    FfSpeedExpandContent(
+                        currentSpeed = ffSelectedSpeed,
+                        onSetSpeed = onSetFfSpeed,
+                    )
+                },
+                onLongClick = {},
+            ))
+        }
         // 3: Resume
         add(PauseAction(Icons.Default.PlayArrow, "Resume", onResume, iconColor = green))
         // 4: Scale
         add(PauseAction(Icons.Default.AspectRatio, "Scale", onScale, backgroundColor = green.copy(alpha = 0.85f)))
         // 5: Controls
         add(PauseAction(Icons.Default.Gamepad, "Controls", onController, backgroundColor = green.copy(alpha = 0.85f)))
-        // 6: Link Cable (expandable placeholder)
-        add(PauseAction(Icons.Default.Cable, "Link Cable", onClick = { linkEnabled = !linkEnabled }, enabled = linkEnabled, shimmerStyle = ShimmerStyle.PULSE))
+        // 6: Link Cable (GB/GBC only)
+        if (!isGba) {
+            add(PauseAction(
+                Icons.Default.Cable, "Link Cable",
+                onClick = {},
+                expandContent = { LinkCableExpandContent() },
+            ))
+        }
         // 7: Reset
         add(PauseAction(Icons.Default.Refresh, "Reset", onReset, iconColor = RED))
         // 8: Exit
@@ -506,6 +535,52 @@ private fun CompactSaveLoadRow(
                 modifier = Modifier.size(16.dp),
             )
         }
+    }
+}
+
+// ── Link cable expand content ───────────────────────────────────────
+
+@Composable
+private fun LinkCableExpandContent() {
+    val blue = BLUE
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Chip(
+            modifier = Modifier.fillMaxWidth().height(36.dp),
+            onClick = {},
+            enabled = false,
+            colors = ChipDefaults.chipColors(
+                backgroundColor = blue.copy(alpha = 0.85f),
+                disabledBackgroundColor = blue.copy(alpha = 0.15f),
+            ),
+            label = { Text("Host", style = MaterialTheme.typography.body2) },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Wifi,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+            },
+        )
+        Chip(
+            modifier = Modifier.fillMaxWidth().height(36.dp),
+            onClick = {},
+            enabled = false,
+            colors = ChipDefaults.chipColors(
+                backgroundColor = blue.copy(alpha = 0.85f),
+                disabledBackgroundColor = blue.copy(alpha = 0.15f),
+            ),
+            label = { Text("Join", style = MaterialTheme.typography.body2) },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+            },
+        )
     }
 }
 
@@ -991,7 +1066,7 @@ private fun HexButtonLayout(
 @Composable
 private fun MorphPanel(expandProgress: Float, content: @Composable () -> Unit) {
     val cornerRadius = androidx.compose.ui.unit.lerp(24.dp, 20.dp, expandProgress)
-    val bg = lerp(Color.Transparent, Color.White.copy(alpha = 0.12f), expandProgress)
+    val bg = lerp(Color.Transparent, Color(0xFF16213E).copy(alpha = 0.95f), expandProgress)
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1009,83 +1084,78 @@ private fun MorphPanel(expandProgress: Float, content: @Composable () -> Unit) {
 // ── Fast-forward ripple icon ────────────────────────────────────────
 
 @Composable
-private fun FfRippleIcon() {
+private fun FfRippleIcon(arrowCount: Int = 3) {
+    val count = arrowCount.coerceIn(2, 4)
     val transition = rememberInfiniteTransition(label = "ff_ripple")
+    val stagger = 125
+    val duration = stagger * count + 250 // pulse window + tail
 
-    val scale1 by transition.animateFloat(
-        initialValue  = 1f,
-        targetValue   = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = 1400
-                1f   at 0
-                1.3f at 125
-                1f   at 250
-            },
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "ff1",
-    )
-    val scale2 by transition.animateFloat(
-        initialValue  = 1f,
-        targetValue   = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = 1400
-                1f   at 0
-                1f   at 125
-                1.3f at 250
-                1f   at 375
-            },
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "ff2",
-    )
-    val scale3 by transition.animateFloat(
-        initialValue  = 1f,
-        targetValue   = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = 1400
-                1f   at 0
-                1f   at 250
-                1.3f at 375
-                1f   at 500
-            },
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "ff3",
-    )
+    val scales = (0 until count).map { i ->
+        transition.animateFloat(
+            initialValue  = 1f,
+            targetValue   = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = keyframes {
+                    durationMillis = duration
+                    1f   at 0
+                    1f   at stagger * i
+                    1.3f at stagger * i + stagger
+                    1f   at stagger * i + stagger * 2
+                },
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "ff$i",
+        )
+    }
 
     BoxWithConstraints(
         contentAlignment = Alignment.Center,
         modifier = Modifier.fillMaxSize(),
     ) {
-        val iconSize = maxWidth * 0.34f
+        val iconSize = maxWidth * (if (count <= 3) 0.34f else 0.28f)
         val overlap  = iconSize * 0.54f
 
         Row(
             horizontalArrangement = Arrangement.spacedBy(-overlap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                imageVector = Icons.Default.PlayArrow,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(iconSize).graphicsLayer { scaleX = scale1; scaleY = scale1 },
-            )
-            Icon(
-                imageVector = Icons.Default.PlayArrow,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(iconSize).graphicsLayer { scaleX = scale2; scaleY = scale2 },
-            )
-            Icon(
-                imageVector = Icons.Default.PlayArrow,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(iconSize).graphicsLayer { scaleX = scale3; scaleY = scale3 },
-            )
+            scales.forEach { scale ->
+                val s by scale
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(iconSize).graphicsLayer { scaleX = s; scaleY = s },
+                )
+            }
+        }
+    }
+}
+
+// ── Fast-forward speed expand content ───────────────────────────────
+
+@Composable
+private fun FfSpeedExpandContent(
+    currentSpeed: Int,
+    onSetSpeed: (Int) -> Unit,
+) {
+    val green = MaterialTheme.colors.primary
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        for (speed in 2..4) {
+            val selected = currentSpeed == speed
+            Button(
+                onClick = { onSetSpeed(speed) },
+                modifier = Modifier.weight(1f).height(36.dp),
+                colors = ButtonDefaults.buttonColors(
+                    backgroundColor = if (selected) green.copy(alpha = 0.85f)
+                        else Color.White.copy(alpha = 0.12f),
+                ),
+            ) {
+                Text("${speed}x", style = MaterialTheme.typography.body2)
+            }
         }
     }
 }
@@ -1140,7 +1210,7 @@ private fun HexButton(action: PauseAction) {
 
     val iconContent: @Composable () -> Unit = {
         if (action.shimmerStyle == ShimmerStyle.WAVE && action.enabled) {
-            FfRippleIcon()
+            FfRippleIcon(arrowCount = action.waveArrows)
         } else {
             Icon(
                 imageVector = action.icon,
