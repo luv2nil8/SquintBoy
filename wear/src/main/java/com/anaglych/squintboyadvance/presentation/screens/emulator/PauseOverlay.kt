@@ -1,5 +1,6 @@
 package com.anaglych.squintboyadvance.presentation.screens.emulator
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -19,6 +20,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.gestures.horizontalDrag
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
@@ -56,6 +58,7 @@ import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -69,6 +72,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.focus.FocusRequester
@@ -1086,11 +1091,18 @@ private fun MorphPanel(expandProgress: Float, content: @Composable () -> Unit) {
 @Composable
 private fun FfRippleIcon(arrowCount: Int = 3) {
     val count = arrowCount.coerceIn(2, 4)
+    key(count) {
     val transition = rememberInfiniteTransition(label = "ff_ripple")
-    val stagger = 125
-    val duration = stagger * count + 250 // pulse window + tail
+    val pulseWindow = 375          // total time for the ripple wave
+    val rest = 825                 // quiet time before next cycle
+    val duration = pulseWindow + rest  // 1200ms total
+    // Evenly space pulse starts using floats to avoid integer division drift
+    val pulseWidth = 150           // each arrow's up-down pulse duration
 
     val scales = (0 until count).map { i ->
+        val center = (pulseWindow.toFloat() * (i + 0.5f) / count).toInt()
+        val start = (center - pulseWidth / 2).coerceAtLeast(0)
+        val end = (center + pulseWidth / 2).coerceAtMost(pulseWindow)
         transition.animateFloat(
             initialValue  = 1f,
             targetValue   = 1f,
@@ -1098,9 +1110,9 @@ private fun FfRippleIcon(arrowCount: Int = 3) {
                 animation = keyframes {
                     durationMillis = duration
                     1f   at 0
-                    1f   at stagger * i
-                    1.3f at stagger * i + stagger
-                    1f   at stagger * i + stagger * 2
+                    1f   at start
+                    1.3f at center
+                    1f   at end
                 },
                 repeatMode = RepeatMode.Restart,
             ),
@@ -1130,6 +1142,7 @@ private fun FfRippleIcon(arrowCount: Int = 3) {
             }
         }
     }
+    } // key(count)
 }
 
 // ── Fast-forward speed expand content ───────────────────────────────
@@ -1229,20 +1242,162 @@ private fun HexButton(action: PauseAction) {
 
     if (action.onLongClick != null) {
         val haptic = LocalHapticFeedback.current
+        val scope = rememberCoroutineScope()
+        val onClickRef = rememberUpdatedState(action.onClick)
+        val onLongClickRef = rememberUpdatedState(action.onLongClick!!)
+
+        val fillProgress = remember { Animatable(0f) }
+        val fizzleProgress = remember { Animatable(0f) }
+        var fizzleStartSweep by remember { mutableStateOf(0f) }
+
         Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(effectiveBg)
-                .combinedClickable(
-                    onClick = action.onClick,
-                    onLongClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        action.onLongClick.invoke()
-                    },
-                ),
+            modifier = Modifier.size(48.dp),
             contentAlignment = Alignment.Center,
-        ) { iconContent() }
+        ) {
+            // Button with custom gesture handling
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .background(effectiveBg)
+                    .pointerInput(Unit) {
+                        val longPressMs = viewConfiguration.longPressTimeoutMillis
+                        awaitEachGesture {
+                            val down = awaitFirstDown()
+                            down.consume()
+                            var longPressTriggered = false
+
+                            val fillJob = scope.launch {
+                                fizzleProgress.snapTo(0f)
+                                fillProgress.snapTo(0f)
+                                fillProgress.animateTo(
+                                    1f,
+                                    tween(longPressMs.toInt(), easing = LinearEasing),
+                                )
+                                longPressTriggered = true
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onLongClickRef.value.invoke()
+                                fillProgress.animateTo(0f, tween(150))
+                            }
+
+                            val up = waitForUpOrCancellation()
+
+                            if (!longPressTriggered) {
+                                fillJob.cancel()
+                                val currentFill = fillProgress.value
+                                if (currentFill > 0.05f) {
+                                    fizzleStartSweep = currentFill * 180f
+                                    scope.launch {
+                                        fillProgress.snapTo(0f)
+                                        fizzleProgress.snapTo(0f)
+                                        fizzleProgress.animateTo(
+                                            1f,
+                                            tween(300, easing = FastOutSlowInEasing),
+                                        )
+                                        fizzleProgress.snapTo(0f)
+                                    }
+                                } else {
+                                    scope.launch { fillProgress.snapTo(0f) }
+                                }
+                                if (up != null) onClickRef.value.invoke()
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) { iconContent() }
+
+            // Ring overlay
+            val fill = fillProgress.value
+            val fizzle = fizzleProgress.value
+            val ringColor = if (action.enabled) Color.White else green
+            if (fill > 0f || fizzle > 0f) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val strokeWidth = 2.5f.dp.toPx()
+                    val inset = strokeWidth / 2f
+                    val arcSize = Size(size.width - strokeWidth, size.height - strokeWidth)
+                    val arcOffset = Offset(inset, inset)
+
+                    if (fill > 0f) {
+                        val sweep = fill * 180f
+                        // CW arc from 12 o'clock
+                        drawArc(
+                            color = ringColor,
+                            startAngle = 270f,
+                            sweepAngle = sweep,
+                            useCenter = false,
+                            style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                            topLeft = arcOffset,
+                            size = arcSize,
+                        )
+                        // CCW arc from 12 o'clock
+                        drawArc(
+                            color = ringColor,
+                            startAngle = 270f,
+                            sweepAngle = -sweep,
+                            useCenter = false,
+                            style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                            topLeft = arcOffset,
+                            size = arcSize,
+                        )
+                    }
+
+                    if (fizzle > 0f) {
+                        val baseSweep = fizzleStartSweep
+                        // Body fades out quickly
+                        val bodyAlpha = (1f - fizzle * 2f).coerceIn(0f, 1f)
+                        // Tips travel forward, thin, and fade
+                        val tipTravel = fizzle * 45f
+                        val tipAlpha = (1f - fizzle).coerceIn(0f, 1f)
+                        val tipStroke = strokeWidth * (1f - fizzle * 0.8f)
+                        val tipLen = 20f * (1f - fizzle * 0.5f)
+
+                        if (bodyAlpha > 0f) {
+                            drawArc(
+                                color = ringColor.copy(alpha = bodyAlpha),
+                                startAngle = 270f,
+                                sweepAngle = baseSweep,
+                                useCenter = false,
+                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                                topLeft = arcOffset,
+                                size = arcSize,
+                            )
+                            drawArc(
+                                color = ringColor.copy(alpha = bodyAlpha),
+                                startAngle = 270f,
+                                sweepAngle = -baseSweep,
+                                useCenter = false,
+                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                                topLeft = arcOffset,
+                                size = arcSize,
+                            )
+                        }
+
+                        if (tipAlpha > 0f && tipLen > 0f) {
+                            // CW tracer tip
+                            drawArc(
+                                color = ringColor.copy(alpha = tipAlpha),
+                                startAngle = 270f + baseSweep + tipTravel - tipLen,
+                                sweepAngle = tipLen,
+                                useCenter = false,
+                                style = Stroke(width = tipStroke, cap = StrokeCap.Round),
+                                topLeft = arcOffset,
+                                size = arcSize,
+                            )
+                            // CCW tracer tip
+                            drawArc(
+                                color = ringColor.copy(alpha = tipAlpha),
+                                startAngle = 270f - baseSweep - tipTravel,
+                                sweepAngle = -tipLen,
+                                useCenter = false,
+                                style = Stroke(width = tipStroke, cap = StrokeCap.Round),
+                                topLeft = arcOffset,
+                                size = arcSize,
+                            )
+                        }
+                    }
+                }
+            }
+        }
     } else {
         Button(
             onClick = action.onClick,

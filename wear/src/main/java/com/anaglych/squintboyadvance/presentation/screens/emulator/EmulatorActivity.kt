@@ -9,7 +9,12 @@ import androidx.activity.viewModels
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.anaglych.squintboyadvance.presentation.theme.SquintBoyAdvanceTheme
+import com.anaglych.squintboyadvance.shared.emulator.EmulatorState
+import kotlinx.coroutines.launch
 
 class EmulatorActivity : ComponentActivity() {
 
@@ -26,6 +31,19 @@ class EmulatorActivity : ComponentActivity() {
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        // Drop wake lock while paused so the screen can time out
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.state.collect { state ->
+                    if (state == EmulatorState.RUNNING) {
+                        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    } else {
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    }
+                }
+            }
+        }
 
         val romId = intent.getStringExtra("rom_id") ?: run { finish(); return }
         val romTitle = intent.getStringExtra("rom_title") ?: "Unknown"
