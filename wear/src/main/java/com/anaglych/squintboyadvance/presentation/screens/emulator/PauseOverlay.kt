@@ -134,7 +134,7 @@ private data class PauseAction(
     val iconColor: Color = Color.White,
     val enabled: Boolean = false,
     val shimmerStyle: ShimmerStyle = ShimmerStyle.NONE,
-    val waveArrows: Int = 3,
+    val waveArrows: Int = 2,
     val expandContent: (@Composable () -> Unit)? = null,
     val onLongClick: (() -> Unit)? = null,
 )
@@ -246,7 +246,7 @@ fun PauseOverlay(
         ))
         // 2: Fast Forward (long-press to select speed on GB/GBC; 2× only on GBA)
         if (isGba) {
-            add(PauseAction(Icons.Default.FastForward, "Fast Fwd", onClick = onFastForward, enabled = ffSpeed >= 2, shimmerStyle = ShimmerStyle.WAVE))
+            add(PauseAction(Icons.Default.FastForward, "Fast Fwd", onClick = onFastForward, enabled = ffSpeed >= 2, shimmerStyle = ShimmerStyle.WAVE, waveArrows = 2))
         } else {
             add(PauseAction(
                 Icons.Default.FastForward, "Fast Fwd",
@@ -1096,8 +1096,9 @@ private fun FfRippleIcon(arrowCount: Int = 3) {
     val pulseWindow = 375          // total time for the ripple wave
     val rest = 825                 // quiet time before next cycle
     val duration = pulseWindow + rest  // 1200ms total
-    // Evenly space pulse starts using floats to avoid integer division drift
-    val pulseWidth = 150           // each arrow's up-down pulse duration
+    // Each arrow's pulse spans the full spacing between centers so the wave
+    // propagates smoothly — wider for fewer arrows, tighter for more.
+    val pulseWidth = (pulseWindow.toFloat() / count * 1.6f).toInt().coerceAtMost(pulseWindow)
 
     val scales = (0 until count).map { i ->
         val center = (pulseWindow.toFloat() * (i + 0.5f) / count).toInt()
@@ -1124,7 +1125,7 @@ private fun FfRippleIcon(arrowCount: Int = 3) {
         contentAlignment = Alignment.Center,
         modifier = Modifier.fillMaxSize(),
     ) {
-        val iconSize = maxWidth * (if (count <= 3) 0.34f else 0.28f)
+        val iconSize = maxWidth * 0.34f
         val overlap  = iconSize * 0.54f
 
         Row(
