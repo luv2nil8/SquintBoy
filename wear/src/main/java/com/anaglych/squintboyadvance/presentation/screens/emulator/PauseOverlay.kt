@@ -753,7 +753,6 @@ private fun ScaleExpandContent(
                         .clickable {
                             integerLock = !integerLock
                             if (integerLock) onSetCustomScale(snap(customScale))
-                            onInteraction()
                         }
                         .padding(horizontal = 10.dp),
                     contentAlignment = Alignment.Center,
@@ -774,7 +773,7 @@ private fun ScaleExpandContent(
                             if (filterEnabled) green.copy(alpha = 0.85f)
                             else Color.White.copy(alpha = 0.12f)
                         )
-                        .clickable { onToggleFilter(); onInteraction() }
+                        .clickable { onToggleFilter() }
                         .padding(horizontal = 10.dp),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -783,26 +782,32 @@ private fun ScaleExpandContent(
             }
             // Frameskip row
             val currentFrameskip = if (isGba) gbaFrameskip else gbFrameskip
+            val skipLabels = listOf("Off", "1", "2", "3")
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Skip", style = MaterialTheme.typography.caption2, color = Color.White.copy(alpha = 0.7f))
-                Spacer(modifier = Modifier.width(4.dp))
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text("Frame", style = MaterialTheme.typography.caption2, color = Color.White.copy(alpha = 0.7f))
+                    Text("Skip", style = MaterialTheme.typography.caption2, color = Color.White.copy(alpha = 0.7f))
+                }
                 for (skip in 0..3) {
                     Box(
                         modifier = Modifier
-                            .size(24.dp)
+                            .weight(1f)
+                            .height(28.dp)
                             .clip(RoundedCornerShape(4.dp))
                             .background(
                                 if (currentFrameskip == skip) green.copy(alpha = 0.85f)
                                 else Color.White.copy(alpha = 0.12f)
                             )
-                            .clickable { onSetFrameskip(skip); onInteraction() },
+                            .clickable { onSetFrameskip(skip) },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(skip.toString(), style = MaterialTheme.typography.caption2, color = Color.White, fontSize = 8.sp)
+                        Text(skipLabels[skip], style = MaterialTheme.typography.caption2, color = Color.White, fontSize = 11.sp)
                     }
                 }
             }
@@ -1342,6 +1347,20 @@ private fun ScrollableHexGrid(
     var resistOffset by remember { mutableStateOf(0f) }
     var dragTotal    by remember { mutableStateOf(0f) }
 
+    // ── Expand animation state (lives here so scroll can be derived from it) ──
+    var lastExpandedIndex by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(expandedIndex) {
+        if (expandedIndex != null) lastExpandedIndex = expandedIndex
+    }
+    val activeExpandedIndex = expandedIndex ?: lastExpandedIndex
+
+    val expandProgress by animateFloatAsState(
+        targetValue = if (expandedIndex != null) 1f else 0f,
+        animationSpec = tween(300, easing = FastOutSlowInEasing),
+        finishedListener = { if (it == 0f) lastExpandedIndex = null },
+        label = "expandProgress",
+    )
+
     // Threshold = one cell height in px
     val threshold = remember(viewportWidth) {
         if (viewportWidth == 0) 0f
@@ -1368,21 +1387,12 @@ private fun ScrollableHexGrid(
         return (y + cellPx / 2f + panelBias - viewportHeight / 2f).coerceAtLeast(0f).toInt()
     }
 
-    // Scroll to center expanded panel, or Resume on close / initial open
-    LaunchedEffect(expandedIndex, viewportWidth, viewportHeight) {
-        if (viewportWidth == 0 || viewportHeight == 0) return@LaunchedEffect
-
+    // Reset drag state on expand/collapse
+    LaunchedEffect(expandedIndex) {
         if (expandedIndex != null) {
-            // Opening: reset drag, center on button+panel midpoint
             dragTotal = 0f
             resistOffset = 0f
-            val edgePx    = with(density) { 8.dp.toPx() }
-            val gapPx     = with(density) { CELL_GAP.toPx() }
-            val cellPx    = (viewportWidth - 2f * edgePx - 2f * gapPx) / 3f
-            // Shift center down by half a cell to account for panel below button
-            scrollState.animateScrollTo(scrollTargetFor(expandedIndex, cellPx * 0.5f))
         } else {
-            // Closing or initial: spring back resist offset, center Resume
             if (resistOffset != 0f) {
                 launch {
                     val start = resistOffset
@@ -1392,8 +1402,29 @@ private fun ScrollableHexGrid(
                 }
             }
             dragTotal = 0f
-            val target = scrollTargetFor(3) // Resume is index 3
-            scrollState.scrollTo(target)
+        }
+    }
+
+    // Initial scroll to center Resume
+    LaunchedEffect(viewportWidth, viewportHeight) {
+        if (viewportWidth == 0 || viewportHeight == 0) return@LaunchedEffect
+        scrollState.scrollTo(scrollTargetFor(3))
+    }
+
+    // Drive scroll from expandProgress — displacement and scroll are both
+    // pure functions of the same value, so they stay perfectly in sync.
+    // Captures the pre-expand scroll position so collapse returns to it.
+    LaunchedEffect(activeExpandedIndex, viewportWidth, viewportHeight) {
+        if (viewportWidth == 0 || viewportHeight == 0) return@LaunchedEffect
+        if (activeExpandedIndex == null) return@LaunchedEffect
+        val edgePx    = with(density) { 8.dp.toPx() }
+        val gapPx     = with(density) { CELL_GAP.toPx() }
+        val cellPx    = (viewportWidth - 2f * edgePx - 2f * gapPx) / 3f
+        val closeTarget = scrollState.value  // where we were before opening
+        val openTarget  = scrollTargetFor(activeExpandedIndex, cellPx * 0.5f)
+        snapshotFlow { expandProgress }.collect { ep ->
+            val target = closeTarget + ((openTarget - closeTarget) * ep)
+            scrollState.scrollTo(target.toInt())
         }
     }
 
@@ -1500,6 +1531,8 @@ private fun ScrollableHexGrid(
                 viewportHeight       = viewportHeight,
                 expandedIndex        = expandedIndex,
                 onExpandToggle       = onExpandToggle,
+                expandProgress       = expandProgress,
+                activeExpandedIndex  = activeExpandedIndex,
                 showPalettes         = showPalettes,
                 paletteProgress      = paletteProgress,
                 selectedPaletteIndex = selectedPaletteIndex,
@@ -1520,26 +1553,14 @@ private fun HexButtonLayout(
     viewportHeight: Int,
     expandedIndex: Int?,
     onExpandToggle: (Int?) -> Unit,
+    expandProgress: Float,
+    activeExpandedIndex: Int?,
     showPalettes: Boolean,
     paletteProgress: Float,
     selectedPaletteIndex: Int,
     onPaletteSelected: (Int) -> Unit,
     ghostProgress: Float = 0f,
 ) {
-    // Track last expanded index so collapse animation has content to render.
-    var lastExpandedIndex by remember { mutableStateOf<Int?>(null) }
-    LaunchedEffect(expandedIndex) {
-        if (expandedIndex != null) lastExpandedIndex = expandedIndex
-    }
-    val activeExpandedIndex = expandedIndex ?: lastExpandedIndex
-
-    val expandProgress by animateFloatAsState(
-        targetValue = if (expandedIndex != null) 1f else 0f,
-        animationSpec = tween(300, easing = FastOutSlowInEasing),
-        finishedListener = { if (it == 0f) lastExpandedIndex = null },
-        label = "expandProgress",
-    )
-
     Layout(
         content = {
             // Hex buttons — expandable ones get click/long-press wired to toggle expansion.
