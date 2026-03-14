@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Gamepad
+import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
@@ -91,6 +92,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.Button
 import androidx.wear.compose.material.ButtonDefaults
 import androidx.wear.compose.material.Chip
@@ -108,8 +110,10 @@ import kotlin.math.sin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.foundation.gestures.detectTapGestures
 import com.anaglych.squintboyadvance.presentation.screens.settings.PaletteSwatch
 import com.anaglych.squintboyadvance.shared.model.GbColorPalette
+import com.anaglych.squintboyadvance.shared.model.ScaleMode
 
 private val RED = Color(0xFFEC1358)
 private val BLUE = Color(0xFF6A5ACD)
@@ -158,8 +162,27 @@ fun PauseOverlay(
     onToggleMute: () -> Unit,
     onVolumeChange: (Float) -> Unit,
     onResume: () -> Unit,
-    onScale: () -> Unit,
-    onController: () -> Unit,
+    // Scale
+    customScale: Float,
+    filterEnabled: Boolean,
+    onSetCustomScale: (Float) -> Unit,
+    onToggleFilter: () -> Unit,
+    gbaFrameskip: Int,
+    gbFrameskip: Int,
+    onSetFrameskip: (Int) -> Unit,
+    // Controls (OSC)
+    oscVisible: Boolean,
+    buttonOpacity: Float,
+    pressedOpacity: Float,
+    labelOpacity: Float,
+    labelSize: Float,
+    hapticEnabled: Boolean,
+    onToggleOscVisible: () -> Unit,
+    onSetButtonOpacity: (Float) -> Unit,
+    onSetPressedOpacity: (Float) -> Unit,
+    onSetLabelOpacity: (Float) -> Unit,
+    onSetLabelSize: (Float) -> Unit,
+    onToggleHaptic: () -> Unit,
     onSave: () -> Unit,
     onLoad: () -> Unit,
     onUndoSave: () -> Unit,
@@ -171,6 +194,7 @@ fun PauseOverlay(
     selectedPaletteIndex: Int,
     onPaletteSelected: (Int) -> Unit,
     onExit: () -> Unit,
+    onGhostProgressChange: (Float) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val green = MaterialTheme.colors.primary
@@ -208,6 +232,37 @@ fun PauseOverlay(
         finishedListener = { if (it == 0f) lastPaletteExpanded = false },
         label = "paletteProgress",
     )
+
+    // ── Ghosting: reveal emulator behind overlay during panel interaction ──
+    var lastInteraction by remember { mutableStateOf(0L) }
+    var ghostActive by remember { mutableStateOf(false) }
+
+    LaunchedEffect(lastInteraction) {
+        if (lastInteraction == 0L) return@LaunchedEffect
+        ghostActive = true
+        delay(500)
+        ghostActive = false
+    }
+    // Reset ghost when panel closes
+    LaunchedEffect(expandedIndex) {
+        if (expandedIndex == null) {
+            ghostActive = false
+            lastInteraction = 0L
+        }
+    }
+    val overlayAlpha by animateFloatAsState(
+        targetValue = if (ghostActive) 0f else 0.82f,
+        animationSpec = tween(if (ghostActive) 200 else 350),
+        label = "overlayAlpha",
+    )
+    val ghostProgress by animateFloatAsState(
+        targetValue = if (ghostActive) 1f else 0f,
+        animationSpec = tween(if (ghostActive) 200 else 350),
+        label = "ghostProgress",
+    )
+    // Report ghost progress to parent for OSC rendering
+    LaunchedEffect(ghostProgress) { onGhostProgressChange(ghostProgress) }
+    val onInteraction: () -> Unit = { lastInteraction = System.nanoTime() }
 
     val actions = buildList {
         // 0: Audio (long-press to expand slider, tap toggles mute)
@@ -265,10 +320,51 @@ fun PauseOverlay(
         }
         // 3: Resume
         add(PauseAction(Icons.Default.PlayArrow, "Resume", onResume, iconColor = green))
-        // 4: Scale
-        add(PauseAction(Icons.Default.AspectRatio, "Scale", onScale, backgroundColor = green.copy(alpha = 0.85f)))
-        // 5: Controls
-        add(PauseAction(Icons.Default.Gamepad, "Controls", onController, backgroundColor = green.copy(alpha = 0.85f)))
+        // 4: Scale (tap to expand panel)
+        add(PauseAction(
+            Icons.Default.AspectRatio, "Scale", {},
+            backgroundColor = green.copy(alpha = 0.85f),
+            expandContent = {
+                ScaleExpandContent(
+                    customScale = customScale,
+                    isGba = isGba,
+                    filterEnabled = filterEnabled,
+                    onSetCustomScale = onSetCustomScale,
+                    onToggleFilter = onToggleFilter,
+                    gbaFrameskip = gbaFrameskip,
+                    gbFrameskip = gbFrameskip,
+                    onSetFrameskip = onSetFrameskip,
+                    onInteraction = onInteraction,
+                    ghostProgress = ghostProgress,
+                )
+            },
+        ))
+        // 5: Controls (tap toggles OSC visibility, long-press expands panel)
+        add(PauseAction(
+            Icons.Default.Gamepad, "Controls",
+            onClick = onToggleOscVisible,
+            backgroundColor = if (oscVisible) Color.White.copy(alpha = 0.12f)
+                else Color.White.copy(alpha = 0.08f),
+            iconColor = if (oscVisible) Color.White else RED,
+            enabled = oscVisible,
+            expandContent = {
+                ControlsExpandContent(
+                    buttonOpacity = buttonOpacity,
+                    pressedOpacity = pressedOpacity,
+                    labelOpacity = labelOpacity,
+                    labelSize = labelSize,
+                    hapticEnabled = hapticEnabled,
+                    onSetButtonOpacity = onSetButtonOpacity,
+                    onSetPressedOpacity = onSetPressedOpacity,
+                    onSetLabelOpacity = onSetLabelOpacity,
+                    onSetLabelSize = onSetLabelSize,
+                    onToggleHaptic = onToggleHaptic,
+                    onInteraction = onInteraction,
+                    ghostProgress = ghostProgress,
+                )
+            },
+            onLongClick = {},
+        ))
         // 6: Link Cable (GB/GBC only)
         if (!isGba) {
             add(PauseAction(
@@ -295,7 +391,7 @@ fun PauseOverlay(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.82f)),
+            .background(Color.Black.copy(alpha = overlayAlpha)),
         contentAlignment = Alignment.Center,
     ) {
         ScrollableHexGrid(
@@ -312,6 +408,7 @@ fun PauseOverlay(
                 paletteExpanded = false
                 onPaletteSelected(index)
             },
+            ghostProgress = ghostProgress,
         )
     }
 }
@@ -589,6 +686,635 @@ private fun LinkCableExpandContent() {
     }
 }
 
+// ── Scale expand content ────────────────────────────────────────────
+
+private const val GBA_FRAME_W = 240
+private const val GBA_FRAME_H = 160
+private const val GB_FRAME_W = 160
+private const val GB_FRAME_H = 144
+
+@Composable
+private fun ScaleExpandContent(
+    customScale: Float,
+    isGba: Boolean,
+    filterEnabled: Boolean,
+    onSetCustomScale: (Float) -> Unit,
+    onToggleFilter: () -> Unit,
+    gbaFrameskip: Int,
+    gbFrameskip: Int,
+    onSetFrameskip: (Int) -> Unit,
+    onInteraction: () -> Unit,
+    ghostProgress: Float = 0f,
+) {
+    val green = MaterialTheme.colors.primary
+    val frameW = if (isGba) GBA_FRAME_W else GB_FRAME_W
+    val contentAlpha = 1f - ghostProgress
+    var integerLock by remember { mutableStateOf(false) }
+
+    val screenWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
+    val density = LocalDensity.current
+    val screenWidthPx = with(density) { screenWidthDp.dp.toPx() }
+    val maxScale = screenWidthPx / frameW
+    val maxInt = maxScale.toInt().coerceAtLeast(1)
+    val tickerStep = if (integerLock) 1.0f else 1.0f / frameW
+
+    fun snap(v: Float): Float = if (integerLock) {
+        v.roundToInt().toFloat().coerceIn(1f, maxInt.toFloat())
+    } else v
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        // Full content — fades during ghost
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.graphicsLayer { alpha = contentAlpha },
+        ) {
+            CompactTrackSlider(
+                value = customScale,
+                onValueChange = { onSetCustomScale(snap(it)); onInteraction() },
+                valueRange = 1.0f..maxScale,
+                tickerStep = tickerStep,
+                onInteraction = onInteraction,
+            )
+            // Integer | scale label | Filter
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .height(28.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(
+                            if (integerLock) green.copy(alpha = 0.85f)
+                            else Color.White.copy(alpha = 0.12f)
+                        )
+                        .clickable {
+                            integerLock = !integerLock
+                            if (integerLock) onSetCustomScale(snap(customScale))
+                            onInteraction()
+                        }
+                        .padding(horizontal = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("Integer", style = MaterialTheme.typography.caption2, color = Color.White)
+                }
+                Text(
+                    text = if (integerLock) "${customScale.roundToInt()}x"
+                        else "%.2fx".format(customScale),
+                    style = MaterialTheme.typography.caption2,
+                    color = Color.White.copy(alpha = 0.7f),
+                )
+                Box(
+                    modifier = Modifier
+                        .height(28.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(
+                            if (filterEnabled) green.copy(alpha = 0.85f)
+                            else Color.White.copy(alpha = 0.12f)
+                        )
+                        .clickable { onToggleFilter(); onInteraction() }
+                        .padding(horizontal = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("Filter", style = MaterialTheme.typography.caption2, color = Color.White)
+                }
+            }
+            // Frameskip row
+            val currentFrameskip = if (isGba) gbaFrameskip else gbFrameskip
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Skip", style = MaterialTheme.typography.caption2, color = Color.White.copy(alpha = 0.7f))
+                Spacer(modifier = Modifier.width(4.dp))
+                for (skip in 0..3) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(
+                                if (currentFrameskip == skip) green.copy(alpha = 0.85f)
+                                else Color.White.copy(alpha = 0.12f)
+                            )
+                            .clickable { onSetFrameskip(skip); onInteraction() },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(skip.toString(), style = MaterialTheme.typography.caption2, color = Color.White, fontSize = 8.sp)
+                    }
+                }
+            }
+        }
+
+        // Ghost-only overlays: [-], [+], scale label
+        if (ghostProgress > 0f) {
+            val panelBg = Color(0xFF16213E)
+            val scope = rememberCoroutineScope()
+            val valueRef = rememberUpdatedState(customScale)
+            val stepRef = rememberUpdatedState(tickerStep)
+
+            // [-] overlay
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 2.dp, top = 4.dp)
+                    .size(28.dp)
+                    .graphicsLayer { alpha = ghostProgress }
+                    .clip(CircleShape)
+                    .background(panelBg)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onPress = {
+                                onInteraction()
+                                val nv = (valueRef.value - stepRef.value)
+                                    .coerceIn(1.0f, maxScale)
+                                onSetCustomScale(snap(nv))
+                                val job = scope.launch {
+                                    delay(300)
+                                    while (true) {
+                                        val cur = valueRef.value
+                                        val next = (cur - stepRef.value)
+                                            .coerceIn(1.0f, maxScale)
+                                        onSetCustomScale(snap(next))
+                                        onInteraction()
+                                        delay(100)
+                                    }
+                                }
+                                tryAwaitRelease()
+                                job.cancel()
+                            }
+                        )
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = InlineSliderDefaults.Decrease,
+                    contentDescription = "Decrease",
+                    tint = green,
+                )
+            }
+
+            // [+] overlay
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(end = 2.dp, top = 4.dp)
+                    .size(28.dp)
+                    .graphicsLayer { alpha = ghostProgress }
+                    .clip(CircleShape)
+                    .background(panelBg)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onPress = {
+                                onInteraction()
+                                val nv = (valueRef.value + stepRef.value)
+                                    .coerceIn(1.0f, maxScale)
+                                onSetCustomScale(snap(nv))
+                                val job = scope.launch {
+                                    delay(300)
+                                    while (true) {
+                                        val cur = valueRef.value
+                                        val next = (cur + stepRef.value)
+                                            .coerceIn(1.0f, maxScale)
+                                        onSetCustomScale(snap(next))
+                                        onInteraction()
+                                        delay(100)
+                                    }
+                                }
+                                tryAwaitRelease()
+                                job.cancel()
+                            }
+                        )
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = InlineSliderDefaults.Increase,
+                    contentDescription = "Increase",
+                    tint = green,
+                )
+            }
+
+            // Scale label overlay
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .height(28.dp)
+                    .graphicsLayer { alpha = ghostProgress }
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(panelBg)
+                    .padding(horizontal = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = if (integerLock) "${customScale.roundToInt()}x"
+                        else "%.2fx".format(customScale),
+                    style = MaterialTheme.typography.caption2,
+                    color = Color.White,
+                )
+            }
+        }
+    }
+}
+
+// ── Controls expand content ─────────────────────────────────────────
+
+@Composable
+private fun ControlsExpandContent(
+    buttonOpacity: Float,
+    pressedOpacity: Float,
+    labelOpacity: Float,
+    labelSize: Float,
+    hapticEnabled: Boolean,
+    onSetButtonOpacity: (Float) -> Unit,
+    onSetPressedOpacity: (Float) -> Unit,
+    onSetLabelOpacity: (Float) -> Unit,
+    onSetLabelSize: (Float) -> Unit,
+    onToggleHaptic: () -> Unit,
+    onInteraction: () -> Unit,
+    ghostProgress: Float = 0f,
+) {
+    val green = MaterialTheme.colors.primary
+    val haptic = LocalHapticFeedback.current
+    val contentAlpha = 1f - ghostProgress
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        // Fading sliders (first 3)
+        Column(
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer { alpha = contentAlpha },
+        ) {
+            LabeledSliderRow(
+                label = "Outline",
+                value = buttonOpacity,
+                onValueChange = { onSetButtonOpacity(it); onInteraction() },
+                valueRange = 0f..1f,
+                steps = 20,
+                onInteraction = onInteraction,
+            )
+            LabeledSliderRow(
+                label = "Pressed",
+                value = pressedOpacity,
+                onValueChange = { onSetPressedOpacity(it); onInteraction() },
+                valueRange = 0f..0.5f,
+                steps = 10,
+                onInteraction = onInteraction,
+            )
+            LabeledSliderRow(
+                label = "Labels",
+                value = labelOpacity,
+                onValueChange = { onSetLabelOpacity(it); onInteraction() },
+                valueRange = 0f..1f,
+                steps = 20,
+                onInteraction = onInteraction,
+            )
+        }
+        // Size row: slider fades, haptic button stays
+        Row(
+            modifier = Modifier.fillMaxWidth().height(28.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .graphicsLayer { alpha = contentAlpha },
+            ) {
+                LabeledSliderRow(
+                    label = "Size",
+                    value = labelSize,
+                    onValueChange = { onSetLabelSize(it); onInteraction() },
+                    valueRange = 9f..17f,
+                    steps = 4,
+                    onInteraction = onInteraction,
+                    formatValue = { v ->
+                        when (v.roundToInt()) {
+                            9 -> "Xs"; 11 -> "Sm"; 13 -> "Md"; 15 -> "Lg"; 17 -> "Xl"
+                            else -> "${v.roundToInt()}"
+                        }
+                    },
+                )
+            }
+            // Non-fading haptic button
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (hapticEnabled) green.copy(alpha = 0.85f)
+                        else Color.White.copy(alpha = 0.08f)
+                    )
+                    .clickable {
+                        onToggleHaptic()
+                        if (!hapticEnabled) {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Vibration,
+                    contentDescription = if (hapticEnabled) "Haptic on" else "Haptic off",
+                    tint = if (hapticEnabled) Color.White else RED,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+        }
+    }
+}
+
+// ── Compact track slider (shared by scale) ──────────────────────────
+
+@Composable
+private fun CompactTrackSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    tickerStep: Float,
+    onInteraction: () -> Unit,
+) {
+    val primaryColor = MaterialTheme.colors.primary
+    val trackColor = Color.White.copy(alpha = 0.12f)
+    val scope = rememberCoroutineScope()
+    val valueState = rememberUpdatedState(value)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(36.dp)
+            .background(
+                color = Color.White.copy(alpha = 0.06f),
+                shape = RoundedCornerShape(18.dp),
+            )
+            .padding(horizontal = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        // [-] pixel step
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .pointerInput(tickerStep, valueRange) {
+                    detectTapGestures(
+                        onPress = {
+                            onInteraction()
+                            val newVal = (valueState.value - tickerStep)
+                                .coerceIn(valueRange.start, valueRange.endInclusive)
+                            onValueChange(newVal)
+
+                            val repeatJob = scope.launch {
+                                delay(300)
+                                while (true) {
+                                    val cur = valueState.value
+                                    val nv = (cur - tickerStep)
+                                        .coerceIn(valueRange.start, valueRange.endInclusive)
+                                    onValueChange(nv)
+                                    onInteraction()
+                                    delay(100)
+                                }
+                            }
+                            tryAwaitRelease()
+                            repeatJob.cancel()
+                        }
+                    )
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = InlineSliderDefaults.Decrease,
+                contentDescription = "Decrease",
+                tint = primaryColor,
+            )
+        }
+
+        // Continuous track slider
+        Canvas(
+            modifier = Modifier
+                .weight(1f)
+                .height(20.dp)
+                .pointerInput(valueRange) {
+                    val thumbR = 6.dp.toPx()
+                    val usable = size.width - thumbR * 2
+
+                    fun xToValue(x: Float): Float {
+                        val f = ((x - thumbR) / usable).coerceIn(0f, 1f)
+                        return valueRange.start + f * (valueRange.endInclusive - valueRange.start)
+                    }
+
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        onInteraction()
+                        val drag = awaitTouchSlopOrCancellation(down.id) { change, _ ->
+                            change.consume()
+                        }
+                        if (drag != null) {
+                            onValueChange(xToValue(drag.position.x))
+                            horizontalDrag(drag.id) { change ->
+                                change.consume()
+                                onValueChange(xToValue(change.position.x))
+                                onInteraction()
+                            }
+                        } else {
+                            onValueChange(xToValue(down.position.x))
+                        }
+                    }
+                },
+        ) {
+            val trackH = 3.dp.toPx()
+            val trackY = (size.height - trackH) / 2
+            val thumbRadius = 6.dp.toPx()
+            val trackLeft = thumbRadius
+            val trackRight = size.width - thumbRadius
+            val trackW = trackRight - trackLeft
+            val fraction = ((value - valueRange.start) /
+                (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
+            val thumbX = trackLeft + fraction * trackW
+
+            drawRoundRect(
+                color = trackColor,
+                topLeft = Offset(trackLeft, trackY),
+                size = Size(trackW, trackH),
+                cornerRadius = CornerRadius(trackH / 2),
+            )
+            if (fraction > 0f) {
+                drawRoundRect(
+                    color = primaryColor,
+                    topLeft = Offset(trackLeft, trackY),
+                    size = Size(thumbX - trackLeft, trackH),
+                    cornerRadius = CornerRadius(trackH / 2),
+                )
+            }
+            drawCircle(
+                color = primaryColor,
+                radius = thumbRadius,
+                center = Offset(thumbX, size.height / 2),
+            )
+        }
+
+        // [+] pixel step
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .pointerInput(tickerStep, valueRange) {
+                    detectTapGestures(
+                        onPress = {
+                            onInteraction()
+                            val newVal = (valueState.value + tickerStep)
+                                .coerceIn(valueRange.start, valueRange.endInclusive)
+                            onValueChange(newVal)
+
+                            val repeatJob = scope.launch {
+                                delay(300)
+                                while (true) {
+                                    val cur = valueState.value
+                                    val nv = (cur + tickerStep)
+                                        .coerceIn(valueRange.start, valueRange.endInclusive)
+                                    onValueChange(nv)
+                                    onInteraction()
+                                    delay(100)
+                                }
+                            }
+                            tryAwaitRelease()
+                            repeatJob.cancel()
+                        }
+                    )
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = InlineSliderDefaults.Increase,
+                contentDescription = "Increase",
+                tint = primaryColor,
+            )
+        }
+    }
+}
+
+// ── Labeled slider row (compact, for controls panel) ────────────────
+
+@Composable
+private fun LabeledSliderRow(
+    label: String,
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    steps: Int,
+    onInteraction: () -> Unit,
+    formatValue: ((Float) -> String)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    val primaryColor = MaterialTheme.colors.primary
+    val trackColor = Color.White.copy(alpha = 0.12f)
+    val displayText = if (formatValue != null) {
+        formatValue(value)
+    } else {
+        "${((value - valueRange.start) /
+            (valueRange.endInclusive - valueRange.start) * 100).roundToInt()}%"
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(28.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.caption2,
+            color = Color.White.copy(alpha = 0.6f),
+            modifier = Modifier.width(48.dp),
+        )
+
+        Canvas(
+            modifier = Modifier
+                .weight(1f)
+                .height(20.dp)
+                .pointerInput(valueRange, steps) {
+                    val thumbR = 5.dp.toPx()
+                    val usable = size.width - thumbR * 2
+
+                    fun xToValue(x: Float): Float {
+                        val f = ((x - thumbR) / usable).coerceIn(0f, 1f)
+                        val raw = valueRange.start + f * (valueRange.endInclusive - valueRange.start)
+                        return if (steps > 0) {
+                            val stepSize = (valueRange.endInclusive - valueRange.start) / steps
+                            (stepSize * (raw / stepSize).roundToInt())
+                                .coerceIn(valueRange.start, valueRange.endInclusive)
+                        } else raw
+                    }
+
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        onInteraction()
+                        val drag = awaitTouchSlopOrCancellation(down.id) { change, _ ->
+                            change.consume()
+                        }
+                        if (drag != null) {
+                            onValueChange(xToValue(drag.position.x))
+                            horizontalDrag(drag.id) { change ->
+                                change.consume()
+                                onValueChange(xToValue(change.position.x))
+                                onInteraction()
+                            }
+                        } else {
+                            onValueChange(xToValue(down.position.x))
+                        }
+                    }
+                },
+        ) {
+            val trackH = 3.dp.toPx()
+            val trackY = (size.height - trackH) / 2
+            val thumbRadius = 5.dp.toPx()
+            val trackLeft = thumbRadius
+            val trackRight = size.width - thumbRadius
+            val trackW = trackRight - trackLeft
+            val fraction = ((value - valueRange.start) /
+                (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
+            val thumbX = trackLeft + fraction * trackW
+
+            drawRoundRect(
+                color = trackColor,
+                topLeft = Offset(trackLeft, trackY),
+                size = Size(trackW, trackH),
+                cornerRadius = CornerRadius(trackH / 2),
+            )
+            if (fraction > 0f) {
+                drawRoundRect(
+                    color = primaryColor,
+                    topLeft = Offset(trackLeft, trackY),
+                    size = Size(thumbX - trackLeft, trackH),
+                    cornerRadius = CornerRadius(trackH / 2),
+                )
+            }
+            drawCircle(
+                color = primaryColor,
+                radius = thumbRadius,
+                center = Offset(thumbX, size.height / 2),
+            )
+        }
+
+        if (trailing != null) {
+            trailing()
+        } else {
+            Text(
+                text = displayText,
+                style = MaterialTheme.typography.caption2,
+                color = Color.White.copy(alpha = 0.5f),
+            )
+        }
+    }
+}
+
 // ── Scrollable hex grid ─────────────────────────────────────────────
 
 @Composable
@@ -602,6 +1328,7 @@ private fun ScrollableHexGrid(
     paletteProgress: Float,
     selectedPaletteIndex: Int,
     onPaletteSelected: (Int) -> Unit,
+    ghostProgress: Float = 0f,
 ) {
     val scrollState    = rememberScrollState()
     val focusRequester = remember { FocusRequester() }
@@ -626,7 +1353,8 @@ private fun ScrollableHexGrid(
     }
 
     // Helper: compute scroll target to center a button index
-    fun scrollTargetFor(index: Int): Int {
+    // panelBias shifts the centering point down to account for panel height
+    fun scrollTargetFor(index: Int, panelBias: Float = 0f): Int {
         val edgePx    = with(density) { 8.dp.toPx() }
         val gapPx     = with(density) { CELL_GAP.toPx() }
         val available = viewportWidth - 2f * edgePx
@@ -637,7 +1365,7 @@ private fun ScrollableHexGrid(
         val trio = index / 3
         val col  = when (index % 3) { 0 -> 1; 1 -> 0; else -> 2 }
         val y = topPad + trio * stepPx + if (col != 1) halfStep else 0f
-        return (y + cellPx / 2f - viewportHeight / 2f).coerceAtLeast(0f).toInt()
+        return (y + cellPx / 2f + panelBias - viewportHeight / 2f).coerceAtLeast(0f).toInt()
     }
 
     // Scroll to center expanded panel, or Resume on close / initial open
@@ -645,10 +1373,14 @@ private fun ScrollableHexGrid(
         if (viewportWidth == 0 || viewportHeight == 0) return@LaunchedEffect
 
         if (expandedIndex != null) {
-            // Opening: reset drag, center on panel
+            // Opening: reset drag, center on button+panel midpoint
             dragTotal = 0f
             resistOffset = 0f
-            scrollState.animateScrollTo(scrollTargetFor(expandedIndex))
+            val edgePx    = with(density) { 8.dp.toPx() }
+            val gapPx     = with(density) { CELL_GAP.toPx() }
+            val cellPx    = (viewportWidth - 2f * edgePx - 2f * gapPx) / 3f
+            // Shift center down by half a cell to account for panel below button
+            scrollState.animateScrollTo(scrollTargetFor(expandedIndex, cellPx * 0.5f))
         } else {
             // Closing or initial: spring back resist offset, center Resume
             if (resistOffset != 0f) {
@@ -772,6 +1504,7 @@ private fun ScrollableHexGrid(
                 paletteProgress      = paletteProgress,
                 selectedPaletteIndex = selectedPaletteIndex,
                 onPaletteSelected    = onPaletteSelected,
+                ghostProgress        = ghostProgress,
             )
         }
     }
@@ -791,6 +1524,7 @@ private fun HexButtonLayout(
     paletteProgress: Float,
     selectedPaletteIndex: Int,
     onPaletteSelected: (Int) -> Unit,
+    ghostProgress: Float = 0f,
 ) {
     // Track last expanded index so collapse animation has content to render.
     var lastExpandedIndex by remember { mutableStateOf<Int?>(null) }
@@ -823,7 +1557,7 @@ private fun HexButtonLayout(
                 HexButton(effectiveAction)
             }
             // Morphing expanded panel — measured at interpolated width.
-            MorphPanel(expandProgress) {
+            MorphPanel(expandProgress, ghostProgress) {
                 if (activeExpandedIndex != null && expandProgress > 0f) {
                     actions.getOrNull(activeExpandedIndex)?.expandContent?.invoke()
                 }
@@ -917,12 +1651,10 @@ private fun HexButtonLayout(
                     if (!isBelow && y > lastAboveY)  lastAboveY  = y
                 }
 
-                // Below: first button clears panel bottom with gapPx spacing
                 belowDisp[col] = if (firstBelowY != Int.MAX_VALUE) {
                     (panelBottom + gapPx - firstBelowY).coerceAtLeast(0)
                 } else 0
 
-                // Above: last button's bottom edge clears panel top with gapPx
                 aboveDisp[col] = if (lastAboveY != Int.MIN_VALUE) {
                     (lastAboveY + cellPx + gapPx - expandedBaseY).coerceAtLeast(0)
                 } else 0
@@ -966,15 +1698,16 @@ private fun HexButtonLayout(
 
                 val y = baseY + yOffset
 
-                // Fade out buttons replaced by panel/palette; dim others
+                // Fade out buttons replaced by panel/palette; dim others; ghost hides all
                 val isExpandedButton = index == activeExpandedIndex
                 val isPaletteReplaced = showPalettes && index == actions.lastIndex
                 val dimProgress = maxOf(expandProgress, paletteProgress)
+                val ghostDim = 1f - ghostProgress
                 val buttonAlpha = when {
-                    isExpandedButton -> 1f - expandProgress
-                    isPaletteReplaced -> 1f - paletteProgress
-                    dimProgress > 0f -> 1f - 0.3f * dimProgress
-                    else -> 1f
+                    isExpandedButton -> (1f - expandProgress) * ghostDim
+                    isPaletteReplaced -> (1f - paletteProgress) * ghostDim
+                    dimProgress > 0f -> (1f - 0.3f * dimProgress) * ghostDim
+                    else -> 1f * ghostDim
                 }
 
                 val viewportY   = y - scrollOffset + cellPx / 2f
@@ -1069,13 +1802,15 @@ private fun HexButtonLayout(
  * Corner radius and background interpolate with [expandProgress].
  */
 @Composable
-private fun MorphPanel(expandProgress: Float, content: @Composable () -> Unit) {
+private fun MorphPanel(expandProgress: Float, ghostProgress: Float = 0f, content: @Composable () -> Unit) {
     val cornerRadius = androidx.compose.ui.unit.lerp(24.dp, 20.dp, expandProgress)
-    val bg = lerp(Color.Transparent, Color(0xFF16213E).copy(alpha = 0.95f), expandProgress)
+    val panelAlpha = 0.95f * (1f - ghostProgress)
+    val bg = lerp(Color.Transparent, Color(0xFF16213E).copy(alpha = panelAlpha), expandProgress)
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .background(bg, RoundedCornerShape(cornerRadius))
+            .pointerInput(Unit) { detectTapGestures { } }
             .padding(
                 horizontal = (12 * expandProgress).dp,
                 vertical = (8 * expandProgress).dp,

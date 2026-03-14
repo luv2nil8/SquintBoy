@@ -9,9 +9,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -25,12 +28,11 @@ import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import com.anaglych.squintboyadvance.presentation.SettingsRepository
 import com.anaglych.squintboyadvance.presentation.components.WearSlideToConfirm
-import com.anaglych.squintboyadvance.presentation.screens.settings.ScaleEditorScreen
 import com.anaglych.squintboyadvance.shared.emulator.EmulatorState
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 import com.anaglych.squintboyadvance.shared.model.SystemType
 
-private enum class PauseUiState { MENU, SCALE_EDITOR, CONFIRM_RESET }
+private enum class PauseUiState { MENU, CONFIRM_RESET }
 
 @Composable
 fun EmulatorScreen(
@@ -59,6 +61,7 @@ fun EmulatorScreen(
 
     // Pause sub-screen state — resets to MENU whenever the emulator resumes
     var pauseUiState by rememberSaveable { mutableStateOf(PauseUiState.MENU) }
+    var pauseGhostProgress by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(state) {
         if (state == EmulatorState.RUNNING) pauseUiState = PauseUiState.MENU
     }
@@ -113,14 +116,34 @@ fun EmulatorScreen(
             }
 
             EmulatorState.PAUSED -> {
-                val activeScaleMode =
-                    if (pauseUiState == PauseUiState.SCALE_EDITOR) ScaleMode.CUSTOM else scaleMode
                 GameDisplay(
                     frame = frame,
-                    scaleMode = activeScaleMode,
+                    scaleMode = scaleMode,
                     customScale = customScale,
                     filterEnabled = filterEnabled,
                 )
+
+                // OSC preview — visible during ghost mode so user sees live changes
+                if (pauseGhostProgress > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer { alpha = pauseGhostProgress },
+                    ) {
+                        TouchOverlay(
+                            systemType = systemType,
+                            onButtonPress = {},
+                            onButtonRelease = {},
+                            onPause = {},
+                            visible = true,
+                            buttonOpacity = settings.controllerLayout.buttonOpacity,
+                            pressedOpacity = settings.controllerLayout.pressedOpacity,
+                            labelOpacity = settings.controllerLayout.labelOpacity,
+                            labelSize = settings.controllerLayout.labelSize,
+                            hapticEnabled = false,
+                        )
+                    }
+                }
 
                 when (pauseUiState) {
                     PauseUiState.MENU -> PauseOverlay(
@@ -136,8 +159,70 @@ fun EmulatorScreen(
                         onToggleMute = viewModel::toggleMute,
                         onVolumeChange = { viewModel.setVolume(it) },
                         onResume = viewModel::resume,
-                        onScale = { pauseUiState = PauseUiState.SCALE_EDITOR },
-                        onController = { /* TODO */ },
+                        // Scale
+                        customScale = customScale,
+                        filterEnabled = filterEnabled,
+                        onSetCustomScale = { scale ->
+                            settingsRepo.update {
+                                if (isGba) it.copy(gbaScaleMode = ScaleMode.CUSTOM, gbaCustomScale = scale)
+                                else it.copy(gbScaleMode = ScaleMode.CUSTOM, gbCustomScale = scale)
+                            }
+                        },
+                        onToggleFilter = {
+                            settingsRepo.update {
+                                if (isGba) it.copy(gbaFilterEnabled = !it.gbaFilterEnabled)
+                                else it.copy(gbFilterEnabled = !it.gbFilterEnabled)
+                            }
+                        },
+                        gbaFrameskip = settings.gbaFrameskip,
+                        gbFrameskip = settings.gbFrameskip,
+                        onSetFrameskip = { skip ->
+                            settingsRepo.update {
+                                if (isGba) it.copy(gbaFrameskip = skip)
+                                else it.copy(gbFrameskip = skip)
+                            }
+                        },
+                        // Controls (OSC)
+                        oscVisible = settings.controllerLayout.visible,
+                        buttonOpacity = settings.controllerLayout.buttonOpacity,
+                        pressedOpacity = settings.controllerLayout.pressedOpacity,
+                        labelOpacity = settings.controllerLayout.labelOpacity,
+                        labelSize = settings.controllerLayout.labelSize,
+                        hapticEnabled = settings.controllerLayout.hapticFeedback,
+                        onToggleOscVisible = {
+                            settingsRepo.update {
+                                it.copy(controllerLayout = it.controllerLayout.copy(
+                                    visible = !it.controllerLayout.visible
+                                ))
+                            }
+                        },
+                        onSetButtonOpacity = { v ->
+                            settingsRepo.update {
+                                it.copy(controllerLayout = it.controllerLayout.copy(buttonOpacity = v))
+                            }
+                        },
+                        onSetPressedOpacity = { v ->
+                            settingsRepo.update {
+                                it.copy(controllerLayout = it.controllerLayout.copy(pressedOpacity = v))
+                            }
+                        },
+                        onSetLabelOpacity = { v ->
+                            settingsRepo.update {
+                                it.copy(controllerLayout = it.controllerLayout.copy(labelOpacity = v))
+                            }
+                        },
+                        onSetLabelSize = { v ->
+                            settingsRepo.update {
+                                it.copy(controllerLayout = it.controllerLayout.copy(labelSize = v))
+                            }
+                        },
+                        onToggleHaptic = {
+                            settingsRepo.update {
+                                it.copy(controllerLayout = it.controllerLayout.copy(
+                                    hapticFeedback = !it.controllerLayout.hapticFeedback
+                                ))
+                            }
+                        },
                         onSave = { viewModel.saveState(); viewModel.resume() },
                         onLoad = { viewModel.loadState(); viewModel.resume() },
                         onUndoSave = { viewModel.undoSave(); viewModel.resume() },
@@ -152,13 +237,7 @@ fun EmulatorScreen(
                             viewModel.stop()
                             onExit()
                         },
-                    )
-
-                    PauseUiState.SCALE_EDITOR -> ScaleEditorScreen(
-                        isGba = isGba,
-                        liveFrame = frame,
-                        isOverlay = true,
-                        onDismiss = { pauseUiState = PauseUiState.MENU },
+                        onGhostProgressChange = { pauseGhostProgress = it },
                     )
 
                     PauseUiState.CONFIRM_RESET -> WearSlideToConfirm(
@@ -168,7 +247,6 @@ fun EmulatorScreen(
                         onConfirmed = { viewModel.resetRom() },
                         onDismiss = { pauseUiState = PauseUiState.MENU },
                     )
-
                 }
             }
 
