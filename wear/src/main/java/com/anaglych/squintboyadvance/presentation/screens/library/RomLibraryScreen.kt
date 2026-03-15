@@ -4,22 +4,18 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -66,7 +62,6 @@ import kotlinx.coroutines.launch
 @Composable
 fun RomLibraryScreen(
     onRomSelected: (RomMetadata) -> Unit,
-    onSettingsClick: () -> Unit,
     viewModel: RomLibraryViewModel = viewModel()
 ) {
     val roms by viewModel.roms.collectAsState()
@@ -116,25 +111,14 @@ fun RomLibraryScreen(
             ) {
                 item { Spacer(Modifier.height(48.dp)) }
 
-                // ── Action buttons ──────────────────────────────────────
+                // ── Action button ───────────────────────────────────────
                 item {
-                    Row(
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(bottom = 8.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Button(
-                            onClick = onSettingsClick,
-                            colors = ButtonDefaults.buttonColors(
-                                backgroundColor = MaterialTheme.colors.primary,
-                            ),
-                            modifier = Modifier.size(48.dp),
-                        ) {
-                            Icon(Icons.Default.Settings, contentDescription = "Settings")
-                        }
-                        Spacer(Modifier.width(16.dp))
                         Button(
                             onClick = { viewModel.sendOpenRomPicker() },
                             colors = ButtonDefaults.buttonColors(

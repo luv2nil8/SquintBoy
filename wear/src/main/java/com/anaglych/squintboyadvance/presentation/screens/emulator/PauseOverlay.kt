@@ -116,7 +116,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.gestures.detectTapGestures
-import com.anaglych.squintboyadvance.presentation.screens.settings.PaletteSwatch
 import com.anaglych.squintboyadvance.shared.model.GbColorPalette
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 
@@ -2363,5 +2362,37 @@ private fun HexButton(action: PauseAction) {
             modifier = Modifier.size(48.dp),
             colors = ButtonDefaults.buttonColors(backgroundColor = effectiveBg),
         ) { iconContent() }
+    }
+}
+
+@Composable
+private fun PaletteSwatch(
+    palette: GbColorPalette,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val d = size.minDimension
+            val arcSize = Size(d, d)
+
+            drawArc(color = Color(palette.c0), startAngle = 180f, sweepAngle = 90f, useCenter = true, size = arcSize)
+            drawArc(color = Color(palette.c1), startAngle = 270f, sweepAngle = 90f, useCenter = true, size = arcSize)
+            drawArc(color = Color(palette.c3), startAngle = 0f,   sweepAngle = 90f, useCenter = true, size = arcSize)
+            drawArc(color = Color(palette.c2), startAngle = 90f,  sweepAngle = 90f, useCenter = true, size = arcSize)
+
+            if (selected) {
+                val strokeW = 2.5.dp.toPx()
+                drawCircle(
+                    color = Color.White,
+                    radius = d / 2 - strokeW / 2,
+                    style = Stroke(width = strokeW),
+                )
+            }
+        }
     }
 }
