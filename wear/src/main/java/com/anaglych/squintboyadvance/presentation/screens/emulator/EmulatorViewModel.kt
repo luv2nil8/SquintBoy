@@ -19,10 +19,13 @@ import com.anaglych.squintboyadvance.shared.model.ScaleMode
 import com.anaglych.squintboyadvance.shared.model.SystemType
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.roundToInt
@@ -79,11 +82,32 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
     private var renderBitmap: Bitmap? = null
     private var pixelBuffer: IntArray? = null
 
+    /** Effective palette index: ROM override if active, else global. */
+    private fun effectivePaletteIndex(s: com.anaglych.squintboyadvance.shared.model.EmulatorSettings): Int {
+        val romId = _currentRomId.value ?: return s.gbPaletteIndex
+        val ov = s.romOverrides[romId] ?: return s.gbPaletteIndex
+        if (!ov.active) return s.gbPaletteIndex
+        return ov.gbPaletteIndex ?: s.gbPaletteIndex
+    }
+
+    /** Effective frameskip: ROM override if active, else global. */
+    private fun effectiveFrameskip(s: com.anaglych.squintboyadvance.shared.model.EmulatorSettings): Int {
+        val isGba = _systemType.value == SystemType.GBA
+        val romId = _currentRomId.value
+        if (romId != null) {
+            val ov = s.romOverrides[romId]
+            if (ov != null && ov.active) {
+                val skip = if (isGba) ov.gbaFrameskip else ov.gbFrameskip
+                if (skip != null) return skip
+            }
+        }
+        return if (isGba) s.gbaFrameskip else s.gbFrameskip
+    }
+
     init {
-        // Apply GB palette changes from the companion app immediately while a game is running.
+        // Apply GB palette changes live — uses effective (ROM override or global).
         viewModelScope.launch {
-            settingsRepo.settings
-                .map { it.gbPaletteIndex }
+            combine(settingsRepo.settings, _currentRomId) { s, _ -> effectivePaletteIndex(s) }
                 .distinctUntilChanged()
                 .collect { index ->
                     if (_systemType.value == SystemType.GBA) return@collect
@@ -169,9 +193,10 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             player.start()
         }
 
-        // Apply GB color palette (GB/GBC only; no-op if GBA)
+        // Apply GB color palette (GB/GBC only; no-op if GBA) — uses effective (ROM or global)
         if (_systemType.value != SystemType.GBA) {
-            val palette = GbColorPalette.ALL.getOrNull(settings.gbPaletteIndex)
+            val paletteIdx = effectivePaletteIndex(settings)
+            val palette = GbColorPalette.ALL.getOrNull(paletteIdx)
             if (palette != null) emu.setGbPalette(palette.mgbaOrder())
         }
 
@@ -189,7 +214,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             onFrame = ::onFrameReady,
             audioPlayer = if (audioEnabled) audioPlayer else null,
             isRunning = { _state.value == EmulatorState.RUNNING },
-            frameskip = if (_systemType.value == SystemType.GBA) settings.gbaFrameskip else settings.gbFrameskip,
+            frameskip = effectiveFrameskip(settings),
         ).also { it.ffSpeed = _ffSpeed.value }
         emulatorThread?.start()
     }
@@ -204,11 +229,9 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         _frame.value = bitmap.asImageBitmap()
     }
 
-    /** Applies a GB palette immediately and persists the index. GB/GBC only. */
-    fun setGbPalette(index: Int) {
+    /** Applies a GB palette to the emulator without writing settings. GB/GBC only. */
+    fun applyGbPalette(palette: GbColorPalette) {
         if (_systemType.value == SystemType.GBA) return
-        settingsRepo.update { it.copy(gbPaletteIndex = index) }
-        val palette = GbColorPalette.ALL.getOrNull(index) ?: return
         emulator?.setGbPalette(palette.mgbaOrder())
     }
 
@@ -268,30 +291,42 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
     private val _ffSelectedSpeed = MutableStateFlow(2)
     val ffSelectedSpeed: StateFlow<Int> = _ffSelectedSpeed.asStateFlow()
 
-    private val _isRomMode = MutableStateFlow(false)
-    val isRomMode: StateFlow<Boolean> = _isRomMode.asStateFlow()
+    /** Derived from the `active` flag in the ROM's override entry. */
+    val isRomMode: StateFlow<Boolean> = combine(settingsRepo.settings, _currentRomId) { s, romId ->
+        romId != null && (s.romOverrides[romId]?.active ?: false)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
-    fun setRomMode(enabled: Boolean) { _isRomMode.value = enabled }
+    /** Toggles the `active` flag on the ROM's override entry. Non-destructive: override values are preserved. */
+    fun setRomMode(enabled: Boolean) {
+        val romId = _currentRomId.value ?: return
+        settingsRepo.update { s ->
+            val ov = s.romOverrides[romId] ?: RomOverrides()
+            s.copy(romOverrides = s.romOverrides + (romId to ov.copy(active = enabled)))
+        }
+    }
 
     /**
      * Copies the current ROM's effective display settings into global settings.
      * After this, global settings match what was customized for this ROM.
      */
     fun saveRomToGlobal() {
-        val romId = _currentRomId.value ?: return
-        val settings = settingsRepo.settings.value
-        val override = settings.romOverrides[romId] ?: return
-        settingsRepo.update { s ->
-            s.copy(
-                gbaScaleMode   = override.gbaScaleMode   ?: s.gbaScaleMode,
-                gbaCustomScale = override.gbaCustomScale ?: s.gbaCustomScale,
-                gbScaleMode    = override.gbScaleMode    ?: s.gbScaleMode,
-                gbCustomScale  = override.gbCustomScale  ?: s.gbCustomScale,
-                gbaFilterEnabled = override.gbaFilterEnabled ?: s.gbaFilterEnabled,
-                gbFilterEnabled  = override.gbFilterEnabled  ?: s.gbFilterEnabled,
-                gbaFrameskip   = override.gbaFrameskip   ?: s.gbaFrameskip,
-                gbFrameskip    = override.gbFrameskip    ?: s.gbFrameskip,
-                gbPaletteIndex = override.gbPaletteIndex ?: s.gbPaletteIndex,
+        _currentRomId.value ?: return
+        // Use the current effective settings (ROM override merged with global) as the new global.
+        // _isRomMode is true here, so settingsRepo.settings already has overrides applied via
+        // the EmulatorScreen effectiveSettings layer — but we recompute directly to stay pure.
+        val s = settingsRepo.settings.value
+        val ov = s.romOverrides[_currentRomId.value] ?: RomOverrides()
+        settingsRepo.update { base ->
+            base.copy(
+                gbaScaleMode     = ov.gbaScaleMode     ?: base.gbaScaleMode,
+                gbaCustomScale   = ov.gbaCustomScale   ?: base.gbaCustomScale,
+                gbScaleMode      = ov.gbScaleMode      ?: base.gbScaleMode,
+                gbCustomScale    = ov.gbCustomScale    ?: base.gbCustomScale,
+                gbaFilterEnabled = ov.gbaFilterEnabled ?: base.gbaFilterEnabled,
+                gbFilterEnabled  = ov.gbFilterEnabled  ?: base.gbFilterEnabled,
+                gbaFrameskip     = ov.gbaFrameskip     ?: base.gbaFrameskip,
+                gbFrameskip      = ov.gbFrameskip      ?: base.gbFrameskip,
+                gbPaletteIndex   = ov.gbPaletteIndex   ?: base.gbPaletteIndex,
             )
         }
     }
@@ -397,7 +432,6 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             saveStateManager?.onFocusLost()
         }
         _ffSpeed.value = 0
-        _isRomMode.value = false
         _hasSaveState.value = false
         _canUndoSave.value = false
         _canUndoLoad.value = false

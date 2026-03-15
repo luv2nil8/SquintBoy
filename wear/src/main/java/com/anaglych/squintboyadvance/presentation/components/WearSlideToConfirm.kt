@@ -1,50 +1,68 @@
 package com.anaglych.squintboyadvance.presentation.components
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.horizontalDrag
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.Button
 import androidx.wear.compose.material.ButtonDefaults
-import androidx.wear.compose.material.MaterialTheme
+import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.Text
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
+
+private const val SLIDE_INITIAL       = 0.12f   // resting fill — signals interactivity
+private const val SLIDE_PULSE_AMP     = 0.07f   // single-breath amplitude
+private const val SLIDE_PULSE_DELAY   = 500L    // ms before pulse begins
+private const val SLIDE_THRESHOLD     = 0.90f   // absolute position to fire
 
 /**
  * Full-screen slide-to-confirm overlay for Wear OS.
  *
- * Shows optional [warningText] above the track, then a horizontal drag-to-confirm
- * rail.  Drag the handle all the way right (≥80 % of track width) to trigger
- * [onConfirmed]; releasing early springs the handle back.  [onDismiss] is called
- * when the user taps Cancel.
+ * The track fills from the left. After a short idle pause it breathes once to
+ * invite interaction. Drag anywhere in the track — position is tracked absolutely
+ * so the end is always reachable. Reaching [SLIDE_THRESHOLD] fires [onConfirmed]
+ * with haptic feedback and a cancel X sits on the right end of the track.
  */
 @Composable
 fun WearSlideToConfirm(
@@ -55,16 +73,28 @@ fun WearSlideToConfirm(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val scope = rememberCoroutineScope()
-    val trackWidthDp: Dp = 200.dp
-    val handleDiameter: Dp = 40.dp
-    val density = LocalDensity.current
-    val trackWidthPx = with(density) { trackWidthDp.toPx() }
-    val handlePx = with(density) { handleDiameter.toPx() }
-    val maxOffsetPx = trackWidthPx - handlePx
-    val threshold = maxOffsetPx * 0.80f
+    val haptic = LocalHapticFeedback.current
+    val scope  = rememberCoroutineScope()
 
-    val offsetX = remember { Animatable(0f) }
+    var isDragging by remember { mutableStateOf(false) }
+    var confirmed  by remember { mutableStateOf(false) }
+    var progress   by remember { mutableFloatStateOf(0f) }
+    var trackWidth by remember { mutableIntStateOf(1) }
+
+    // Single-breath pulse after idle delay; cancels on drag or confirm
+    val pulseAnim = remember { Animatable(0f) }
+    LaunchedEffect(isDragging, confirmed) {
+        if (!isDragging && !confirmed) {
+            delay(SLIDE_PULSE_DELAY)
+            pulseAnim.animateTo(SLIDE_PULSE_AMP, tween(850, easing = FastOutSlowInEasing))
+            pulseAnim.animateTo(0f,              tween(850, easing = FastOutSlowInEasing))
+        } else {
+            pulseAnim.stop()
+            pulseAnim.snapTo(0f)
+        }
+    }
+
+    val displayProgress = if (isDragging) progress else SLIDE_INITIAL + pulseAnim.value
 
     Box(
         modifier = modifier
@@ -76,105 +106,106 @@ fun WearSlideToConfirm(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(horizontal = 16.dp),
         ) {
-            // Warning text
             if (!warningText.isNullOrBlank()) {
                 Text(
-                    text = warningText,
-                    fontSize = 11.sp,
-                    color = Color(0xFFFFB74D),
-                    textAlign = TextAlign.Center,
+                    text       = warningText,
+                    fontSize   = 11.sp,
+                    color      = Color(0xFFFFB74D),
+                    textAlign  = TextAlign.Center,
                     lineHeight = 14.sp,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier   = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(12.dp))
             }
 
-            // Slide track
+            // ── Slide track ──────────────────────────────────────────────
             Box(
                 modifier = Modifier
-                    .size(trackWidthDp, handleDiameter)
-                    .clip(RoundedCornerShape(50))
-                    .background(Color.White.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                // Track fill (grows with drag)
-                Box(
-                    modifier = Modifier
-                        .height(handleDiameter)
-                        .fillMaxWidth(fraction = ((offsetX.value + handlePx) / trackWidthPx).coerceIn(0f, 1f))
-                        .clip(RoundedCornerShape(50))
-                        .background(confirmColor.copy(alpha = 0.35f)),
-                )
-
-                // Instruction text (fades as handle moves right)
-                val textAlpha = (1f - offsetX.value / (maxOffsetPx * 0.5f)).coerceIn(0f, 1f)
-                Text(
-                    text = slideText,
-                    fontSize = 11.sp,
-                    color = Color.White.copy(alpha = textAlpha * 0.7f),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = handleDiameter + 4.dp),
-                )
-
-                // Draggable handle
-                Box(
-                    modifier = Modifier
-                        .offset { IntOffset(offsetX.value.roundToInt(), 0) }
-                        .size(handleDiameter)
-                        .clip(CircleShape)
-                        .background(confirmColor)
-                        .pointerInput(Unit) {
-                            detectHorizontalDragGestures(
-                                onDragEnd = {
-                                    scope.launch {
-                                        if (offsetX.value >= threshold) {
-                                            offsetX.animateTo(maxOffsetPx)
-                                            onConfirmed()
-                                        } else {
-                                            offsetX.animateTo(
-                                                0f,
-                                                animationSpec = spring(
-                                                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                                                    stiffness = Spring.StiffnessMedium,
-                                                ),
-                                            )
-                                        }
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .onSizeChanged { trackWidth = it.width }
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(Color.White.copy(alpha = 0.10f))
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val drag = awaitTouchSlopOrCancellation(down.id) { c, _ -> c.consume() }
+                            if (drag != null) {
+                                isDragging = true
+                                progress   = (drag.position.x / trackWidth.toFloat()).coerceIn(0f, 1f)
+                                var fired  = false
+                                horizontalDrag(drag.id) { change ->
+                                    change.consume()
+                                    progress = (change.position.x / trackWidth.toFloat()).coerceIn(0f, 1f)
+                                    if (!fired && progress >= SLIDE_THRESHOLD) {
+                                        fired     = true
+                                        confirmed = true
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        onConfirmed()
                                     }
-                                },
-                                onDragCancel = {
-                                    scope.launch { offsetX.animateTo(0f) }
-                                },
-                            ) { change, delta ->
-                                change.consume()
-                                scope.launch {
-                                    offsetX.snapTo(
-                                        (offsetX.value + delta).coerceIn(0f, maxOffsetPx)
-                                    )
+                                }
+                                isDragging = false
+                                if (!fired) {
+                                    val from = progress
+                                    scope.launch {
+                                        animate(
+                                            initialValue  = from,
+                                            targetValue   = 0f,
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                stiffness    = Spring.StiffnessMedium,
+                                            ),
+                                        ) { v, _ -> progress = v }
+                                    }
                                 }
                             }
-                        },
+                        }
+                    },
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                // Filled bar
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(displayProgress.coerceIn(0f, 1f))
+                        .background(
+                            confirmColor.copy(alpha = (0.50f + displayProgress * 0.50f).coerceIn(0f, 1f)),
+                            RoundedCornerShape(22.dp),
+                        ),
+                )
+                // Label — fades as bar fills past halfway
+                Text(
+                    text      = slideText,
+                    fontSize  = 11.sp,
+                    color     = Color.White.copy(alpha = (0.80f - displayProgress * 1.6f).coerceIn(0f, 0.80f)),
+                    textAlign = TextAlign.Center,
+                    modifier  = Modifier
+                        .fillMaxWidth()
+                        .padding(end = 36.dp),  // leave room for cancel icon
+                )
+                // Cancel X — tappable when not dragging
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .size(44.dp)
+                        .then(if (!isDragging) Modifier.clickable(onClick = onDismiss) else Modifier),
                     contentAlignment = Alignment.Center,
                 ) {
-                    // Chevron arrows
-                    Text(
-                        text = "›",
-                        fontSize = 20.sp,
-                        color = Color.White,
-                        modifier = Modifier.graphicsLayer {
-                            alpha = (1f - offsetX.value / maxOffsetPx * 0.6f).coerceIn(0f, 1f)
-                        },
+                    Icon(
+                        imageVector        = Icons.Default.Close,
+                        contentDescription = "Cancel",
+                        tint               = Color.White.copy(alpha = if (isDragging) 0.20f else 0.60f),
+                        modifier           = Modifier.size(14.dp),
                     )
                 }
             }
 
             Spacer(Modifier.height(16.dp))
 
-            // Cancel button
+            // Cancel button — always visible below the track
             Button(
-                onClick = onDismiss,
-                colors = ButtonDefaults.secondaryButtonColors(),
+                onClick  = onDismiss,
+                colors   = ButtonDefaults.secondaryButtonColors(),
                 modifier = Modifier.size(40.dp),
             ) {
                 Text("✕", fontSize = 14.sp)

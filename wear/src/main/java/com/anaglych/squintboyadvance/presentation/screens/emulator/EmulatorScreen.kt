@@ -79,6 +79,12 @@ fun EmulatorScreen(
     val customScale = if (isGba) effectiveSettings.gbaCustomScale else effectiveSettings.gbCustomScale
     val filterEnabled = if (isGba) effectiveSettings.gbaFilterEnabled else effectiveSettings.gbFilterEnabled
 
+    // Whether ROM overrides differ from global — drives Save/Reset button enabled state
+    val hasRomDifferences = if (currentRomId != null) {
+        val ov = settings.romOverrides[currentRomId]
+        ov != null && ov.differsFrom(settings, isGba)
+    } else false
+
     // Helper: write a display setting to ROM override or global depending on mode
     fun updateDisplaySetting(update: (RomOverrides) -> RomOverrides, globalUpdate: (EmulatorSettings) -> EmulatorSettings) {
         if (isRomMode && currentRomId != null) {
@@ -251,12 +257,22 @@ fun EmulatorScreen(
                         onSetFfSpeed = viewModel::setFfSpeed,
                         // Per-ROM settings
                         isRomMode = isRomMode,
+                        hasRomDifferences = hasRomDifferences,
                         onSetRomMode = viewModel::setRomMode,
                         onSaveRomToGlobal = viewModel::saveRomToGlobal,
                         onResetRomToGlobal = viewModel::resetRomToGlobal,
                         onReset = { pauseUiState = PauseUiState.CONFIRM_RESET },
                         selectedPaletteIndex = effectiveSettings.gbPaletteIndex,
-                        onPaletteSelected = { viewModel.setGbPalette(it); viewModel.resume() },
+                        onPaletteSelected = { idx ->
+                            updateDisplaySetting(
+                                { ov -> ov.copy(gbPaletteIndex = idx) },
+                                { it -> it.copy(gbPaletteIndex = idx) },
+                            )
+                            // Apply palette immediately to the running emulator
+                            val palette = com.anaglych.squintboyadvance.shared.model.GbColorPalette.ALL.getOrNull(idx)
+                            if (palette != null) viewModel.applyGbPalette(palette)
+                            viewModel.resume()
+                        },
                         onExit = {
                             viewModel.stop()
                             onExit()

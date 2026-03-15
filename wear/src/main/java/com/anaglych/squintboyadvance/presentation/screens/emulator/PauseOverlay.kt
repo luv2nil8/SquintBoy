@@ -1,8 +1,10 @@
 package com.anaglych.squintboyadvance.presentation.screens.emulator
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -59,6 +61,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -88,6 +91,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
@@ -100,6 +104,8 @@ import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.InlineSliderDefaults
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
+import androidx.wear.compose.material.ToggleChip
+import androidx.wear.compose.material.ToggleChipDefaults
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.ceil
@@ -190,6 +196,7 @@ fun PauseOverlay(
     onSetFfSpeed: (Int) -> Unit,
     // Per-ROM settings
     isRomMode: Boolean,
+    hasRomDifferences: Boolean,
     onSetRomMode: (Boolean) -> Unit,
     onSaveRomToGlobal: () -> Unit,
     onResetRomToGlobal: () -> Unit,
@@ -378,6 +385,7 @@ fun PauseOverlay(
             expandContent = {
                 SettingsExpandContent(
                     isRomMode = isRomMode,
+                    hasRomDifferences = hasRomDifferences,
                     onSetRomMode = onSetRomMode,
                     onSaveRomToGlobal = onSaveRomToGlobal,
                     onResetRomToGlobal = onResetRomToGlobal,
@@ -653,140 +661,225 @@ private fun CompactSaveLoadRow(
 
 // ── Per-ROM settings expand content ────────────────────────────────
 
+private const val COMPACT_SLIDE_INITIAL     = 0.12f
+private const val COMPACT_SLIDE_PULSE_AMP   = 0.07f
+private const val COMPACT_SLIDE_PULSE_DELAY = 500L
+private const val COMPACT_SLIDE_THRESHOLD   = 0.90f
+
+/**
+ * Compact swipe-to-confirm bar. Absolute position tracking — the end is always
+ * reachable regardless of where the drag begins. Single-breath idle pulse after a
+ * short delay. Fires at [COMPACT_SLIDE_THRESHOLD] with haptic feedback.
+ * Cancel X on the right end, tappable only when not dragging.
+ */
+@Composable
+private fun CompactSwipeBar(
+    slideText: String,
+    color: Color,
+    onConfirmed: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val haptic = LocalHapticFeedback.current
+    val scope  = rememberCoroutineScope()
+
+    var progress   by remember { mutableFloatStateOf(0f) }
+    var isDragging by remember { mutableStateOf(false) }
+    var confirmed  by remember { mutableStateOf(false) }
+
+    // Single-breath pulse after idle delay
+    val pulseAnim = remember { Animatable(0f) }
+    LaunchedEffect(isDragging, confirmed) {
+        if (!isDragging && !confirmed) {
+            delay(COMPACT_SLIDE_PULSE_DELAY)
+            pulseAnim.animateTo(COMPACT_SLIDE_PULSE_AMP, tween(850, easing = FastOutSlowInEasing))
+            pulseAnim.animateTo(0f,                      tween(850, easing = FastOutSlowInEasing))
+        } else {
+            pulseAnim.stop()
+            pulseAnim.snapTo(0f)
+        }
+    }
+
+    val displayProgress = if (isDragging) progress else COMPACT_SLIDE_INITIAL + pulseAnim.value
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(36.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(color.copy(alpha = 0.18f))
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val drag = awaitTouchSlopOrCancellation(down.id) { c, _ -> c.consume() }
+                    if (drag != null) {
+                        isDragging = true
+                        progress   = (drag.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                        var fired  = false
+                        horizontalDrag(drag.id) { change ->
+                            change.consume()
+                            progress = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                            if (!fired && progress >= COMPACT_SLIDE_THRESHOLD) {
+                                fired     = true
+                                confirmed = true
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onConfirmed()
+                            }
+                        }
+                        isDragging = false
+                        if (!fired) {
+                            val from = progress
+                            scope.launch {
+                                animate(
+                                    initialValue  = from,
+                                    targetValue   = 0f,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                                        stiffness    = Spring.StiffnessMedium,
+                                    ),
+                                ) { v, _ -> progress = v }
+                            }
+                        }
+                    }
+                }
+            },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        // Fill bar — brightens as it approaches the end
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(displayProgress.coerceIn(0f, 1f))
+                .background(
+                    color.copy(alpha = (0.45f + displayProgress * 0.55f).coerceIn(0f, 1f)),
+                    RoundedCornerShape(18.dp),
+                ),
+        )
+        // Slide label — centered, fades as bar fills
+        Text(
+            text      = slideText,
+            style     = MaterialTheme.typography.caption2,
+            color     = Color.White.copy(alpha = (0.80f - displayProgress * 1.6f).coerceIn(0f, 0.80f)),
+            textAlign = TextAlign.Center,
+            modifier  = Modifier
+                .fillMaxWidth()
+                .padding(end = 36.dp),
+        )
+        // Cancel icon — tappable only when not dragging
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .size(36.dp)
+                .then(if (!isDragging) Modifier.clickable(onClick = onCancel) else Modifier),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector        = Icons.Default.Close,
+                contentDescription = "Cancel",
+                tint               = Color.White.copy(alpha = if (isDragging) 0.20f else 0.60f),
+                modifier           = Modifier.size(13.dp),
+            )
+        }
+    }
+}
+
 @Composable
 private fun SettingsExpandContent(
     isRomMode: Boolean,
+    hasRomDifferences: Boolean,
     onSetRomMode: (Boolean) -> Unit,
     onSaveRomToGlobal: () -> Unit,
     onResetRomToGlobal: () -> Unit,
 ) {
     val green = MaterialTheme.colors.primary
+
+    var confirmSave  by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
+
+    // Collapse sliders when ROM mode is turned off
+    LaunchedEffect(isRomMode) {
+        if (!isRomMode) {
+            confirmSave  = false
+            confirmReset = false
+        }
+    }
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        // Toggle row: "Global" ←→ "This ROM"
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(36.dp)
-                .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(18.dp))
-                .padding(horizontal = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                "Global",
-                style = MaterialTheme.typography.caption2,
-                color = Color.White.copy(alpha = if (!isRomMode) 1f else 0.35f),
-            )
-            Box(
-                modifier = Modifier
-                    .width(48.dp)
-                    .height(24.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (isRomMode) green.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.18f))
-                    .clickable { onSetRomMode(!isRomMode) },
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(18.dp)
-                        .graphicsLayer { translationX = if (isRomMode) 10f else -10f }
-                        .clip(CircleShape)
-                        .background(Color.White),
+        // Standard Wear OS toggle chip — matches the rest of the app's switch style
+        ToggleChip(
+            checked = isRomMode,
+            onCheckedChange = onSetRomMode,
+            label = { Text("Settings Override", style = MaterialTheme.typography.caption2) },
+            secondaryLabel = {
+                Text(
+                    if (isRomMode) "ROM-specific settings" else "Using/Editing Globals",
+                    style = MaterialTheme.typography.caption3,
+                    color = Color.White.copy(alpha = 0.55f),
                 )
-            }
-            Text(
-                "This ROM",
-                style = MaterialTheme.typography.caption2,
-                color = Color.White.copy(alpha = if (isRomMode) 1f else 0.35f),
-            )
-        }
+            },
+            toggleControl = {
+                Icon(
+                    imageVector = ToggleChipDefaults.switchIcon(checked = isRomMode),
+                    contentDescription = null,
+                    modifier = Modifier.size(ToggleChipDefaults.IconSize),
+                )
+            },
+            modifier = Modifier.fillMaxWidth().height(44.dp),
+        )
 
-        if (confirmReset) {
-            // Compact swipe-to-confirm for Reset to Global
-            var swipeProgress by remember { mutableStateOf(0f) }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(36.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(RED.copy(alpha = 0.25f))
-                    .pointerInput(Unit) {
-                        awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            val startX = down.position.x
-                            swipeProgress = 0f
-                            val drag = awaitTouchSlopOrCancellation(down.id) { c, _ -> c.consume() }
-                            if (drag != null) {
-                                horizontalDrag(drag.id) { change ->
-                                    change.consume()
-                                    swipeProgress = ((change.position.x - startX) / size.width.toFloat()).coerceIn(0f, 1f)
-                                    if (swipeProgress >= 0.85f) {
-                                        onResetRomToGlobal()
-                                        confirmReset = false
-                                        swipeProgress = 0f
-                                    }
-                                }
-                            } else {
-                                confirmReset = false
-                            }
-                            swipeProgress = 0f
-                        }
-                    },
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .fillMaxWidth(swipeProgress.coerceAtLeast(0.1f))
-                        .background(RED.copy(alpha = 0.55f), RoundedCornerShape(18.dp)),
-                )
-                Row(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    Text("→ Reset to Global", style = MaterialTheme.typography.caption2, color = Color.White)
-                }
-            }
+        // Save to Global
+        if (confirmSave) {
+            CompactSwipeBar(
+                slideText   = "→ Slide to save",
+                color       = green,
+                onConfirmed = { onSaveRomToGlobal(); confirmSave = false },
+                onCancel    = { confirmSave = false },
+            )
         } else {
-            // Save to Global
             Chip(
                 modifier = Modifier.fillMaxWidth().height(36.dp),
-                onClick = { if (isRomMode) onSaveRomToGlobal() },
-                enabled = isRomMode,
-                colors = ChipDefaults.chipColors(
-                    backgroundColor = green.copy(alpha = 0.85f),
+                onClick  = { confirmSave = true },
+                enabled  = isRomMode && hasRomDifferences,
+                colors   = ChipDefaults.chipColors(
+                    backgroundColor        = green.copy(alpha = 0.85f),
                     disabledBackgroundColor = Color.White.copy(alpha = 0.06f),
                 ),
                 label = { Text("Save to Global", style = MaterialTheme.typography.caption2) },
-                icon = {
+                icon  = {
                     Icon(
-                        imageVector = Icons.Default.Save,
+                        imageVector        = Icons.Default.Save,
                         contentDescription = null,
-                        modifier = Modifier.size(14.dp),
+                        modifier           = Modifier.size(14.dp),
                     )
                 },
             )
-            // Reset to Global
+        }
+
+        // Reset to Global
+        if (confirmReset) {
+            CompactSwipeBar(
+                slideText   = "→ Slide to reset",
+                color       = RED,
+                onConfirmed = { onResetRomToGlobal(); confirmReset = false },
+                onCancel    = { confirmReset = false },
+            )
+        } else {
             Chip(
                 modifier = Modifier.fillMaxWidth().height(36.dp),
-                onClick = { if (isRomMode) confirmReset = true },
-                enabled = isRomMode,
-                colors = ChipDefaults.chipColors(
-                    backgroundColor = RED.copy(alpha = 0.85f),
+                onClick  = { confirmReset = true },
+                enabled  = isRomMode && hasRomDifferences,
+                colors   = ChipDefaults.chipColors(
+                    backgroundColor        = RED.copy(alpha = 0.85f),
                     disabledBackgroundColor = Color.White.copy(alpha = 0.06f),
                 ),
                 label = { Text("Reset to Global", style = MaterialTheme.typography.caption2) },
-                icon = {
+                icon  = {
                     Icon(
-                        imageVector = Icons.Default.Restore,
+                        imageVector        = Icons.Default.Restore,
                         contentDescription = null,
-                        modifier = Modifier.size(14.dp),
+                        modifier           = Modifier.size(14.dp),
                     )
                 },
             )
