@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -45,7 +46,6 @@ import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Brush
-import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Gamepad
@@ -54,8 +54,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -189,7 +188,11 @@ fun PauseOverlay(
     onUndoLoad: () -> Unit,
     onFastForward: () -> Unit,
     onSetFfSpeed: (Int) -> Unit,
-    onLinkCable: () -> Unit,
+    // Per-ROM settings
+    isRomMode: Boolean,
+    onSetRomMode: (Boolean) -> Unit,
+    onSaveRomToGlobal: () -> Unit,
+    onResetRomToGlobal: () -> Unit,
     onReset: () -> Unit,
     selectedPaletteIndex: Int,
     onPaletteSelected: (Int) -> Unit,
@@ -365,14 +368,22 @@ fun PauseOverlay(
             },
             onLongClick = {},
         ))
-        // 6: Link Cable (GB/GBC only)
-        if (!isGba) {
-            add(PauseAction(
-                Icons.Default.Cable, "Link Cable",
-                onClick = {},
-                expandContent = { LinkCableExpandContent() },
-            ))
-        }
+        // 6: Per-ROM Settings
+        add(PauseAction(
+            Icons.Default.Tune, "Settings",
+            onClick = {},
+            backgroundColor = if (isRomMode) green.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.12f),
+            iconColor = if (isRomMode) Color.White else Color.White,
+            enabled = isRomMode,
+            expandContent = {
+                SettingsExpandContent(
+                    isRomMode = isRomMode,
+                    onSetRomMode = onSetRomMode,
+                    onSaveRomToGlobal = onSaveRomToGlobal,
+                    onResetRomToGlobal = onResetRomToGlobal,
+                )
+            },
+        ))
         // 7: Reset
         add(PauseAction(Icons.Default.Refresh, "Reset", onReset, iconColor = RED))
         // 8: Exit
@@ -640,49 +651,146 @@ private fun CompactSaveLoadRow(
     }
 }
 
-// ── Link cable expand content ───────────────────────────────────────
+// ── Per-ROM settings expand content ────────────────────────────────
 
 @Composable
-private fun LinkCableExpandContent() {
-    val blue = BLUE
+private fun SettingsExpandContent(
+    isRomMode: Boolean,
+    onSetRomMode: (Boolean) -> Unit,
+    onSaveRomToGlobal: () -> Unit,
+    onResetRomToGlobal: () -> Unit,
+) {
+    val green = MaterialTheme.colors.primary
+    var confirmReset by remember { mutableStateOf(false) }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Chip(
-            modifier = Modifier.fillMaxWidth().height(36.dp),
-            onClick = {},
-            enabled = false,
-            colors = ChipDefaults.chipColors(
-                backgroundColor = blue.copy(alpha = 0.85f),
-                disabledBackgroundColor = blue.copy(alpha = 0.15f),
-            ),
-            label = { Text("Host", style = MaterialTheme.typography.body2) },
-            icon = {
-                Icon(
-                    imageVector = Icons.Default.Wifi,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
+        // Toggle row: "Global" ←→ "This ROM"
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(36.dp)
+                .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(18.dp))
+                .padding(horizontal = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                "Global",
+                style = MaterialTheme.typography.caption2,
+                color = Color.White.copy(alpha = if (!isRomMode) 1f else 0.35f),
+            )
+            Box(
+                modifier = Modifier
+                    .width(48.dp)
+                    .height(24.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (isRomMode) green.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.18f))
+                    .clickable { onSetRomMode(!isRomMode) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(18.dp)
+                        .graphicsLayer { translationX = if (isRomMode) 10f else -10f }
+                        .clip(CircleShape)
+                        .background(Color.White),
                 )
-            },
-        )
-        Chip(
-            modifier = Modifier.fillMaxWidth().height(36.dp),
-            onClick = {},
-            enabled = false,
-            colors = ChipDefaults.chipColors(
-                backgroundColor = blue.copy(alpha = 0.85f),
-                disabledBackgroundColor = blue.copy(alpha = 0.15f),
-            ),
-            label = { Text("Join", style = MaterialTheme.typography.body2) },
-            icon = {
-                Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
+            }
+            Text(
+                "This ROM",
+                style = MaterialTheme.typography.caption2,
+                color = Color.White.copy(alpha = if (isRomMode) 1f else 0.35f),
+            )
+        }
+
+        if (confirmReset) {
+            // Compact swipe-to-confirm for Reset to Global
+            var swipeProgress by remember { mutableStateOf(0f) }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(RED.copy(alpha = 0.25f))
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val startX = down.position.x
+                            swipeProgress = 0f
+                            val drag = awaitTouchSlopOrCancellation(down.id) { c, _ -> c.consume() }
+                            if (drag != null) {
+                                horizontalDrag(drag.id) { change ->
+                                    change.consume()
+                                    swipeProgress = ((change.position.x - startX) / size.width.toFloat()).coerceIn(0f, 1f)
+                                    if (swipeProgress >= 0.85f) {
+                                        onResetRomToGlobal()
+                                        confirmReset = false
+                                        swipeProgress = 0f
+                                    }
+                                }
+                            } else {
+                                confirmReset = false
+                            }
+                            swipeProgress = 0f
+                        }
+                    },
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(swipeProgress.coerceAtLeast(0.1f))
+                        .background(RED.copy(alpha = 0.55f), RoundedCornerShape(18.dp)),
                 )
-            },
-        )
+                Row(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Text("→ Reset to Global", style = MaterialTheme.typography.caption2, color = Color.White)
+                }
+            }
+        } else {
+            // Save to Global
+            Chip(
+                modifier = Modifier.fillMaxWidth().height(36.dp),
+                onClick = { if (isRomMode) onSaveRomToGlobal() },
+                enabled = isRomMode,
+                colors = ChipDefaults.chipColors(
+                    backgroundColor = green.copy(alpha = 0.85f),
+                    disabledBackgroundColor = Color.White.copy(alpha = 0.06f),
+                ),
+                label = { Text("Save to Global", style = MaterialTheme.typography.caption2) },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Save,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                    )
+                },
+            )
+            // Reset to Global
+            Chip(
+                modifier = Modifier.fillMaxWidth().height(36.dp),
+                onClick = { if (isRomMode) confirmReset = true },
+                enabled = isRomMode,
+                colors = ChipDefaults.chipColors(
+                    backgroundColor = RED.copy(alpha = 0.85f),
+                    disabledBackgroundColor = Color.White.copy(alpha = 0.06f),
+                ),
+                label = { Text("Reset to Global", style = MaterialTheme.typography.caption2) },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Restore,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                    )
+                },
+            )
+        }
     }
 }
 
@@ -947,14 +1055,14 @@ private fun ControlsExpandContent(
 
     Column(
         verticalArrangement = Arrangement.spacedBy(2.dp),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer { alpha = contentAlpha },
     ) {
-        // Fading sliders (first 3)
+        // Sliders (first 3)
         Column(
             verticalArrangement = Arrangement.spacedBy(2.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .graphicsLayer { alpha = contentAlpha },
+            modifier = Modifier.fillMaxWidth(),
         ) {
             LabeledSliderRow(
                 label = "Outline",
@@ -981,33 +1089,34 @@ private fun ControlsExpandContent(
                 onInteraction = onInteraction,
             )
         }
-        // Size row: slider fades, haptic button stays
+        // Size row: label buttons + haptic toggle
+        val sizeSteps = listOf(9f to "Xs", 11f to "Sm", 13f to "Md", 15f to "Lg", 17f to "Xl")
         Row(
-            modifier = Modifier.fillMaxWidth().height(28.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .graphicsLayer { alpha = contentAlpha },
-            ) {
-                LabeledSliderRow(
-                    label = "Size",
-                    value = labelSize,
-                    onValueChange = { onSetLabelSize(it); onInteraction() },
-                    valueRange = 9f..17f,
-                    steps = 4,
-                    onInteraction = onInteraction,
-                    formatValue = { v ->
-                        when (v.roundToInt()) {
-                            9 -> "Xs"; 11 -> "Sm"; 13 -> "Md"; 15 -> "Lg"; 17 -> "Xl"
-                            else -> "${v.roundToInt()}"
-                        }
-                    },
-                )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Label", style = MaterialTheme.typography.caption2, color = Color.White.copy(alpha = 0.7f))
+                Text("Size",  style = MaterialTheme.typography.caption2, color = Color.White.copy(alpha = 0.7f))
             }
-            // Non-fading haptic button
+            sizeSteps.forEach { (value, label) ->
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(28.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(
+                            if (labelSize.roundToInt() == value.roundToInt()) green.copy(alpha = 0.85f)
+                            else Color.White.copy(alpha = 0.12f)
+                        )
+                        .clickable { onSetLabelSize(value); onInteraction() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(label, style = MaterialTheme.typography.caption2, color = Color.White, fontSize = 11.sp)
+                }
+            }
+            // Haptic toggle
             Box(
                 modifier = Modifier
                     .size(28.dp)

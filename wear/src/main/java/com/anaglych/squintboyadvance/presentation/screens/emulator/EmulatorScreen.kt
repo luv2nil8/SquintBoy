@@ -29,6 +29,8 @@ import androidx.wear.compose.material.Text
 import com.anaglych.squintboyadvance.presentation.SettingsRepository
 import com.anaglych.squintboyadvance.presentation.components.WearSlideToConfirm
 import com.anaglych.squintboyadvance.shared.emulator.EmulatorState
+import com.anaglych.squintboyadvance.shared.model.EmulatorSettings
+import com.anaglych.squintboyadvance.shared.model.RomOverrides
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 import com.anaglych.squintboyadvance.shared.model.SystemType
 
@@ -50,14 +52,44 @@ fun EmulatorScreen(
     val hasSaveState by viewModel.hasSaveState.collectAsState()
     val canUndoSave by viewModel.canUndoSave.collectAsState()
     val canUndoLoad by viewModel.canUndoLoad.collectAsState()
+    val isRomMode by viewModel.isRomMode.collectAsState()
+    val currentRomId by viewModel.currentRomId.collectAsState()
 
     val settingsRepo = SettingsRepository.getInstance(viewModel.getApplication())
     val settings by settingsRepo.settings.collectAsState()
 
+    // Effective settings: ROM overrides layer on top of global when isRomMode is active
+    val effectiveSettings = if (isRomMode && currentRomId != null) {
+        val ov = settings.romOverrides[currentRomId] ?: RomOverrides()
+        settings.copy(
+            gbaScaleMode     = ov.gbaScaleMode     ?: settings.gbaScaleMode,
+            gbaCustomScale   = ov.gbaCustomScale   ?: settings.gbaCustomScale,
+            gbScaleMode      = ov.gbScaleMode      ?: settings.gbScaleMode,
+            gbCustomScale    = ov.gbCustomScale    ?: settings.gbCustomScale,
+            gbaFilterEnabled = ov.gbaFilterEnabled ?: settings.gbaFilterEnabled,
+            gbFilterEnabled  = ov.gbFilterEnabled  ?: settings.gbFilterEnabled,
+            gbaFrameskip     = ov.gbaFrameskip     ?: settings.gbaFrameskip,
+            gbFrameskip      = ov.gbFrameskip      ?: settings.gbFrameskip,
+            gbPaletteIndex   = ov.gbPaletteIndex   ?: settings.gbPaletteIndex,
+        )
+    } else settings
+
     val isGba = systemType == SystemType.GBA
-    val scaleMode = if (isGba) settings.gbaScaleMode else settings.gbScaleMode
-    val customScale = if (isGba) settings.gbaCustomScale else settings.gbCustomScale
-    val filterEnabled = if (isGba) settings.gbaFilterEnabled else settings.gbFilterEnabled
+    val scaleMode = if (isGba) effectiveSettings.gbaScaleMode else effectiveSettings.gbScaleMode
+    val customScale = if (isGba) effectiveSettings.gbaCustomScale else effectiveSettings.gbCustomScale
+    val filterEnabled = if (isGba) effectiveSettings.gbaFilterEnabled else effectiveSettings.gbFilterEnabled
+
+    // Helper: write a display setting to ROM override or global depending on mode
+    fun updateDisplaySetting(update: (RomOverrides) -> RomOverrides, globalUpdate: (EmulatorSettings) -> EmulatorSettings) {
+        if (isRomMode && currentRomId != null) {
+            settingsRepo.update { s ->
+                val ov = s.romOverrides[currentRomId!!] ?: RomOverrides()
+                s.copy(romOverrides = s.romOverrides + (currentRomId!! to update(ov)))
+            }
+        } else {
+            settingsRepo.update(globalUpdate)
+        }
+    }
 
     // Pause sub-screen state — resets to MENU whenever the emulator resumes
     var pauseUiState by rememberSaveable { mutableStateOf(PauseUiState.MENU) }
@@ -159,30 +191,30 @@ fun EmulatorScreen(
                         onToggleMute = viewModel::toggleMute,
                         onVolumeChange = { viewModel.setVolume(it) },
                         onResume = viewModel::resume,
-                        // Scale
+                        // Scale (routed to ROM override or global)
                         customScale = customScale,
                         filterEnabled = filterEnabled,
                         onSetCustomScale = { scale ->
-                            settingsRepo.update {
-                                if (isGba) it.copy(gbaScaleMode = ScaleMode.CUSTOM, gbaCustomScale = scale)
-                                else it.copy(gbScaleMode = ScaleMode.CUSTOM, gbCustomScale = scale)
-                            }
+                            updateDisplaySetting(
+                                { ov -> if (isGba) ov.copy(gbaScaleMode = ScaleMode.CUSTOM, gbaCustomScale = scale) else ov.copy(gbScaleMode = ScaleMode.CUSTOM, gbCustomScale = scale) },
+                                { it -> if (isGba) it.copy(gbaScaleMode = ScaleMode.CUSTOM, gbaCustomScale = scale) else it.copy(gbScaleMode = ScaleMode.CUSTOM, gbCustomScale = scale) },
+                            )
                         },
                         onToggleFilter = {
-                            settingsRepo.update {
-                                if (isGba) it.copy(gbaFilterEnabled = !it.gbaFilterEnabled)
-                                else it.copy(gbFilterEnabled = !it.gbFilterEnabled)
-                            }
+                            updateDisplaySetting(
+                                { ov -> if (isGba) ov.copy(gbaFilterEnabled = !(ov.gbaFilterEnabled ?: effectiveSettings.gbaFilterEnabled)) else ov.copy(gbFilterEnabled = !(ov.gbFilterEnabled ?: effectiveSettings.gbFilterEnabled)) },
+                                { it -> if (isGba) it.copy(gbaFilterEnabled = !it.gbaFilterEnabled) else it.copy(gbFilterEnabled = !it.gbFilterEnabled) },
+                            )
                         },
-                        gbaFrameskip = settings.gbaFrameskip,
-                        gbFrameskip = settings.gbFrameskip,
+                        gbaFrameskip = effectiveSettings.gbaFrameskip,
+                        gbFrameskip = effectiveSettings.gbFrameskip,
                         onSetFrameskip = { skip ->
-                            settingsRepo.update {
-                                if (isGba) it.copy(gbaFrameskip = skip)
-                                else it.copy(gbFrameskip = skip)
-                            }
+                            updateDisplaySetting(
+                                { ov -> if (isGba) ov.copy(gbaFrameskip = skip) else ov.copy(gbFrameskip = skip) },
+                                { it -> if (isGba) it.copy(gbaFrameskip = skip) else it.copy(gbFrameskip = skip) },
+                            )
                         },
-                        // Controls (OSC)
+                        // Controls (OSC) — always global
                         oscVisible = settings.controllerLayout.visible,
                         buttonOpacity = settings.controllerLayout.buttonOpacity,
                         pressedOpacity = settings.controllerLayout.pressedOpacity,
@@ -191,36 +223,24 @@ fun EmulatorScreen(
                         hapticEnabled = settings.controllerLayout.hapticFeedback,
                         onToggleOscVisible = {
                             settingsRepo.update {
-                                it.copy(controllerLayout = it.controllerLayout.copy(
-                                    visible = !it.controllerLayout.visible
-                                ))
+                                it.copy(controllerLayout = it.controllerLayout.copy(visible = !it.controllerLayout.visible))
                             }
                         },
                         onSetButtonOpacity = { v ->
-                            settingsRepo.update {
-                                it.copy(controllerLayout = it.controllerLayout.copy(buttonOpacity = v))
-                            }
+                            settingsRepo.update { it.copy(controllerLayout = it.controllerLayout.copy(buttonOpacity = v)) }
                         },
                         onSetPressedOpacity = { v ->
-                            settingsRepo.update {
-                                it.copy(controllerLayout = it.controllerLayout.copy(pressedOpacity = v))
-                            }
+                            settingsRepo.update { it.copy(controllerLayout = it.controllerLayout.copy(pressedOpacity = v)) }
                         },
                         onSetLabelOpacity = { v ->
-                            settingsRepo.update {
-                                it.copy(controllerLayout = it.controllerLayout.copy(labelOpacity = v))
-                            }
+                            settingsRepo.update { it.copy(controllerLayout = it.controllerLayout.copy(labelOpacity = v)) }
                         },
                         onSetLabelSize = { v ->
-                            settingsRepo.update {
-                                it.copy(controllerLayout = it.controllerLayout.copy(labelSize = v))
-                            }
+                            settingsRepo.update { it.copy(controllerLayout = it.controllerLayout.copy(labelSize = v)) }
                         },
                         onToggleHaptic = {
                             settingsRepo.update {
-                                it.copy(controllerLayout = it.controllerLayout.copy(
-                                    hapticFeedback = !it.controllerLayout.hapticFeedback
-                                ))
+                                it.copy(controllerLayout = it.controllerLayout.copy(hapticFeedback = !it.controllerLayout.hapticFeedback))
                             }
                         },
                         onSave = { viewModel.saveState(); viewModel.resume() },
@@ -229,9 +249,13 @@ fun EmulatorScreen(
                         onUndoLoad = { viewModel.undoLoad(); viewModel.resume() },
                         onFastForward = viewModel::toggleFastForward,
                         onSetFfSpeed = viewModel::setFfSpeed,
-                        onLinkCable = { /* TODO */ },
+                        // Per-ROM settings
+                        isRomMode = isRomMode,
+                        onSetRomMode = viewModel::setRomMode,
+                        onSaveRomToGlobal = viewModel::saveRomToGlobal,
+                        onResetRomToGlobal = viewModel::resetRomToGlobal,
                         onReset = { pauseUiState = PauseUiState.CONFIRM_RESET },
-                        selectedPaletteIndex = settings.gbPaletteIndex,
+                        selectedPaletteIndex = effectiveSettings.gbPaletteIndex,
                         onPaletteSelected = { viewModel.setGbPalette(it); viewModel.resume() },
                         onExit = {
                             viewModel.stop()

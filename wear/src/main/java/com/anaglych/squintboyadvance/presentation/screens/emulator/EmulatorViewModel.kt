@@ -14,6 +14,8 @@ import com.anaglych.squintboyadvance.presentation.SettingsRepository
 import com.anaglych.squintboyadvance.shared.emulator.EmulatorState
 import com.anaglych.squintboyadvance.shared.model.ButtonId
 import com.anaglych.squintboyadvance.shared.model.GbColorPalette
+import com.anaglych.squintboyadvance.shared.model.RomOverrides
+import com.anaglych.squintboyadvance.shared.model.ScaleMode
 import com.anaglych.squintboyadvance.shared.model.SystemType
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -70,7 +72,8 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
     private var audioPlayer: AudioPlayer? = null
     private var saveStateManager: SaveStateManager? = null
     private var audioEnabled = false
-    private var currentRomId: String? = null
+    private val _currentRomId = MutableStateFlow<String?>(null)
+    val currentRomId: StateFlow<String?> = _currentRomId.asStateFlow()
 
     // Reusable bitmap to avoid GC pressure
     private var renderBitmap: Bitmap? = null
@@ -105,7 +108,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         val settings = settingsRepo.settings.value
         this.audioEnabled = settings.audioEnabled
 
-        currentRomId = romId
+        _currentRomId.value = romId
         _romTitle.value = romTitle
         _systemType.value = SystemType.fromExtension(romId.substringAfterLast('.', ""))
         _state.value = EmulatorState.LOADING
@@ -265,6 +268,42 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
     private val _ffSelectedSpeed = MutableStateFlow(2)
     val ffSelectedSpeed: StateFlow<Int> = _ffSelectedSpeed.asStateFlow()
 
+    private val _isRomMode = MutableStateFlow(false)
+    val isRomMode: StateFlow<Boolean> = _isRomMode.asStateFlow()
+
+    fun setRomMode(enabled: Boolean) { _isRomMode.value = enabled }
+
+    /**
+     * Copies the current ROM's effective display settings into global settings.
+     * After this, global settings match what was customized for this ROM.
+     */
+    fun saveRomToGlobal() {
+        val romId = _currentRomId.value ?: return
+        val settings = settingsRepo.settings.value
+        val override = settings.romOverrides[romId] ?: return
+        settingsRepo.update { s ->
+            s.copy(
+                gbaScaleMode   = override.gbaScaleMode   ?: s.gbaScaleMode,
+                gbaCustomScale = override.gbaCustomScale ?: s.gbaCustomScale,
+                gbScaleMode    = override.gbScaleMode    ?: s.gbScaleMode,
+                gbCustomScale  = override.gbCustomScale  ?: s.gbCustomScale,
+                gbaFilterEnabled = override.gbaFilterEnabled ?: s.gbaFilterEnabled,
+                gbFilterEnabled  = override.gbFilterEnabled  ?: s.gbFilterEnabled,
+                gbaFrameskip   = override.gbaFrameskip   ?: s.gbaFrameskip,
+                gbFrameskip    = override.gbFrameskip    ?: s.gbFrameskip,
+                gbPaletteIndex = override.gbPaletteIndex ?: s.gbPaletteIndex,
+            )
+        }
+    }
+
+    /** Removes all ROM-specific overrides, reverting this ROM to global settings. */
+    fun resetRomToGlobal() {
+        val romId = _currentRomId.value ?: return
+        settingsRepo.update { s ->
+            s.copy(romOverrides = s.romOverrides - romId)
+        }
+    }
+
     /** Toggles audio on/off and persists the setting. Takes effect on next resume(). */
     fun toggleMute() {
         settingsRepo.update { it.copy(audioEnabled = !it.audioEnabled) }
@@ -309,7 +348,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             emulatorThread?.stop()
             audioPlayer?.pause()
             emulator?.let { emu ->
-                currentRomId?.let { screenshotManager.capture(emu, it) }
+                _currentRomId.value?.let { screenshotManager.capture(emu, it) }
             }
             playTimeTracker.flush()
             saveStateManager?.onFocusLost()
@@ -322,7 +361,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             val wasAudioEnabled = audioEnabled
             audioEnabled = settings.audioEnabled
 
-            playTimeTracker.start(currentRomId ?: return)
+            playTimeTracker.start(_currentRomId.value ?: return)
             _state.value = EmulatorState.RUNNING
 
             if (audioEnabled && !wasAudioEnabled) {
@@ -352,12 +391,13 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         emulatorThread?.stop()
         if (wasRunning && emulator != null) {
             emulator?.let { emu ->
-                currentRomId?.let { screenshotManager.capture(emu, it) }
+                _currentRomId.value?.let { screenshotManager.capture(emu, it) }
             }
             playTimeTracker.stop()
             saveStateManager?.onFocusLost()
         }
         _ffSpeed.value = 0
+        _isRomMode.value = false
         _hasSaveState.value = false
         _canUndoSave.value = false
         _canUndoLoad.value = false
@@ -371,7 +411,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         renderBitmap = null
         pixelBuffer = null
         saveStateManager = null
-        currentRomId = null
+        _currentRomId.value = null
     }
 
     override fun onCleared() {

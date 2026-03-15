@@ -16,6 +16,7 @@ data class EmulatorSettings(
     val gbaFrameskip: Int = 0,
     val gbFrameskip: Int = 0,
     val controllerLayout: ControllerLayout = ControllerLayout(),
+    val romOverrides: Map<String, RomOverrides> = emptyMap(),
 )
 
 @Serializable
