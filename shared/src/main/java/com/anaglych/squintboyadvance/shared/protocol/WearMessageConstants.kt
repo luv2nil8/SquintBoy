@@ -16,6 +16,11 @@ object WearMessageConstants {
     const val PATH_SETTINGS_RESPONSE = "/settings/response"
     const val PATH_SETTINGS_SYNC = "/settings/sync"
 
+    // Screen info: phone requests watch screen dimensions for dynamic scale range.
+    // Response payload: screenWidthPx as UTF-8 int string (e.g. "454").
+    const val PATH_SCREEN_INFO_REQUEST = "/screen/info/request"
+    const val PATH_SCREEN_INFO_RESPONSE = "/screen/info/response"
+
     // Clears save-state stack (.ss0–.ss4) and SRAM backup stack (.sav.0–.sav.4) for a ROM.
     // Payload: romId (UTF-8). Used after uploading a new save from phone to watch.
     const val PATH_SAVE_CLEAR_STACKS = "/save/clear_stacks"

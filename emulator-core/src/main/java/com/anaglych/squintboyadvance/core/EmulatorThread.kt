@@ -33,7 +33,6 @@ class EmulatorThread(
                 var autoSkipNext = false
                 var fixedSkipCounter = 0
                 var prevSpeed = -1 // force sync on first frame
-                var ffFrameToggle = false
 
                 while (isRunning()) {
                     val frameStart = System.nanoTime()
@@ -49,7 +48,6 @@ class EmulatorThread(
                         audioPlayer.setPlaybackRate(
                             if (ff) audioPlayer.sampleRate * speed else audioPlayer.sampleRate
                         )
-                        if (!ff) ffFrameToggle = false
                         prevSpeed = speed
                     }
 
@@ -67,8 +65,7 @@ class EmulatorThread(
                         repeat(speed - 1) { emulator.runFrame() }
                         val framesRead = emulator.runFrameWithAudio(audioBuffer, audioBuffer.size / 2)
                         if (framesRead > 0) audioPlayer.writeSamples(audioBuffer, framesRead)
-                        if (!shouldSkipVideo && ffFrameToggle) onFrame()
-                        ffFrameToggle = !ffFrameToggle
+                        if (!shouldSkipVideo) onFrame()
                     } else {
                         val framesRead = emulator.runFrameWithAudio(audioBuffer, audioBuffer.size / 2)
                         if (framesRead > 0) audioPlayer.writeSamples(audioBuffer, framesRead)
@@ -84,7 +81,6 @@ class EmulatorThread(
                 var autoSkipNext = false
                 var fixedSkipCounter = 0
                 var prevSpeed = 0
-                var ffFrameToggle = false
 
                 while (isRunning()) {
                     val frameStart = System.nanoTime()
@@ -96,7 +92,6 @@ class EmulatorThread(
                             if (ff) Process.THREAD_PRIORITY_DISPLAY
                             else    Process.THREAD_PRIORITY_URGENT_AUDIO
                         )
-                        if (!ff) ffFrameToggle = false
                         prevSpeed = speed
                     }
 
@@ -111,8 +106,7 @@ class EmulatorThread(
 
                     if (ff) repeat(speed - 1) { emulator.runFrame() }
                     emulator.runFrame()
-                    if (!shouldSkipVideo && (!ff || ffFrameToggle)) onFrame()
-                    if (ff) ffFrameToggle = !ffFrameToggle
+                    if (!shouldSkipVideo) onFrame()
 
                     val elapsed = System.nanoTime() - frameStart
                     val frameTarget = if (ff) TARGET_FRAME_TIME_NS / speed.toLong() else TARGET_FRAME_TIME_NS

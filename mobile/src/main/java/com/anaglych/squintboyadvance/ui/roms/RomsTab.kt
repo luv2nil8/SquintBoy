@@ -6,9 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -241,21 +239,16 @@ fun RomsTab(
                 }
             } else {
                 items(filteredWatchRoms, key = { it.romId }) { entry ->
-                    var visible by remember { mutableStateOf(false) }
-                    LaunchedEffect(Unit) { visible = true }
-                    AnimatedVisibility(
-                        visible = visible,
-                        enter = slideInHorizontally(
-                            initialOffsetX = { it },
-                            animationSpec = tween(300),
-                        ) + fadeIn(animationSpec = tween(300)),
-                    ) {
-                        WatchRomCard(
-                            entry = entry,
-                            displayName = displayNames[entry.romId] ?: entry.romId.substringBeforeLast('.'),
-                            onClick = { onRomSelected(entry) },
-                        )
-                    }
+                    WatchRomCard(
+                        entry = entry,
+                        displayName = displayNames[entry.romId] ?: entry.romId.substringBeforeLast('.'),
+                        onClick = { onRomSelected(entry) },
+                        modifier = Modifier.animateItem(
+                            fadeInSpec = tween(300),
+                            fadeOutSpec = tween(300),
+                            placementSpec = tween(300),
+                        ),
+                    )
                 }
                 // Subtle sync indicator at the bottom when refreshing cached data
                 if (isLoading) {
@@ -430,7 +423,7 @@ private fun TransferRomCard(
 // ── Watch library card ────────────────────────────────────────────────────────
 
 @Composable
-private fun WatchRomCard(entry: WatchRomEntry, displayName: String, onClick: () -> Unit) {
+private fun WatchRomCard(entry: WatchRomEntry, displayName: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val badgeColor = when (entry.systemType) {
         SystemType.GB -> Color(0xFF306230)
@@ -439,7 +432,7 @@ private fun WatchRomCard(entry: WatchRomEntry, displayName: String, onClick: () 
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {

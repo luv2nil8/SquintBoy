@@ -42,8 +42,7 @@ import androidx.wear.compose.foundation.lazy.AutoCenteringParams
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
-import androidx.wear.compose.material.Button
-import androidx.wear.compose.material.ButtonDefaults
+import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.CompactChip
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
@@ -111,26 +110,6 @@ fun RomLibraryScreen(
             ) {
                 item { Spacer(Modifier.height(48.dp)) }
 
-                // ── Action button ───────────────────────────────────────
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Button(
-                            onClick = { viewModel.sendOpenRomPicker() },
-                            colors = ButtonDefaults.buttonColors(
-                                backgroundColor = MaterialTheme.colors.primary,
-                            ),
-                            modifier = Modifier.size(48.dp),
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = "Add ROM")
-                        }
-                    }
-                }
-
                 // ── Phone app install prompt ──────────────────────────────
                 if (!phoneAppInstalled) {
                     item {
@@ -150,6 +129,27 @@ fun RomLibraryScreen(
                 } else {
                     items(roms, key = { it.id }) { rom ->
                         RomCard(rom = rom, onClick = { onRomSelected(rom) })
+                    }
+                }
+
+                // ── Add ROM ─────────────────────────────────────────────
+                item {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CompactChip(
+                            onClick = { viewModel.sendOpenRomPicker() },
+                            label = { Text("Add ROM") },
+                            icon = {
+                                Icon(
+                                    Icons.Default.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                            },
+                            colors = ChipDefaults.primaryChipColors(),
+                        )
                     }
                 }
             }

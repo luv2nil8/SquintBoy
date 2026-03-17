@@ -240,6 +240,7 @@ class RomReceiverService : WearableListenerService() {
                 WearMessageConstants.PATH_SAVE_LIST_REQUEST -> handleSaveListRequest(event)
                 WearMessageConstants.PATH_SAVE_CLEAR_STACKS -> handleSaveClearStacks(event)
                 WearMessageConstants.PATH_ROM_RENAME -> handleRomRename(event)
+                WearMessageConstants.PATH_SCREEN_INFO_REQUEST -> handleScreenInfoRequest(event)
                 else -> Log.w(TAG, "Unknown message path: ${event.path}")
             }
         } catch (e: Exception) {
@@ -305,10 +306,27 @@ class RomReceiverService : WearableListenerService() {
 
     private fun handleSettingsSync(event: MessageEvent) {
         val settingsJson = String(event.data, Charsets.UTF_8)
-        val newSettings = json.decodeFromString(EmulatorSettings.serializer(), settingsJson)
+        val incoming = json.decodeFromString(EmulatorSettings.serializer(), settingsJson)
         val settingsRepo = SettingsRepository.getInstance(this)
-        settingsRepo.update { newSettings }
+        // Merge: apply incoming global fields but preserve local romOverrides
+        settingsRepo.update { current ->
+            incoming.copy(romOverrides = current.romOverrides + incoming.romOverrides)
+        }
         Log.i(TAG, "Settings synced from phone")
+    }
+
+    private fun handleScreenInfoRequest(event: MessageEvent) {
+        // Use screenWidthDp * density to match the pause overlay's scale computation exactly
+        val dm = resources.displayMetrics
+        val screenWidthPx = (resources.configuration.screenWidthDp * dm.density).toInt()
+        Tasks.await(
+            Wearable.getMessageClient(this)
+                .sendMessage(
+                    event.sourceNodeId,
+                    WearMessageConstants.PATH_SCREEN_INFO_RESPONSE,
+                    screenWidthPx.toString().toByteArray()
+                )
+        )
     }
 
     private fun handleSaveListRequest(event: MessageEvent) {
