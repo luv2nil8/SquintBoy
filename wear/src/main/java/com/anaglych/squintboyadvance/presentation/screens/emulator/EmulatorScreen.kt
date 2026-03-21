@@ -1,5 +1,6 @@
 package com.anaglych.squintboyadvance.presentation.screens.emulator
 
+import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +19,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FastForward
@@ -26,6 +28,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.compose.material.CircularProgressIndicator
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
+import com.anaglych.squintboyadvance.presentation.EntitlementRepository
 import com.anaglych.squintboyadvance.presentation.SettingsRepository
 import com.anaglych.squintboyadvance.presentation.components.WearSlideToConfirm
 import com.anaglych.squintboyadvance.shared.emulator.EmulatorState
@@ -34,7 +37,7 @@ import com.anaglych.squintboyadvance.shared.model.RomOverrides
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 import com.anaglych.squintboyadvance.shared.model.SystemType
 
-private enum class PauseUiState { MENU, CONFIRM_RESET }
+private enum class PauseUiState { MENU, CONFIRM_RESET, SESSION_EXPIRED }
 
 @Composable
 fun EmulatorScreen(
@@ -54,6 +57,9 @@ fun EmulatorScreen(
     val canUndoLoad by viewModel.canUndoLoad.collectAsState()
     val isRomMode by viewModel.isRomMode.collectAsState()
     val currentRomId by viewModel.currentRomId.collectAsState()
+    val sessionExpired by viewModel.sessionExpired.collectAsState()
+    val sessionRemainingMs by viewModel.sessionRemainingMs.collectAsState()
+    val isPro by viewModel.isPro.collectAsState()
 
     val settingsRepo = SettingsRepository.getInstance(viewModel.getApplication())
     val settings by settingsRepo.settings.collectAsState()
@@ -102,6 +108,10 @@ fun EmulatorScreen(
     var pauseGhostProgress by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(state) {
         if (state == EmulatorState.RUNNING) pauseUiState = PauseUiState.MENU
+    }
+    // Redirect to session expired overlay when timer runs out
+    LaunchedEffect(sessionExpired) {
+        if (sessionExpired) pauseUiState = PauseUiState.SESSION_EXPIRED
     }
 
     LaunchedEffect(romId) {
@@ -201,10 +211,12 @@ fun EmulatorScreen(
                         customScale = customScale,
                         filterEnabled = filterEnabled,
                         onSetCustomScale = { scale ->
-                            updateDisplaySetting(
-                                { ov -> if (isGba) ov.copy(gbaScaleMode = ScaleMode.CUSTOM, gbaCustomScale = scale) else ov.copy(gbScaleMode = ScaleMode.CUSTOM, gbCustomScale = scale) },
-                                { it -> if (isGba) it.copy(gbaScaleMode = ScaleMode.CUSTOM, gbaCustomScale = scale) else it.copy(gbScaleMode = ScaleMode.CUSTOM, gbCustomScale = scale) },
-                            )
+                            if (isPro) {
+                                updateDisplaySetting(
+                                    { ov -> if (isGba) ov.copy(gbaScaleMode = ScaleMode.CUSTOM, gbaCustomScale = scale) else ov.copy(gbScaleMode = ScaleMode.CUSTOM, gbCustomScale = scale) },
+                                    { it -> if (isGba) it.copy(gbaScaleMode = ScaleMode.CUSTOM, gbaCustomScale = scale) else it.copy(gbScaleMode = ScaleMode.CUSTOM, gbCustomScale = scale) },
+                                )
+                            }
                         },
                         onToggleFilter = {
                             updateDisplaySetting(
@@ -277,6 +289,8 @@ fun EmulatorScreen(
                             viewModel.stop()
                             onExit()
                         },
+                        isDemo = !isPro,
+                        sessionRemainingMs = sessionRemainingMs,
                         onGhostProgressChange = { pauseGhostProgress = it },
                     )
 
@@ -287,6 +301,21 @@ fun EmulatorScreen(
                         onConfirmed = { viewModel.resetRom() },
                         onDismiss = { pauseUiState = PauseUiState.MENU },
                     )
+
+                    PauseUiState.SESSION_EXPIRED -> {
+                        val activity = LocalContext.current as? Activity
+                        SessionExpiredOverlay(
+                            onUpgrade = {
+                                if (activity != null) {
+                                    EntitlementRepository.getInstance(activity).launchPurchase(activity)
+                                }
+                            },
+                            onExit = {
+                                viewModel.stop()
+                                onExit()
+                            },
+                        )
+                    }
                 }
             }
 

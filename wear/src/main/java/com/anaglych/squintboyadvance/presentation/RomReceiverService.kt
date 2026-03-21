@@ -3,6 +3,7 @@ package com.anaglych.squintboyadvance.presentation
 import android.os.PowerManager
 import android.util.Log
 import com.anaglych.squintboyadvance.shared.model.*
+import com.anaglych.squintboyadvance.shared.model.DemoLimits
 import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
 import com.anaglych.squintboyadvance.shared.util.readLine
 import com.google.android.gms.wearable.ChannelClient
@@ -48,12 +49,25 @@ class RomReceiverService : WearableListenerService() {
     }
 
     private fun handleRomTransfer(channel: ChannelClient.Channel) {
+        // Demo limits: reject GBA transfers and enforce ROM cap
+        val entitlement = EntitlementRepository.getInstance(this)
+        val romsDir = File(filesDir, "roms").apply { mkdirs() }
+        if (entitlement.isDemo) {
+            val existingRomCount = romsDir.listFiles().orEmpty()
+                .count { it.isFile && !it.name.startsWith(".") }
+            if (existingRomCount >= DemoLimits.MAX_ROMS) {
+                sendTransferResult(
+                    channel, "unknown", false, 0, 0,
+                    "Demo limit: ${DemoLimits.MAX_ROMS} ROMs max. Get the full version for unlimited ROMs."
+                )
+                return
+            }
+        }
+
         val powerManager = getSystemService(POWER_SERVICE) as PowerManager
         val wakeLock = powerManager.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK, "SquintBoy:RomTransfer"
         ) // acquired after we know file size
-
-        val romsDir = File(filesDir, "roms").apply { mkdirs() }
         var tempFile: File? = null
         var receivedBytes = 0L
         var expectedSize = 0L
@@ -249,6 +263,9 @@ class RomReceiverService : WearableListenerService() {
                     Tasks.await(Wearable.getMessageClient(this).sendMessage(
                         event.sourceNodeId, WearMessageConstants.PATH_WATCH_PONG, byteArrayOf()))
                     Log.d(TAG, "Replied watch pong to ${event.sourceNodeId}")
+                }
+                WearMessageConstants.PATH_ENTITLEMENT_REQUEST -> {
+                    EntitlementRepository.getInstance(this).handleEntitlementRequest(event.sourceNodeId)
                 }
                 else -> Log.w(TAG, "Unknown message path: ${event.path}")
             }

@@ -52,8 +52,10 @@ import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.TimeText
 import androidx.wear.compose.material.Vignette
 import androidx.wear.compose.material.VignettePosition
+import com.anaglych.squintboyadvance.presentation.EntitlementRepository
 import com.anaglych.squintboyadvance.presentation.RomLibrarySignal
 import com.anaglych.squintboyadvance.presentation.TransferEvent
+import com.anaglych.squintboyadvance.shared.model.DemoLimits
 import com.anaglych.squintboyadvance.shared.model.RomMetadata
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -68,6 +70,8 @@ fun RomLibraryScreen(
     val transferringNames by viewModel.transferringNames.collectAsState()
     val pickerState by viewModel.pickerState.collectAsStateWithLifecycle()
     val phoneAppInstalled by viewModel.phoneAppInstalled.collectAsStateWithLifecycle()
+    val entitlementRepo = EntitlementRepository.getInstance(viewModel.getApplication())
+    val isPro by entitlementRepo.isPro.collectAsState()
     val listState = rememberScalingLazyListState(initialCenterItemIndex = 2)
     val focusRequester = remember { FocusRequester() }
     val coroutineScope = rememberCoroutineScope()
@@ -135,13 +139,19 @@ fun RomLibraryScreen(
 
                 // ── Add ROM ─────────────────────────────────────────────
                 item {
+                    val atDemoLimit = !isPro && roms.size >= DemoLimits.MAX_ROMS
                     Box(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         CompactChip(
-                            onClick = { viewModel.sendOpenRomPicker() },
-                            label = { Text("Add ROM") },
+                            onClick = { if (!atDemoLimit) viewModel.sendOpenRomPicker() },
+                            label = {
+                                Text(
+                                    if (atDemoLimit) "Demo: ${DemoLimits.MAX_ROMS} ROM limit"
+                                    else "Add ROM"
+                                )
+                            },
                             icon = {
                                 Icon(
                                     Icons.Default.Add,
@@ -149,7 +159,8 @@ fun RomLibraryScreen(
                                     modifier = Modifier.size(14.dp),
                                 )
                             },
-                            colors = ChipDefaults.primaryChipColors(),
+                            colors = if (atDemoLimit) ChipDefaults.secondaryChipColors()
+                                else ChipDefaults.primaryChipColors(),
                         )
                     }
                 }

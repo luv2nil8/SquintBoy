@@ -9,15 +9,18 @@ import com.anaglych.squintboyadvance.core.AudioPlayer
 import com.anaglych.squintboyadvance.core.EmulatorThread
 import com.anaglych.squintboyadvance.core.MgbaEmulator
 import com.anaglych.squintboyadvance.core.SaveStateManager
+import com.anaglych.squintboyadvance.presentation.EntitlementRepository
 import com.anaglych.squintboyadvance.presentation.RomMetadataStore
 import com.anaglych.squintboyadvance.presentation.SettingsRepository
 import com.anaglych.squintboyadvance.shared.emulator.EmulatorState
+import com.anaglych.squintboyadvance.shared.model.DemoLimits
 import com.anaglych.squintboyadvance.shared.model.ButtonId
 import com.anaglych.squintboyadvance.shared.model.GbColorPalette
 import com.anaglych.squintboyadvance.shared.model.RomOverrides
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 import com.anaglych.squintboyadvance.shared.model.SystemType
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -37,6 +40,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
     }
 
     private val settingsRepo = SettingsRepository.getInstance(application)
+    private val entitlementRepo = EntitlementRepository.getInstance(application)
     private val metadataStore = RomMetadataStore.getInstance(application)
     private val screenshotManager = ScreenshotManager(
         File(application.filesDir, "screenshots"), metadataStore
@@ -78,6 +82,20 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
     private val _currentRomId = MutableStateFlow<String?>(null)
     val currentRomId: StateFlow<String?> = _currentRomId.asStateFlow()
 
+    // ── Demo session timer ────────────────────────────────────────────
+    val isPro: StateFlow<Boolean> = entitlementRepo.isPro
+
+    private val _sessionElapsedMs = MutableStateFlow(0L)
+    val sessionElapsedMs: StateFlow<Long> = _sessionElapsedMs.asStateFlow()
+
+    private val _sessionExpired = MutableStateFlow(false)
+    val sessionExpired: StateFlow<Boolean> = _sessionExpired.asStateFlow()
+
+    /** Remaining session time in ms; negative means expired. */
+    val sessionRemainingMs: StateFlow<Long> = _sessionElapsedMs.map {
+        DemoLimits.SESSION_TIME_MS - it
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, DemoLimits.SESSION_TIME_MS)
+
     // Reusable bitmap to avoid GC pressure
     private var renderBitmap: Bitmap? = null
     private var pixelBuffer: IntArray? = null
@@ -115,6 +133,25 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
                     emulator?.setGbPalette(palette.mgbaOrder())
                 }
         }
+        // Demo session timer — counts running time, soft-locks when expired.
+        viewModelScope.launch {
+            while (true) {
+                delay(1000)
+                if (_state.value == EmulatorState.RUNNING && !isPro.value) {
+                    _sessionElapsedMs.value += 1000
+                    if (_sessionElapsedMs.value >= DemoLimits.SESSION_TIME_MS) {
+                        _sessionExpired.value = true
+                        pause()
+                    }
+                }
+            }
+        }
+        // Clear session expiry if user upgrades mid-session.
+        viewModelScope.launch {
+            isPro.collect { pro ->
+                if (pro) _sessionExpired.value = false
+            }
+        }
         // Apply audio volume changes live (e.g. from companion app or volume keys).
         viewModelScope.launch {
             settingsRepo.settings
@@ -151,6 +188,10 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
 
     fun loadRom(romId: String, romTitle: String) {
         if (_state.value == EmulatorState.RUNNING || _state.value == EmulatorState.LOADING) return
+
+        // Reset demo session timer for new session
+        _sessionElapsedMs.value = 0
+        _sessionExpired.value = false
 
         val settings = settingsRepo.settings.value
         this.audioEnabled = settings.audioEnabled

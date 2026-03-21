@@ -46,6 +46,11 @@ object WearMessageConstants {
     const val PATH_WATCH_PING = "/watch/ping"
     const val PATH_WATCH_PONG = "/watch/pong"
 
+    // Entitlement: watch pushes purchase state to phone for mobile-side gating.
+    const val PATH_ENTITLEMENT_PUSH = "/entitlement/push"
+    const val PATH_ENTITLEMENT_REQUEST = "/entitlement/request"
+    const val PATH_ENTITLEMENT_RESPONSE = "/entitlement/response"
+
     // Capability names declared in res/values/wear.xml on each side.
     const val CAPABILITY_PHONE_APP = "squintboy_phone_app"
     const val CAPABILITY_WATCH_APP = "squintboy_watch_app"
