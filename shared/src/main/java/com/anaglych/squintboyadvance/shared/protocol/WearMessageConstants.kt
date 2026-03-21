@@ -41,6 +41,11 @@ object WearMessageConstants {
     const val PATH_PHONE_PING = "/phone/ping"
     const val PATH_PHONE_PONG = "/phone/pong"
 
+    // Ping/pong: phone sends ping, watch replies with pong.
+    // Used by the companion app to confirm the watch app is installed and reachable.
+    const val PATH_WATCH_PING = "/watch/ping"
+    const val PATH_WATCH_PONG = "/watch/pong"
+
     // Entitlement: watch pushes purchase state to phone for mobile-side gating.
     const val PATH_ENTITLEMENT_PUSH = "/entitlement/push"
     const val PATH_ENTITLEMENT_REQUEST = "/entitlement/request"

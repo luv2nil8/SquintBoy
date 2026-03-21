@@ -3,6 +3,7 @@ package com.anaglych.squintboyadvance.ui
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -25,10 +26,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,9 +44,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,14 +64,16 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.wear.remote.interactions.RemoteActivityHelper
+import com.anaglych.squintboyadvance.WatchPongSignal
 import com.anaglych.squintboyadvance.shared.model.SystemType
 import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
 import com.anaglych.squintboyadvance.ui.roms.RomManagementScreen
 import com.anaglych.squintboyadvance.ui.roms.RomsTab
 import com.anaglych.squintboyadvance.ui.roms.WatchRomListViewModel
 import com.anaglych.squintboyadvance.ui.settings.LicensesScreen
-import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.Wearable
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -83,60 +85,145 @@ import kotlinx.coroutines.withContext
 private const val ROUTE_ROMS = "roms"
 private const val ROUTE_LICENSES = "licenses"
 
+// ── State machine ────────────────────────────────────────────────────────────
+
+enum class WatchConnectionState {
+    /** Initial check in progress. */
+    CHECKING,
+    /** No paired/connected watch found. First-time user. */
+    NO_WATCH,
+    /** Watch connected but app not installed (ping timed out). */
+    WATCH_NO_APP,
+    /** Watch + app confirmed reachable via ping/pong. */
+    CONNECTED,
+    /** Was previously connected, but watch is now unreachable. */
+    DISCONNECTED,
+}
+
+// ── ViewModel ────────────────────────────────────────────────────────────────
+
 class ConnectionViewModel(application: Application) : AndroidViewModel(application) {
+
+    companion object {
+        private const val TAG = "ConnectionVM"
+        private const val PING_TIMEOUT_MS = 5000L
+        private const val INSTALL_POLL_INTERVAL_MS = 10_000L
+    }
+
     private val nodeClient = Wearable.getNodeClient(application)
-    private val capabilityClient = Wearable.getCapabilityClient(application)
+    private val messageClient = Wearable.getMessageClient(application)
     private val remoteActivityHelper = RemoteActivityHelper(application)
     private val prefs = application.getSharedPreferences("connection", android.content.Context.MODE_PRIVATE)
 
-    private val _watchConnected = MutableStateFlow(false)
-    val watchConnected: StateFlow<Boolean> = _watchConnected.asStateFlow()
+    private val _state = MutableStateFlow(WatchConnectionState.CHECKING)
+    val state: StateFlow<WatchConnectionState> = _state.asStateFlow()
 
     private val _connectedNodeId = MutableStateFlow<String?>(null)
     val connectedNodeId: StateFlow<String?> = _connectedNodeId.asStateFlow()
 
-    private val _watchAppInstalled = MutableStateFlow<Boolean?>(null)
-    val watchAppInstalled: StateFlow<Boolean?> = _watchAppInstalled.asStateFlow()
-
-    /** True once connectivity check has completed at least once this session. */
-    private val _hasChecked = MutableStateFlow(false)
-    val hasChecked: StateFlow<Boolean> = _hasChecked.asStateFlow()
-
-    /** True if a watch has ever successfully connected in any session. */
+    /** True if a watch app has ever responded to a ping in any session. */
     private val _hasEverConnected = MutableStateFlow(prefs.getBoolean("has_ever_connected", false))
     val hasEverConnected: StateFlow<Boolean> = _hasEverConnected.asStateFlow()
 
-    init { refresh() }
+    /** True while polling for the watch app after "Install on Watch" was tapped. */
+    private val _isPollingForInstall = MutableStateFlow(false)
+    val isPollingForInstall: StateFlow<Boolean> = _isPollingForInstall.asStateFlow()
+
+    // Ping/pong synchronization — set by WatchPongSignal collector
+    private var pongReceived = false
+    private val pongLock = Object()
+
+    private var installPollJob: Job? = null
+
+    /** Convenience: true when the watch app is confirmed reachable. */
+    val isReady: Boolean get() = _state.value == WatchConnectionState.CONNECTED
+
+    init {
+        // Collect pong signals from MobileListenerService
+        viewModelScope.launch {
+            WatchPongSignal.pongs.collect {
+                synchronized(pongLock) {
+                    pongReceived = true
+                    (pongLock as Object).notifyAll()
+                }
+            }
+        }
+        refresh()
+    }
+
+    override fun onCleared() {
+        installPollJob?.cancel()
+        super.onCleared()
+    }
 
     fun refresh() {
         viewModelScope.launch {
+            _state.value = WatchConnectionState.CHECKING
             try {
-                val nodes = nodeClient.connectedNodes.await()
+                val nodes = withContext(Dispatchers.IO) {
+                    nodeClient.connectedNodes.await()
+                }
                 val node = nodes.firstOrNull()
-                _watchConnected.value = node != null
                 _connectedNodeId.value = node?.id
 
-                if (node != null) {
-                    // Record that a watch has connected at least once
+                if (node == null) {
+                    _state.value = if (_hasEverConnected.value) {
+                        WatchConnectionState.DISCONNECTED
+                    } else {
+                        WatchConnectionState.NO_WATCH
+                    }
+                    return@launch
+                }
+
+                // Watch node exists — ping the app to confirm it's installed & running
+                val appResponded = pingWatch(node.id)
+                if (appResponded) {
                     if (!_hasEverConnected.value) {
                         _hasEverConnected.value = true
                         prefs.edit().putBoolean("has_ever_connected", true).apply()
                     }
-                    val capInfo = capabilityClient.getCapability(
-                        WearMessageConstants.CAPABILITY_WATCH_APP,
-                        CapabilityClient.FILTER_ALL,
-                    ).await()
-                    _watchAppInstalled.value = capInfo.nodes.isNotEmpty()
+                    _state.value = WatchConnectionState.CONNECTED
                 } else {
-                    _watchAppInstalled.value = null
+                    _state.value = WatchConnectionState.WATCH_NO_APP
                 }
-            } catch (_: Exception) {
-                _watchConnected.value = false
+            } catch (e: Exception) {
+                Log.w(TAG, "Refresh failed", e)
                 _connectedNodeId.value = null
-                _watchAppInstalled.value = null
-            } finally {
-                _hasChecked.value = true
+                _state.value = if (_hasEverConnected.value) {
+                    WatchConnectionState.DISCONNECTED
+                } else {
+                    WatchConnectionState.NO_WATCH
+                }
             }
+        }
+    }
+
+    /**
+     * Sends a ping to the watch and waits up to [PING_TIMEOUT_MS] for a pong.
+     * Returns true if pong was received.
+     */
+    private suspend fun pingWatch(nodeId: String): Boolean = withContext(Dispatchers.IO) {
+        synchronized(pongLock) { pongReceived = false }
+        try {
+            messageClient.sendMessage(
+                nodeId,
+                WearMessageConstants.PATH_WATCH_PING,
+                byteArrayOf(),
+            ).await()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to send ping", e)
+            return@withContext false
+        }
+
+        // Wait for pong with timeout
+        val deadline = System.currentTimeMillis() + PING_TIMEOUT_MS
+        synchronized(pongLock) {
+            while (!pongReceived) {
+                val remaining = deadline - System.currentTimeMillis()
+                if (remaining <= 0) break
+                (pongLock as Object).wait(remaining)
+            }
+            pongReceived
         }
     }
 
@@ -155,7 +242,49 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
             } catch (_: Exception) { /* best-effort */ }
         }
     }
+
+    /** Opens the Play Store on the watch and starts polling until the app responds. */
+    fun installOnWatch() {
+        openWatchPlayStore()
+        startInstallPolling()
+    }
+
+    fun startInstallPolling() {
+        if (installPollJob?.isActive == true) return
+        _isPollingForInstall.value = true
+        installPollJob = viewModelScope.launch {
+            while (true) {
+                delay(INSTALL_POLL_INTERVAL_MS)
+                val nodeId = try {
+                    withContext(Dispatchers.IO) {
+                        nodeClient.connectedNodes.await()
+                    }.firstOrNull()?.id
+                } catch (_: Exception) { null }
+
+                if (nodeId == null) continue
+
+                _connectedNodeId.value = nodeId
+                if (pingWatch(nodeId)) {
+                    if (!_hasEverConnected.value) {
+                        _hasEverConnected.value = true
+                        prefs.edit().putBoolean("has_ever_connected", true).apply()
+                    }
+                    _state.value = WatchConnectionState.CONNECTED
+                    _isPollingForInstall.value = false
+                    return@launch
+                }
+            }
+        }
+    }
+
+    fun stopInstallPolling() {
+        installPollJob?.cancel()
+        installPollJob = null
+        _isPollingForInstall.value = false
+    }
 }
+
+// ── Companion app UI ─────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -166,12 +295,19 @@ fun CompanionApp(
     val navController = rememberNavController()
     val navBackStack by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStack?.destination?.route
-    val watchConnected by connectionViewModel.watchConnected.collectAsStateWithLifecycle()
-    val watchAppInstalled by connectionViewModel.watchAppInstalled.collectAsStateWithLifecycle()
-    val hasChecked by connectionViewModel.hasChecked.collectAsStateWithLifecycle()
+    val connectionState by connectionViewModel.state.collectAsStateWithLifecycle()
     val hasEverConnected by connectionViewModel.hasEverConnected.collectAsStateWithLifecycle()
+    val isPolling by connectionViewModel.isPollingForInstall.collectAsStateWithLifecycle()
 
+    val watchConnected = connectionState == WatchConnectionState.CONNECTED
     val isRootRoute = currentRoute == ROUTE_ROMS
+
+    // Banner is shown for WATCH_NO_APP (always) or NO_WATCH (first-time users only)
+    val showBanner = when (connectionState) {
+        WatchConnectionState.WATCH_NO_APP -> true
+        WatchConnectionState.NO_WATCH -> !hasEverConnected
+        else -> false
+    }
 
     Scaffold(
         topBar = {
@@ -200,30 +336,22 @@ fun CompanionApp(
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            val needsInstall = watchConnected && watchAppInstalled == false
-            val noWatch = !watchConnected
-            var bannerDismissed by rememberSaveable { mutableStateOf(false) }
-
-            // Show banner automatically only after check completes, when there's
-            // an issue, and only if a watch has never connected before (first-time setup).
-            // Once dismissed, stays hidden for the session.
-            val showBanner = hasChecked && !bannerDismissed &&
-                !hasEverConnected && (noWatch || needsInstall)
-
+            ConnectionStatusBar(
+                connectionState = connectionState,
+                onRefresh = { connectionViewModel.refresh() },
+            )
             if (showBanner) {
                 WatchAppInstallBanner(
-                    noWatchDetected = noWatch && !needsInstall,
-                    onInstall = { connectionViewModel.openWatchPlayStore() },
+                    connectionState = connectionState,
+                    isPolling = isPolling,
+                    onInstall = { connectionViewModel.installOnWatch() },
                     onRefresh = { connectionViewModel.refresh() },
-                    onDismiss = { bannerDismissed = true },
+                    onRetry = {
+                        connectionViewModel.stopInstallPolling()
+                        connectionViewModel.installOnWatch()
+                    },
                 )
             }
-            ConnectionStatusBar(
-                connected = watchConnected,
-                watchAppInstalled = watchAppInstalled,
-                onRefresh = { connectionViewModel.refresh() },
-                onInstall = { connectionViewModel.openWatchPlayStore() },
-            )
 
             NavHost(
                 navController = navController,
@@ -274,67 +402,81 @@ fun CompanionApp(
     }
 }
 
+// ── Status bar ───────────────────────────────────────────────────────────────
+
 @Composable
 fun ConnectionStatusBar(
-    connected: Boolean,
-    watchAppInstalled: Boolean?,
+    connectionState: WatchConnectionState,
     onRefresh: () -> Unit,
-    onInstall: () -> Unit,
 ) {
-    val needsInstall = connected && watchAppInstalled == false
+    val isConnected = connectionState == WatchConnectionState.CONNECTED
+    val isChecking = connectionState == WatchConnectionState.CHECKING
+    val tint = if (isConnected) MaterialTheme.colorScheme.primary
+              else MaterialTheme.colorScheme.onSurfaceVariant
+    val label = when (connectionState) {
+        WatchConnectionState.CHECKING -> "Watch: Checking..."
+        WatchConnectionState.CONNECTED -> "Watch: Connected"
+        WatchConnectionState.WATCH_NO_APP -> "Watch: App Not Found"
+        WatchConnectionState.NO_WATCH -> "Watch: Disconnected"
+        WatchConnectionState.DISCONNECTED -> "Watch: Disconnected"
+    }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .height(48.dp)
+            .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            if (needsInstall) Icons.Default.Download else Icons.Default.Watch,
+            Icons.Default.Watch,
             contentDescription = null,
-            tint = if (connected && !needsInstall) MaterialTheme.colorScheme.primary
-                   else MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = tint,
             modifier = Modifier.size(20.dp),
         )
         Spacer(Modifier.width(8.dp))
         Text(
-            text = when {
-                needsInstall -> "Watch: App Not Found"
-                connected -> "Watch: Connected"
-                else -> "Watch: Disconnected"
-            },
+            label,
             style = MaterialTheme.typography.bodyMedium,
-            color = if (connected && !needsInstall) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = tint,
         )
-        if (connected && !needsInstall) {
+        if (isConnected || isChecking) {
             Spacer(Modifier.width(6.dp))
-            Text("\u25CF", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
-        }
-        Spacer(Modifier.weight(1f))
-        if (needsInstall) {
-            TextButton(onClick = onInstall) {
-                Text("Install", style = MaterialTheme.typography.labelSmall)
+            if (isChecking) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp),
+                )
             }
         }
-        TextButton(onClick = onRefresh) {
+        Spacer(Modifier.weight(1f))
+        TextButton(onClick = onRefresh, enabled = !isChecking) {
             Text("Refresh", style = MaterialTheme.typography.labelSmall)
         }
     }
 }
+
+// ── Install banner ───────────────────────────────────────────────────────────
 
 private val GreenPrimary = Color(0xFF9BBC0F)
 private val DarkNavy = Color(0xFF16213E)
 
 @Composable
 fun WatchAppInstallBanner(
-    noWatchDetected: Boolean,
+    connectionState: WatchConnectionState,
+    isPolling: Boolean,
     onInstall: () -> Unit,
     onRefresh: () -> Unit,
-    onDismiss: () -> Unit,
+    onRetry: () -> Unit,
 ) {
-    var sentToWatch by rememberSaveable { mutableStateOf(false) }
-
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -349,12 +491,12 @@ fun WatchAppInstallBanner(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // Fixed-size icon area so layout doesn't shift between states
+            // Fixed-size icon area
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier.size(80.dp),
             ) {
-                if (sentToWatch) {
+                if (isPolling) {
                     val pulse = rememberInfiniteTransition(label = "pulse")
                     val ringScale by pulse.animateFloat(
                         initialValue = 1f,
@@ -388,8 +530,11 @@ fun WatchAppInstallBanner(
                     modifier = Modifier
                         .size(56.dp)
                         .background(
-                            if (noWatchDetected) Color.White.copy(alpha = 0.08f)
-                            else GreenPrimary.copy(alpha = 0.15f),
+                            if (connectionState == WatchConnectionState.NO_WATCH) {
+                                Color.White.copy(alpha = 0.08f)
+                            } else {
+                                GreenPrimary.copy(alpha = 0.15f)
+                            },
                             CircleShape,
                         ),
                     contentAlignment = Alignment.Center,
@@ -397,15 +542,18 @@ fun WatchAppInstallBanner(
                     Icon(
                         Icons.Default.Watch,
                         contentDescription = null,
-                        tint = if (noWatchDetected) Color.White.copy(alpha = 0.5f) else GreenPrimary,
+                        tint = if (connectionState == WatchConnectionState.NO_WATCH) {
+                            Color.White.copy(alpha = 0.5f)
+                        } else {
+                            GreenPrimary
+                        },
                         modifier = Modifier.size(32.dp),
                     )
                 }
             }
 
             when {
-                noWatchDetected -> {
-                    // ── No watch paired/reachable ──
+                connectionState == WatchConnectionState.NO_WATCH -> {
                     Text(
                         "No Watch Detected",
                         style = MaterialTheme.typography.titleLarge,
@@ -427,16 +575,8 @@ fun WatchAppInstallBanner(
                     ) {
                         Text("Refresh", color = Color.White)
                     }
-                    TextButton(onClick = onDismiss) {
-                        Text(
-                            "Dismiss",
-                            color = Color.White.copy(alpha = 0.5f),
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                    }
                 }
-                sentToWatch -> {
-                    // ── "Check your watch" after install tap ──
+                isPolling -> {
                     Text(
                         "Check Your Watch",
                         style = MaterialTheme.typography.titleLarge,
@@ -452,22 +592,15 @@ fun WatchAppInstallBanner(
                     )
                     Spacer(Modifier.height(4.dp))
                     OutlinedButton(
-                        onClick = { sentToWatch = false },
+                        onClick = onRetry,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
                     ) {
                         Text("Try Again", color = Color.White)
                     }
-                    TextButton(onClick = onDismiss) {
-                        Text(
-                            "Dismiss",
-                            color = Color.White.copy(alpha = 0.5f),
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                    }
                 }
                 else -> {
-                    // ── Install prompt ──
+                    // WATCH_NO_APP, not polling yet
                     Text(
                         "Watch App Not Installed",
                         style = MaterialTheme.typography.titleLarge,
@@ -483,10 +616,7 @@ fun WatchAppInstallBanner(
                     )
                     Spacer(Modifier.height(4.dp))
                     Button(
-                        onClick = {
-                            onInstall()
-                            sentToWatch = true
-                        },
+                        onClick = onInstall,
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = GreenPrimary,
@@ -504,13 +634,6 @@ fun WatchAppInstallBanner(
                             "Install on Watch",
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 16.sp,
-                        )
-                    }
-                    TextButton(onClick = onDismiss) {
-                        Text(
-                            "Dismiss",
-                            color = Color.White.copy(alpha = 0.5f),
-                            style = MaterialTheme.typography.labelMedium,
                         )
                     }
                 }

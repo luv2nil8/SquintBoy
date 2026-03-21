@@ -40,6 +40,10 @@ class MobileListenerService : WearableListenerService() {
                     Log.e(TAG, "Failed to reply pong", e)
                 }
             }
+            WearMessageConstants.PATH_WATCH_PONG -> {
+                WatchPongSignal.emit()
+                Log.d(TAG, "Received watch pong from ${event.sourceNodeId}")
+            }
             WearMessageConstants.PATH_ENTITLEMENT_PUSH -> {
                 val isPro = String(event.data, Charsets.UTF_8) == "1"
                 MobileEntitlementCache.update(this, isPro)

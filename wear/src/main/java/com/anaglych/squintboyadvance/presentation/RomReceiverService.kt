@@ -258,6 +258,16 @@ class RomReceiverService : WearableListenerService() {
                 WearMessageConstants.PATH_ENTITLEMENT_REQUEST -> {
                     EntitlementRepository.getInstance(this).handleEntitlementRequest(event.sourceNodeId)
                 }
+                WearMessageConstants.PATH_WATCH_PING -> {
+                    Tasks.await(
+                        Wearable.getMessageClient(this).sendMessage(
+                            event.sourceNodeId,
+                            WearMessageConstants.PATH_WATCH_PONG,
+                            byteArrayOf(),
+                        )
+                    )
+                    Log.d(TAG, "Replied watch pong to ${event.sourceNodeId}")
+                }
                 else -> Log.w(TAG, "Unknown message path: ${event.path}")
             }
         } catch (e: Exception) {

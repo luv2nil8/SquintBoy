@@ -116,6 +116,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.material.icons.filled.Lock
 import com.anaglych.squintboyadvance.shared.model.DemoLimits
 import com.anaglych.squintboyadvance.shared.model.GbColorPalette
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
@@ -205,6 +206,7 @@ fun PauseOverlay(
     onPaletteSelected: (Int) -> Unit,
     onExit: () -> Unit,
     isDemo: Boolean = false,
+    onUpgrade: () -> Unit = {},
     sessionRemainingMs: Long = Long.MAX_VALUE,
     onGhostProgressChange: (Float) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -332,26 +334,35 @@ fun PauseOverlay(
         }
         // 3: Resume
         add(PauseAction(Icons.Default.PlayArrow, "Resume", onResume, iconColor = green))
-        // 4: Scale (tap to expand panel)
-        add(PauseAction(
-            Icons.Default.AspectRatio, "Scale", {},
-            backgroundColor = green.copy(alpha = 0.85f),
-            expandContent = {
-                ScaleExpandContent(
-                    customScale = customScale,
-                    isGba = isGba,
-                    filterEnabled = filterEnabled,
-                    onSetCustomScale = onSetCustomScale,
-                    onToggleFilter = onToggleFilter,
-                    gbaFrameskip = gbaFrameskip,
-                    gbFrameskip = gbFrameskip,
-                    onSetFrameskip = onSetFrameskip,
-                    onInteraction = onInteraction,
-                    ghostProgress = ghostProgress,
-                    isDemo = isDemo,
-                )
-            },
-        ))
+        // 4: Scale (tap to expand panel; locked in demo → triggers upgrade)
+        if (isDemo) {
+            add(PauseAction(
+                Icons.Default.Lock, "Scale",
+                onClick = onUpgrade,
+                backgroundColor = Color.White.copy(alpha = 0.08f),
+                iconColor = Color.White.copy(alpha = 0.5f),
+            ))
+        } else {
+            add(PauseAction(
+                Icons.Default.AspectRatio, "Scale", {},
+                backgroundColor = green.copy(alpha = 0.85f),
+                expandContent = {
+                    ScaleExpandContent(
+                        customScale = customScale,
+                        isGba = isGba,
+                        filterEnabled = filterEnabled,
+                        onSetCustomScale = onSetCustomScale,
+                        onToggleFilter = onToggleFilter,
+                        gbaFrameskip = gbaFrameskip,
+                        gbFrameskip = gbFrameskip,
+                        onSetFrameskip = onSetFrameskip,
+                        onInteraction = onInteraction,
+                        ghostProgress = ghostProgress,
+                        isDemo = isDemo,
+                    )
+                },
+            ))
+        }
         // 5: Controls (tap toggles OSC visibility, long-press expands panel)
         add(PauseAction(
             Icons.Default.Gamepad, "Controls",
@@ -416,12 +427,6 @@ fun PauseOverlay(
             .background(Color.Black.copy(alpha = overlayAlpha)),
         contentAlignment = Alignment.Center,
     ) {
-        val availablePalettes = if (isDemo) {
-            GbColorPalette.ALL.take(DemoLimits.PALETTE_COUNT)
-        } else {
-            GbColorPalette.ALL
-        }
-
         ScrollableHexGrid(
             actions = actions,
             expandedIndex = expandedIndex,
@@ -430,12 +435,17 @@ fun PauseOverlay(
             onPaletteClose = { paletteExpanded = false },
             showPalettes = showPalettes,
             paletteProgress = paletteProgress,
-            palettes = availablePalettes,
+            palettes = GbColorPalette.ALL,
             selectedPaletteIndex = selectedPaletteIndex,
+            lockedPaletteCount = if (isDemo) DemoLimits.PALETTE_COUNT else GbColorPalette.ALL.size,
             onPaletteSelected = { index ->
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                paletteExpanded = false
-                onPaletteSelected(index)
+                if (isDemo && index >= DemoLimits.PALETTE_COUNT) {
+                    onUpgrade()
+                } else {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    paletteExpanded = false
+                    onPaletteSelected(index)
+                }
             },
             ghostProgress = ghostProgress,
         )
@@ -1546,6 +1556,7 @@ private fun ScrollableHexGrid(
     paletteProgress: Float,
     palettes: List<GbColorPalette>,
     selectedPaletteIndex: Int,
+    lockedPaletteCount: Int = palettes.size,
     onPaletteSelected: (Int) -> Unit,
     ghostProgress: Float = 0f,
 ) {
@@ -1751,6 +1762,7 @@ private fun ScrollableHexGrid(
                 paletteProgress      = paletteProgress,
                 palettes             = palettes,
                 selectedPaletteIndex = selectedPaletteIndex,
+                lockedPaletteCount   = lockedPaletteCount,
                 onPaletteSelected    = onPaletteSelected,
                 ghostProgress        = ghostProgress,
             )
@@ -1774,6 +1786,7 @@ private fun HexButtonLayout(
     paletteProgress: Float,
     palettes: List<GbColorPalette>,
     selectedPaletteIndex: Int,
+    lockedPaletteCount: Int = palettes.size,
     onPaletteSelected: (Int) -> Unit,
     ghostProgress: Float = 0f,
 ) {
@@ -1805,6 +1818,7 @@ private fun HexButtonLayout(
                     PaletteSwatch(
                         palette = palette,
                         selected = index == selectedPaletteIndex,
+                        locked = index >= lockedPaletteCount,
                         onClick = { onPaletteSelected(index) },
                     )
                 }
@@ -2384,12 +2398,14 @@ private fun HexButton(action: PauseAction) {
 private fun PaletteSwatch(
     palette: GbColorPalette,
     selected: Boolean,
+    locked: Boolean = false,
     onClick: () -> Unit,
 ) {
     Box(
         modifier = Modifier
             .clip(CircleShape)
             .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val d = size.minDimension
@@ -2400,6 +2416,10 @@ private fun PaletteSwatch(
             drawArc(color = Color(palette.c3), startAngle = 0f,   sweepAngle = 90f, useCenter = true, size = arcSize)
             drawArc(color = Color(palette.c2), startAngle = 90f,  sweepAngle = 90f, useCenter = true, size = arcSize)
 
+            if (locked) {
+                drawCircle(color = Color.Black.copy(alpha = 0.55f))
+            }
+
             if (selected) {
                 val strokeW = 2.5.dp.toPx()
                 drawCircle(
@@ -2408,6 +2428,14 @@ private fun PaletteSwatch(
                     style = Stroke(width = strokeW),
                 )
             }
+        }
+        if (locked) {
+            Icon(
+                Icons.Default.Lock,
+                contentDescription = "Locked",
+                tint = Color.White.copy(alpha = 0.8f),
+                modifier = Modifier.size(16.dp),
+            )
         }
     }
 }

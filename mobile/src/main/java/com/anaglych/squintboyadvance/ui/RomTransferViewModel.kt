@@ -45,9 +45,6 @@ class RomTransferViewModel(application: Application) : AndroidViewModel(applicat
     private val _roms = MutableStateFlow<List<RomTransferItem>>(emptyList())
     val roms: StateFlow<List<RomTransferItem>> = _roms.asStateFlow()
 
-    private val _watchConnected = MutableStateFlow(false)
-    val watchConnected: StateFlow<Boolean> = _watchConnected.asStateFlow()
-
     private val _sending = MutableStateFlow(false)
     val sending: StateFlow<Boolean> = _sending.asStateFlow()
 
@@ -58,7 +55,6 @@ class RomTransferViewModel(application: Application) : AndroidViewModel(applicat
     private val pendingTimeouts = ConcurrentHashMap<String, Job>()
 
     init {
-        refreshConnectionStatus()
         viewModelScope.launch {
             TransferResultSignal.results.collect { result ->
                 pendingTimeouts.remove(result.filename)?.cancel()
@@ -70,17 +66,6 @@ class RomTransferViewModel(application: Application) : AndroidViewModel(applicat
                         errorMessage = result.errorMessage ?: "Transfer failed on watch"
                     )
                 }
-            }
-        }
-    }
-
-    fun refreshConnectionStatus() {
-        viewModelScope.launch {
-            _watchConnected.value = try {
-                val nodes = nodeClient.connectedNodes.await()
-                nodes.isNotEmpty()
-            } catch (_: Exception) {
-                false
             }
         }
     }

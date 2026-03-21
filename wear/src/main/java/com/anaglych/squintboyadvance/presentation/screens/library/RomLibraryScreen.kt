@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import android.app.Activity
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,6 +33,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.rotary.onRotaryScrollEvent
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -139,21 +142,30 @@ fun RomLibraryScreen(
                 // ── Add ROM ─────────────────────────────────────────────
                 item {
                     val atDemoLimit = !isPro && roms.size >= DemoLimits.MAX_ROMS
+                    val context = LocalContext.current
                     Box(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         CompactChip(
-                            onClick = { if (!atDemoLimit) viewModel.sendOpenRomPicker() },
+                            onClick = {
+                                if (atDemoLimit) {
+                                    (context as? Activity)?.let { activity ->
+                                        EntitlementRepository.getInstance(activity).launchPurchase(activity)
+                                    }
+                                } else {
+                                    viewModel.sendOpenRomPicker()
+                                }
+                            },
                             label = {
                                 Text(
-                                    if (atDemoLimit) "Demo: ${DemoLimits.MAX_ROMS} ROM limit"
+                                    if (atDemoLimit) "Upgrade for more"
                                     else "Add ROM"
                                 )
                             },
                             icon = {
                                 Icon(
-                                    Icons.Default.Add,
+                                    if (atDemoLimit) Icons.Default.Lock else Icons.Default.Add,
                                     contentDescription = null,
                                     modifier = Modifier.size(14.dp),
                                 )
