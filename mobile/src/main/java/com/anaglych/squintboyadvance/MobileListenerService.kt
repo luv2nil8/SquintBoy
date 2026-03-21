@@ -40,6 +40,10 @@ class MobileListenerService : WearableListenerService() {
                     Log.e(TAG, "Failed to reply pong", e)
                 }
             }
+            WearMessageConstants.PATH_WATCH_PONG -> {
+                WatchPongSignal.emit()
+                Log.d(TAG, "Received watch pong from ${event.sourceNodeId}")
+            }
             WearMessageConstants.PATH_ROM_TRANSFER_RESULT -> {
                 try {
                     val payload = String(event.data, Charsets.UTF_8)

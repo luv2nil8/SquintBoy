@@ -241,6 +241,11 @@ class RomReceiverService : WearableListenerService() {
                 WearMessageConstants.PATH_SAVE_CLEAR_STACKS -> handleSaveClearStacks(event)
                 WearMessageConstants.PATH_ROM_RENAME -> handleRomRename(event)
                 WearMessageConstants.PATH_SCREEN_INFO_REQUEST -> handleScreenInfoRequest(event)
+                WearMessageConstants.PATH_WATCH_PING -> {
+                    Tasks.await(Wearable.getMessageClient(this).sendMessage(
+                        event.sourceNodeId, WearMessageConstants.PATH_WATCH_PONG, byteArrayOf()))
+                    Log.d(TAG, "Replied watch pong to ${event.sourceNodeId}")
+                }
                 else -> Log.w(TAG, "Unknown message path: ${event.path}")
             }
         } catch (e: Exception) {

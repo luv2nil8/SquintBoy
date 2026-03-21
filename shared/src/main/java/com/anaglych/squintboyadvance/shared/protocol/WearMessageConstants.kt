@@ -41,6 +41,11 @@ object WearMessageConstants {
     const val PATH_PHONE_PING = "/phone/ping"
     const val PATH_PHONE_PONG = "/phone/pong"
 
+    // Ping/pong: phone sends ping, watch replies with pong.
+    // Used by the companion app to confirm the watch app is installed and reachable.
+    const val PATH_WATCH_PING = "/watch/ping"
+    const val PATH_WATCH_PONG = "/watch/pong"
+
     // Capability names declared in res/values/wear.xml on each side.
     const val CAPABILITY_PHONE_APP = "squintboy_phone_app"
     const val CAPABILITY_WATCH_APP = "squintboy_watch_app"
