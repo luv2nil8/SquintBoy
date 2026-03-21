@@ -61,6 +61,7 @@ fun EmulatorScreen(
     val sessionRemainingMs by viewModel.sessionRemainingMs.collectAsState()
     val isPro by viewModel.isPro.collectAsState()
 
+    val context = LocalContext.current
     val settingsRepo = SettingsRepository.getInstance(viewModel.getApplication())
     val settings by settingsRepo.settings.collectAsState()
 
@@ -290,6 +291,12 @@ fun EmulatorScreen(
                             onExit()
                         },
                         isDemo = !isPro,
+                        onUpgrade = {
+                            val activity = (context as? Activity)
+                            if (activity != null) {
+                                EntitlementRepository.getInstance(activity).launchPurchase(activity)
+                            }
+                        },
                         sessionRemainingMs = sessionRemainingMs,
                         onGhostProgressChange = { pauseGhostProgress = it },
                     )
@@ -303,7 +310,7 @@ fun EmulatorScreen(
                     )
 
                     PauseUiState.SESSION_EXPIRED -> {
-                        val activity = LocalContext.current as? Activity
+                        val activity = context as? Activity
                         SessionExpiredOverlay(
                             onUpgrade = {
                                 if (activity != null) {
