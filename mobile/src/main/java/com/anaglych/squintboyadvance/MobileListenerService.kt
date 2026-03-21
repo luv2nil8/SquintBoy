@@ -40,6 +40,11 @@ class MobileListenerService : WearableListenerService() {
                     Log.e(TAG, "Failed to reply pong", e)
                 }
             }
+            WearMessageConstants.PATH_ENTITLEMENT_PUSH -> {
+                val isPro = String(event.data, Charsets.UTF_8) == "1"
+                MobileEntitlementCache.update(this, isPro)
+                Log.i(TAG, "Entitlement updated from watch: isPro=$isPro")
+            }
             WearMessageConstants.PATH_ROM_TRANSFER_RESULT -> {
                 try {
                     val payload = String(event.data, Charsets.UTF_8)

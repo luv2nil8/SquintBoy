@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
@@ -82,7 +83,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.anaglych.squintboyadvance.MobileEntitlementCache
 import com.anaglych.squintboyadvance.shared.model.ControllerLayout
+import com.anaglych.squintboyadvance.shared.model.DemoLimits
 import com.anaglych.squintboyadvance.shared.model.EmulatorSettings
 import com.anaglych.squintboyadvance.shared.model.GbColorPalette
 import com.anaglych.squintboyadvance.shared.model.RomOverrides
@@ -120,6 +123,7 @@ fun RomManagementScreen(
     val isRomMode by viewModel.isRomMode.collectAsStateWithLifecycle()
     val hasRomDifferences by viewModel.hasRomDifferences.collectAsStateWithLifecycle()
     val watchScreenWidthPx by viewModel.watchScreenWidthPx.collectAsStateWithLifecycle()
+    val isPro by MobileEntitlementCache.isPro.collectAsStateWithLifecycle()
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var pendingUpload by remember { mutableStateOf<SaveBackupEntry?>(null) }
@@ -215,6 +219,7 @@ fun RomManagementScreen(
                     importLauncher = { importLauncher.launch(arrayOf("*/*")) },
                     onUpload = { pendingUpload = it },
                     onShowDeleteRom = { showDeleteRomConfirm = true },
+                    isPro = isPro,
                 )
                 1 -> {
                     // Re-request screen info when settings tab is opened
@@ -231,6 +236,7 @@ fun RomManagementScreen(
                         systemType = systemType,
                         watchScreenWidthPx = watchScreenWidthPx,
                         onOpenLicenses = onOpenLicenses,
+                        isPro = isPro,
                     )
                 }
             }
@@ -345,6 +351,7 @@ private fun SavesTabContent(
     importLauncher: () -> Unit,
     onUpload: (SaveBackupEntry) -> Unit,
     onShowDeleteRom: () -> Unit,
+    isPro: Boolean = false,
 ) {
     val context = LocalContext.current
 
@@ -378,9 +385,10 @@ private fun SavesTabContent(
                 }
                 watchSave != null -> WatchSaveCard(
                     entry = watchSave,
-                    onBackup = { viewModel.backupToPhone() },
+                    onBackup = { if (isPro) viewModel.backupToPhone() },
                     backupInProgress = backupTransfer.inProgress,
                     backupMessage = backupTransfer.message,
+                    backupEnabled = isPro,
                     backupIsError = backupTransfer.isError,
                     watchConnected = watchConnected,
                 )
@@ -468,6 +476,7 @@ private fun SettingsTabContent(
     systemType: SystemType,
     watchScreenWidthPx: Int?,
     onOpenLicenses: () -> Unit,
+    isPro: Boolean = false,
 ) {
     if (settings == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -644,7 +653,12 @@ private fun SettingsTabContent(
         item { SectionHeader("Display") }
         item {
             SettingsCard {
-                SwitchSetting("Integer Scale", isIntegerScale) {
+                SwitchSetting(
+                    if (!isPro && isIntegerScale) "Integer Scale (custom: full version)"
+                    else "Integer Scale",
+                    isIntegerScale,
+                ) {
+                    if (!isPro && isIntegerScale) return@SwitchSetting // block switching to Custom in demo
                     val newMode = if (isIntegerScale) ScaleMode.CUSTOM else ScaleMode.INTEGER
                     viewModel.updateSettings(
                         romTransform = { ro ->
@@ -771,6 +785,7 @@ private fun SettingsTabContent(
                                 globalTransform = { it.copy(gbPaletteIndex = index) },
                             )
                         },
+                        isPro = isPro,
                     )
                 }
             }
@@ -1201,10 +1216,13 @@ private fun FrameskipSetting(label: String, current: Int, onSelect: (Int) -> Uni
 private fun PaletteSetting(
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
+    isPro: Boolean = false,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val selected = GbColorPalette.ALL.getOrNull(selectedIndex)
-        ?: GbColorPalette.ALL[GbColorPalette.DEFAULT_INDEX]
+    val availablePalettes = if (isPro) GbColorPalette.ALL
+        else GbColorPalette.ALL.take(DemoLimits.PALETTE_COUNT)
+    val selected = availablePalettes.getOrNull(selectedIndex)
+        ?: availablePalettes[0]
 
     Column(modifier = Modifier.fillMaxWidth()) {
         ExposedDropdownMenuBox(
@@ -1224,7 +1242,7 @@ private fun PaletteSetting(
                 singleLine = true,
             )
             ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                GbColorPalette.ALL.forEachIndexed { index, palette ->
+                availablePalettes.forEachIndexed { index, palette ->
                     DropdownMenuItem(
                         text = {
                             Row(
@@ -1267,6 +1285,7 @@ private fun WatchSaveCard(
     backupMessage: String?,
     backupIsError: Boolean,
     watchConnected: Boolean,
+    backupEnabled: Boolean = true,
 ) {
     val context = LocalContext.current
     Card(
@@ -1310,8 +1329,11 @@ private fun WatchSaveCard(
             if (backupInProgress) {
                 CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
             } else {
-                IconButton(onClick = onBackup, enabled = watchConnected) {
-                    Icon(Icons.Default.CloudDownload, contentDescription = "Backup to phone")
+                IconButton(onClick = onBackup, enabled = watchConnected && backupEnabled) {
+                    Icon(
+                        if (backupEnabled) Icons.Default.CloudDownload else Icons.Default.Lock,
+                        contentDescription = if (backupEnabled) "Backup to phone" else "Full version only",
+                    )
                 }
             }
         }

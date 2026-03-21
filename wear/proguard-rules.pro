@@ -13,6 +13,9 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 
+# Google Play Billing
+-keep class com.android.billingclient.** { *; }
+
 # Wearable Data Layer
 -keep class com.google.android.gms.wearable.** { *; }
 

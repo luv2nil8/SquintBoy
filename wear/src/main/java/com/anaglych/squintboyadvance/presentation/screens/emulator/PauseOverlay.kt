@@ -116,6 +116,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.gestures.detectTapGestures
+import com.anaglych.squintboyadvance.shared.model.DemoLimits
 import com.anaglych.squintboyadvance.shared.model.GbColorPalette
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 
@@ -203,6 +204,8 @@ fun PauseOverlay(
     selectedPaletteIndex: Int,
     onPaletteSelected: (Int) -> Unit,
     onExit: () -> Unit,
+    isDemo: Boolean = false,
+    sessionRemainingMs: Long = Long.MAX_VALUE,
     onGhostProgressChange: (Float) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -345,6 +348,7 @@ fun PauseOverlay(
                     onSetFrameskip = onSetFrameskip,
                     onInteraction = onInteraction,
                     ghostProgress = ghostProgress,
+                    isDemo = isDemo,
                 )
             },
         ))
@@ -412,6 +416,12 @@ fun PauseOverlay(
             .background(Color.Black.copy(alpha = overlayAlpha)),
         contentAlignment = Alignment.Center,
     ) {
+        val availablePalettes = if (isDemo) {
+            GbColorPalette.ALL.take(DemoLimits.PALETTE_COUNT)
+        } else {
+            GbColorPalette.ALL
+        }
+
         ScrollableHexGrid(
             actions = actions,
             expandedIndex = expandedIndex,
@@ -420,6 +430,7 @@ fun PauseOverlay(
             onPaletteClose = { paletteExpanded = false },
             showPalettes = showPalettes,
             paletteProgress = paletteProgress,
+            palettes = availablePalettes,
             selectedPaletteIndex = selectedPaletteIndex,
             onPaletteSelected = { index ->
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -905,6 +916,7 @@ private fun ScaleExpandContent(
     onSetFrameskip: (Int) -> Unit,
     onInteraction: () -> Unit,
     ghostProgress: Float = 0f,
+    isDemo: Boolean = false,
 ) {
     val green = MaterialTheme.colors.primary
     val frameW = if (isGba) GBA_FRAME_W else GB_FRAME_W
@@ -1532,6 +1544,7 @@ private fun ScrollableHexGrid(
     onPaletteClose: () -> Unit,
     showPalettes: Boolean,
     paletteProgress: Float,
+    palettes: List<GbColorPalette>,
     selectedPaletteIndex: Int,
     onPaletteSelected: (Int) -> Unit,
     ghostProgress: Float = 0f,
@@ -1736,6 +1749,7 @@ private fun ScrollableHexGrid(
                 activeExpandedIndex  = activeExpandedIndex,
                 showPalettes         = showPalettes,
                 paletteProgress      = paletteProgress,
+                palettes             = palettes,
                 selectedPaletteIndex = selectedPaletteIndex,
                 onPaletteSelected    = onPaletteSelected,
                 ghostProgress        = ghostProgress,
@@ -1758,6 +1772,7 @@ private fun HexButtonLayout(
     activeExpandedIndex: Int?,
     showPalettes: Boolean,
     paletteProgress: Float,
+    palettes: List<GbColorPalette>,
     selectedPaletteIndex: Int,
     onPaletteSelected: (Int) -> Unit,
     ghostProgress: Float = 0f,
@@ -1786,7 +1801,7 @@ private fun HexButtonLayout(
             }
             // Palette swatches (when palette is expanding or collapsing)
             if (showPalettes) {
-                GbColorPalette.ALL.forEachIndexed { index, palette ->
+                palettes.forEachIndexed { index, palette ->
                     PaletteSwatch(
                         palette = palette,
                         selected = index == selectedPaletteIndex,
