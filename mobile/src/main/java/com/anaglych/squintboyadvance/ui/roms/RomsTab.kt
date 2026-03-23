@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
@@ -47,6 +48,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -59,12 +61,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.anaglych.squintboyadvance.shared.model.DemoLimits
 import com.anaglych.squintboyadvance.shared.model.SystemType
 import com.anaglych.squintboyadvance.shared.model.WatchRomEntry
 import com.anaglych.squintboyadvance.ui.RomPickerTrigger
 import com.anaglych.squintboyadvance.ui.RomTransferItem
 import com.anaglych.squintboyadvance.ui.RomTransferViewModel
 import com.anaglych.squintboyadvance.ui.TransferStatus
+import com.anaglych.squintboyadvance.ui.theme.GbBadge
+import com.anaglych.squintboyadvance.ui.theme.GbaBadge
+import com.anaglych.squintboyadvance.ui.theme.GbcBadge
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -74,6 +80,8 @@ fun RomsTab(
     onRomSelected: (WatchRomEntry) -> Unit,
     transferViewModel: RomTransferViewModel = viewModel(),
     watchRomListViewModel: WatchRomListViewModel = viewModel(),
+    isPro: Boolean = true,
+    onUpgrade: () -> Unit = {},
 ) {
     // Note: watchRomListViewModel may be hoisted from CompanionApp (same Activity scope = same instance)
     val roms by transferViewModel.roms.collectAsStateWithLifecycle()
@@ -86,35 +94,64 @@ fun RomsTab(
     var dismissingUris by remember { mutableStateOf(setOf<Uri>()) }
     val scope = rememberCoroutineScope()
 
+    // Track ROMs dismissed from queue but not yet in watchRoms (prevents FAB flash)
+    var pendingRefreshCount by remember { mutableIntStateOf(0) }
+    val refreshGeneration by watchRomListViewModel.refreshGeneration.collectAsStateWithLifecycle()
+    LaunchedEffect(refreshGeneration) { pendingRefreshCount = 0 }
+
     // System filter for the watch library
     var filterSystem by remember { mutableStateOf<SystemType?>(null) }
     val filteredWatchRoms = remember(watchRoms, filterSystem) {
         if (filterSystem == null) watchRoms else watchRoms.filter { it.systemType == filterSystem }
     }
 
+    val totalRomCount = watchRoms.size + roms.size + pendingRefreshCount
+    val atDemoLimit = !isPro && totalRomCount >= DemoLimits.MAX_ROMS
+
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
-        if (uris.isNotEmpty()) transferViewModel.addRoms(uris)
+        if (uris.isNotEmpty()) {
+            if (!isPro) {
+                val remaining = (DemoLimits.MAX_ROMS - totalRomCount).coerceAtLeast(0)
+                transferViewModel.addRoms(uris.take(remaining))
+            } else {
+                transferViewModel.addRoms(uris)
+            }
+        }
     }
 
     // Watch can request the ROM picker via the Wearable message layer
     val shouldOpenPicker by RomPickerTrigger.shouldOpen.collectAsStateWithLifecycle()
     LaunchedEffect(shouldOpenPicker) {
         if (shouldOpenPicker) {
-            filePicker.launch(arrayOf("*/*"))
+            if (atDemoLimit) {
+                onUpgrade()
+            } else {
+                filePicker.launch(arrayOf("*/*"))
+            }
             RomPickerTrigger.consume()
         }
     }
 
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { filePicker.launch(arrayOf("*/*")) },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Select ROMs")
+            if (atDemoLimit) {
+                androidx.compose.material3.ExtendedFloatingActionButton(
+                    onClick = onUpgrade,
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    icon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                    text = { Text("Upgrade For More") },
+                )
+            } else {
+                FloatingActionButton(
+                    onClick = { filePicker.launch(arrayOf("*/*")) },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Select ROMs")
+                }
             }
         },
         containerColor = Color.Transparent,
@@ -173,6 +210,7 @@ fun RomsTab(
                             scope.launch {
                                 delay(600)
                                 transferViewModel.removeRom(rom)
+                                pendingRefreshCount++
                                 dismissingUris = dismissingUris - rom.uri
                                 if (watchConnected) watchRomListViewModel.requestRomList()
                             }
@@ -317,9 +355,9 @@ private fun TransferRomCard(
 ) {
     val context = LocalContext.current
     val badgeColor = when (item.systemType) {
-        com.anaglych.squintboyadvance.shared.model.SystemType.GB -> Color(0xFF306230)
-        com.anaglych.squintboyadvance.shared.model.SystemType.GBC -> Color(0xFFDA70D6)
-        com.anaglych.squintboyadvance.shared.model.SystemType.GBA -> Color(0xFF6A5ACD)
+        com.anaglych.squintboyadvance.shared.model.SystemType.GB -> GbBadge
+        com.anaglych.squintboyadvance.shared.model.SystemType.GBC -> GbcBadge
+        com.anaglych.squintboyadvance.shared.model.SystemType.GBA -> GbaBadge
         null -> MaterialTheme.colorScheme.surfaceVariant
     }
 
@@ -426,9 +464,9 @@ private fun TransferRomCard(
 private fun WatchRomCard(entry: WatchRomEntry, displayName: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val badgeColor = when (entry.systemType) {
-        SystemType.GB -> Color(0xFF306230)
-        SystemType.GBC -> Color(0xFFDA70D6)
-        SystemType.GBA -> Color(0xFF6A5ACD)
+        SystemType.GB -> GbBadge
+        SystemType.GBC -> GbcBadge
+        SystemType.GBA -> GbaBadge
     }
 
     Card(

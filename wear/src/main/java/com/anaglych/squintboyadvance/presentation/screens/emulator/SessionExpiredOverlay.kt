@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.Button
 import androidx.wear.compose.material.ButtonDefaults
 import androidx.wear.compose.material.Text
+import com.anaglych.squintboyadvance.presentation.theme.GbGreen
 
 @Composable
 fun SessionExpiredOverlay(
@@ -41,7 +42,7 @@ fun SessionExpiredOverlay(
             Text(
                 text = "Session Expired",
                 fontSize = 16.sp,
-                color = Color(0xFF9BBC0F),
+                color = GbGreen,
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(6.dp))
@@ -68,12 +69,12 @@ fun SessionExpiredOverlay(
                 Button(
                     onClick = onUpgrade,
                     colors = ButtonDefaults.buttonColors(
-                        backgroundColor = Color(0xFF9BBC0F),
+                        backgroundColor = GbGreen,
                         contentColor = Color.Black,
                     ),
                     modifier = Modifier.weight(1f).height(44.dp),
                 ) {
-                    Text("Upgrade", fontSize = 12.sp)
+                    Text("Upgrade on Phone", fontSize = 11.sp)
                 }
             }
         }

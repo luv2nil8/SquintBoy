@@ -44,10 +44,19 @@ class MobileListenerService : WearableListenerService() {
                 WatchPongSignal.emit()
                 Log.d(TAG, "Received watch pong from ${event.sourceNodeId}")
             }
-            WearMessageConstants.PATH_ENTITLEMENT_PUSH -> {
-                val isPro = String(event.data, Charsets.UTF_8) == "1"
-                MobileEntitlementCache.update(this, isPro)
-                Log.i(TAG, "Entitlement updated from watch: isPro=$isPro")
+            WearMessageConstants.PATH_PURCHASE_ON_PHONE -> {
+                PurchaseRequestSignal.emit()
+                val intent = Intent(this, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                }
+                startActivity(intent)
+                Log.i(TAG, "Purchase requested from watch — launching activity")
+            }
+            WearMessageConstants.PATH_ENTITLEMENT_REQUEST -> {
+                // Watch asks for current entitlement status (startup sync)
+                val billing = MobileBillingManager.getInstance(this)
+                billing.handleEntitlementRequest(event.sourceNodeId)
+                Log.i(TAG, "Entitlement request from watch ${event.sourceNodeId}")
             }
             WearMessageConstants.PATH_ROM_TRANSFER_RESULT -> {
                 try {

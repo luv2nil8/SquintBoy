@@ -47,6 +47,9 @@ class WatchRomListViewModel(application: Application) : AndroidViewModel(applica
     private val _displayNames = MutableStateFlow<Map<String, String>>(emptyMap())
     val displayNames: StateFlow<Map<String, String>> = _displayNames.asStateFlow()
 
+    private val _refreshGeneration = MutableStateFlow(0)
+    val refreshGeneration: StateFlow<Int> = _refreshGeneration.asStateFlow()
+
     private var timeoutJob: Job? = null
 
     init {
@@ -67,6 +70,7 @@ class WatchRomListViewModel(application: Application) : AndroidViewModel(applica
             try {
                 val response = json.decodeFromString(RomListResponse.serializer(), String(event.data))
                 _watchRoms.value = response.roms
+                _refreshGeneration.value++
                 saveCache(response.roms)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to parse ROM list", e)

@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material.CircularProgressIndicator
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
+import com.anaglych.squintboyadvance.presentation.theme.NearBlack
 import com.anaglych.squintboyadvance.presentation.theme.OnSurface
 import com.anaglych.squintboyadvance.presentation.theme.OnSurfaceDim
 
@@ -50,7 +51,7 @@ fun TransferringRomCard(
                 modifier = Modifier
                     .fillMaxHeight()
                     .aspectRatio(1.5f)
-                    .background(Color(0xFF1A1A1A))
+                    .background(NearBlack)
             ) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(24.dp),

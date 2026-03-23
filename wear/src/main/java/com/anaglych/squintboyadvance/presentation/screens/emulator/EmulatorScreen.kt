@@ -1,6 +1,5 @@
 package com.anaglych.squintboyadvance.presentation.screens.emulator
 
-import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,8 +35,9 @@ import com.anaglych.squintboyadvance.shared.model.EmulatorSettings
 import com.anaglych.squintboyadvance.shared.model.RomOverrides
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 import com.anaglych.squintboyadvance.shared.model.SystemType
+import com.anaglych.squintboyadvance.presentation.theme.Crimson
 
-private enum class PauseUiState { MENU, CONFIRM_RESET, SESSION_EXPIRED }
+private enum class PauseUiState { MENU, CONFIRM_RESET, SESSION_EXPIRED, UPGRADE_DETAILS }
 
 @Composable
 fun EmulatorScreen(
@@ -113,6 +113,12 @@ fun EmulatorScreen(
     // Redirect to session expired overlay when timer runs out
     LaunchedEffect(sessionExpired) {
         if (sessionExpired) pauseUiState = PauseUiState.SESSION_EXPIRED
+    }
+    // Auto-dismiss upgrade overlay when purchase completes
+    LaunchedEffect(isPro) {
+        if (isPro && pauseUiState == PauseUiState.UPGRADE_DETAILS) {
+            pauseUiState = PauseUiState.MENU
+        }
     }
 
     LaunchedEffect(romId) {
@@ -291,12 +297,7 @@ fun EmulatorScreen(
                             onExit()
                         },
                         isDemo = !isPro,
-                        onUpgrade = {
-                            val activity = (context as? Activity)
-                            if (activity != null) {
-                                EntitlementRepository.getInstance(activity).launchPurchase(activity)
-                            }
-                        },
+                        onUpgrade = { pauseUiState = PauseUiState.UPGRADE_DETAILS },
                         sessionRemainingMs = sessionRemainingMs,
                         onGhostProgressChange = { pauseGhostProgress = it },
                     )
@@ -304,18 +305,24 @@ fun EmulatorScreen(
                     PauseUiState.CONFIRM_RESET -> WearSlideToConfirm(
                         slideText = "Slide to reset",
                         warningText = "The game will restart from the beginning. Your save file is preserved.",
-                        confirmColor = Color(0xFFEC1358),
+                        confirmColor = Crimson,
                         onConfirmed = { viewModel.resetRom() },
                         onDismiss = { pauseUiState = PauseUiState.MENU },
                     )
 
+                    PauseUiState.UPGRADE_DETAILS -> {
+                        UpgradeDetailsOverlay(
+                            onUpgrade = {
+                                EntitlementRepository.getInstance(context).requestPurchaseOnPhone()
+                            },
+                            onDismiss = { pauseUiState = PauseUiState.MENU },
+                        )
+                    }
+
                     PauseUiState.SESSION_EXPIRED -> {
-                        val activity = context as? Activity
                         SessionExpiredOverlay(
                             onUpgrade = {
-                                if (activity != null) {
-                                    EntitlementRepository.getInstance(activity).launchPurchase(activity)
-                                }
+                                EntitlementRepository.getInstance(context).requestPurchaseOnPhone()
                             },
                             onExit = {
                                 viewModel.stop()
@@ -329,7 +336,7 @@ fun EmulatorScreen(
             EmulatorState.ERROR -> {
                 Text(
                     text = errorMessage ?: "Unknown error",
-                    color = Color(0xFFEC1358),
+                    color = Crimson,
                     style = MaterialTheme.typography.body2,
                 )
             }

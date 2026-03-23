@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import android.app.Activity
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Lock
@@ -58,6 +57,7 @@ import androidx.wear.compose.material.VignettePosition
 import com.anaglych.squintboyadvance.presentation.EntitlementRepository
 import com.anaglych.squintboyadvance.presentation.RomLibrarySignal
 import com.anaglych.squintboyadvance.presentation.TransferEvent
+import com.anaglych.squintboyadvance.presentation.theme.ScrimBlack
 import com.anaglych.squintboyadvance.shared.model.DemoLimits
 import com.anaglych.squintboyadvance.shared.model.RomMetadata
 import kotlinx.coroutines.delay
@@ -79,6 +79,12 @@ fun RomLibraryScreen(
     val coroutineScope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
     var transferEvent by remember { mutableStateOf<TransferEvent?>(null) }
+    var showUpgradeDetails by remember { mutableStateOf(false) }
+
+    // Auto-dismiss upgrade overlay when purchase completes
+    LaunchedEffect(isPro) {
+        if (isPro) showUpgradeDetails = false
+    }
 
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
@@ -93,6 +99,7 @@ fun RomLibraryScreen(
             transferEvent = null
         }
     }
+
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
@@ -116,6 +123,29 @@ fun RomLibraryScreen(
                 autoCentering = AutoCenteringParams(itemIndex = 2),
             ) {
                 item { Spacer(Modifier.height(48.dp)) }
+
+                // ── Upgrade button ──────────────────────────────────
+                if (!isPro) {
+                    item {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CompactChip(
+                                onClick = { showUpgradeDetails = true },
+                                label = { Text("Unlock Everything") },
+                                icon = {
+                                    Icon(
+                                        Icons.Default.Lock,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                    )
+                                },
+                                colors = ChipDefaults.secondaryChipColors(),
+                            )
+                        }
+                    }
+                }
 
                 // ── Phone app install prompt ──────────────────────────────
                 if (!phoneAppInstalled) {
@@ -142,7 +172,6 @@ fun RomLibraryScreen(
                 // ── Add ROM ─────────────────────────────────────────────
                 item {
                     val atDemoLimit = !isPro && roms.size >= DemoLimits.MAX_ROMS
-                    val context = LocalContext.current
                     Box(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                         contentAlignment = Alignment.Center,
@@ -150,9 +179,7 @@ fun RomLibraryScreen(
                         CompactChip(
                             onClick = {
                                 if (atDemoLimit) {
-                                    (context as? Activity)?.let { activity ->
-                                        EntitlementRepository.getInstance(activity).launchPurchase(activity)
-                                    }
+                                    showUpgradeDetails = true
                                 } else {
                                     viewModel.sendOpenRomPicker()
                                 }
@@ -175,6 +202,7 @@ fun RomLibraryScreen(
                         )
                     }
                 }
+
             }
         }
 
@@ -183,7 +211,7 @@ fun RomLibraryScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xCC000000))
+                    .background(ScrimBlack)
                     .clickable { viewModel.dismissPickerOverlay() },
                 contentAlignment = Alignment.Center,
             ) {
@@ -243,7 +271,7 @@ fun RomLibraryScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xCC000000))
+                    .background(ScrimBlack)
                     .clickable { transferEvent = null },
                 contentAlignment = Alignment.Center,
             ) {
@@ -280,6 +308,17 @@ fun RomLibraryScreen(
                     }
                 }
             }
+        }
+
+        // ── Upgrade details overlay ──────────────────────────────────────
+        if (showUpgradeDetails) {
+            val context = LocalContext.current
+            com.anaglych.squintboyadvance.presentation.screens.emulator.UpgradeDetailsOverlay(
+                onUpgrade = {
+                    EntitlementRepository.getInstance(context).requestPurchaseOnPhone()
+                },
+                onDismiss = { showUpgradeDetails = false },
+            )
         }
     }
 }

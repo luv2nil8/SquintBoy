@@ -29,7 +29,9 @@ import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
 
-private val BLUE = Color(0xFF6A5ACD)
+import com.anaglych.squintboyadvance.presentation.theme.GbaBadge
+
+private val BLUE = GbaBadge
 
 @Composable
 fun SaveStateScreen(

@@ -41,6 +41,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.anaglych.squintboyadvance.shared.model.SaveFileEntry
 import com.anaglych.squintboyadvance.shared.model.SaveFileType
+import com.anaglych.squintboyadvance.ui.theme.SramBackupBadge
+import com.anaglych.squintboyadvance.ui.theme.SramLiveBadge
+import com.anaglych.squintboyadvance.ui.theme.StateBadge
 import java.io.File
 import java.text.DateFormat
 import java.util.Date
@@ -201,9 +204,9 @@ private fun RomSaveHeader(
 private fun WatchSaveCard(entry: SaveFileEntry) {
     val context = LocalContext.current
     val typeBadge = when (entry.type) {
-        SaveFileType.SRAM_LIVE -> "SRAM" to Color(0xFF4CAF50)
-        SaveFileType.SRAM_BACKUP -> "Backup" to Color(0xFFFF9800)
-        SaveFileType.STATE -> "State" to Color(0xFF2196F3)
+        SaveFileType.SRAM_LIVE -> "SRAM" to SramLiveBadge
+        SaveFileType.SRAM_BACKUP -> "Backup" to SramBackupBadge
+        SaveFileType.STATE -> "State" to StateBadge
     }
 
     Card(

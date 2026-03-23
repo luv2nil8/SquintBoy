@@ -255,8 +255,16 @@ class RomReceiverService : WearableListenerService() {
                 WearMessageConstants.PATH_SAVE_CLEAR_STACKS -> handleSaveClearStacks(event)
                 WearMessageConstants.PATH_ROM_RENAME -> handleRomRename(event)
                 WearMessageConstants.PATH_SCREEN_INFO_REQUEST -> handleScreenInfoRequest(event)
-                WearMessageConstants.PATH_ENTITLEMENT_REQUEST -> {
-                    EntitlementRepository.getInstance(this).handleEntitlementRequest(event.sourceNodeId)
+                WearMessageConstants.PATH_ENTITLEMENT_PUSH -> {
+                    val isPro = String(event.data, Charsets.UTF_8) == "1"
+                    EntitlementRepository.getInstance(this).handleEntitlementPush(isPro)
+                    Log.i(TAG, "Entitlement pushed from phone: isPro=$isPro")
+                }
+                WearMessageConstants.PATH_ENTITLEMENT_RESPONSE -> {
+                    // Phone responds to our startup entitlement request
+                    val isPro = String(event.data, Charsets.UTF_8) == "1"
+                    EntitlementRepository.getInstance(this).handleEntitlementPush(isPro)
+                    Log.i(TAG, "Entitlement response from phone: isPro=$isPro")
                 }
                 WearMessageConstants.PATH_WATCH_PING -> {
                     Tasks.await(

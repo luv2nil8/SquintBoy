@@ -21,8 +21,8 @@ android {
         applicationId = "com.anaglych.squintboyadvance"
         minSdk = 30
         targetSdk = 36
-        versionCode = 204
-        versionName = "1.1.0"
+        versionCode = 213
+        versionName = "1.2.1"
     }
 
     signingConfigs {
@@ -35,6 +35,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            isMinifyEnabled = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = false // wear modules don't support shrinkResources
@@ -83,7 +90,6 @@ dependencies {
     implementation(libs.wear.compose.navigation)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
-    implementation(libs.billing.ktx)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
