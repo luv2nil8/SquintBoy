@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.anaglych.squintboyadvance.ui.theme.Crimson
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -51,7 +52,7 @@ import kotlin.math.roundToInt
 @Composable
 fun SlideToConfirm(
     text: String = "Slide to confirm",
-    accentColor: Color = Color(0xFFEC1358),
+    accentColor: Color = Crimson,
     enabled: Boolean = true,
     onConfirmed: () -> Unit,
     modifier: Modifier = Modifier,

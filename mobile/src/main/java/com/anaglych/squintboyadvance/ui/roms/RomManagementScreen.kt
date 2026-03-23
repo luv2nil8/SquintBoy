@@ -83,7 +83,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.anaglych.squintboyadvance.MobileEntitlementCache
+import com.anaglych.squintboyadvance.MobileBillingManager
 import com.anaglych.squintboyadvance.shared.model.ControllerLayout
 import com.anaglych.squintboyadvance.shared.model.DemoLimits
 import com.anaglych.squintboyadvance.shared.model.EmulatorSettings
@@ -92,6 +92,10 @@ import com.anaglych.squintboyadvance.shared.model.RomOverrides
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 import com.anaglych.squintboyadvance.shared.model.SystemType
 import com.anaglych.squintboyadvance.ui.components.SlideToConfirm
+import com.anaglych.squintboyadvance.ui.theme.Crimson
+import com.anaglych.squintboyadvance.ui.theme.GbBadge
+import com.anaglych.squintboyadvance.ui.theme.GbaBadge
+import com.anaglych.squintboyadvance.ui.theme.GbcBadge
 import java.text.DateFormat
 import java.util.Date
 import kotlin.math.roundToInt
@@ -104,6 +108,7 @@ fun RomManagementScreen(
     onRomDeleted: () -> Unit = {},
     onRenamed: (String) -> Unit = {},
     onOpenLicenses: () -> Unit = {},
+    onUpgrade: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val application = context.applicationContext as Application
@@ -123,7 +128,7 @@ fun RomManagementScreen(
     val isRomMode by viewModel.isRomMode.collectAsStateWithLifecycle()
     val hasRomDifferences by viewModel.hasRomDifferences.collectAsStateWithLifecycle()
     val watchScreenWidthPx by viewModel.watchScreenWidthPx.collectAsStateWithLifecycle()
-    val isPro by MobileEntitlementCache.isPro.collectAsStateWithLifecycle()
+    val isPro by MobileBillingManager.getInstance(context.applicationContext).isPro.collectAsStateWithLifecycle()
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var pendingUpload by remember { mutableStateOf<SaveBackupEntry?>(null) }
@@ -141,9 +146,9 @@ fun RomManagementScreen(
     }
 
     val badgeColor = when (systemType) {
-        SystemType.GB -> Color(0xFF306230)
-        SystemType.GBC -> Color(0xFFDA70D6)
-        SystemType.GBA -> Color(0xFF6A5ACD)
+        SystemType.GB -> GbBadge
+        SystemType.GBC -> GbcBadge
+        SystemType.GBA -> GbaBadge
     }
 
     Scaffold(
@@ -220,6 +225,7 @@ fun RomManagementScreen(
                     onUpload = { pendingUpload = it },
                     onShowDeleteRom = { showDeleteRomConfirm = true },
                     isPro = isPro,
+                    onUpgrade = onUpgrade,
                 )
                 1 -> {
                     // Re-request screen info when settings tab is opened
@@ -237,6 +243,7 @@ fun RomManagementScreen(
                         watchScreenWidthPx = watchScreenWidthPx,
                         onOpenLicenses = onOpenLicenses,
                         isPro = isPro,
+                        onUpgrade = onUpgrade,
                     )
                 }
             }
@@ -352,8 +359,10 @@ private fun SavesTabContent(
     onUpload: (SaveBackupEntry) -> Unit,
     onShowDeleteRom: () -> Unit,
     isPro: Boolean = false,
+    onUpgrade: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val crimson = Crimson
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -391,6 +400,7 @@ private fun SavesTabContent(
                     backupEnabled = isPro,
                     backupIsError = backupTransfer.isError,
                     watchConnected = watchConnected,
+                    onUpgrade = onUpgrade,
                 )
                 else -> Text(
                     text = if (watchConnected) "No save file found on watch" else "Connect watch to view save",
@@ -437,12 +447,13 @@ private fun SavesTabContent(
         // ── Remove ROM ──────────────────────────────────────────────
         item {
             Spacer(Modifier.height(8.dp))
+            val crimsonDelete = Crimson
             OutlinedButton(
                 onClick = onShowDeleteRom,
                 modifier = Modifier.fillMaxWidth(),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
+                border = BorderStroke(1.dp, crimsonDelete),
                 colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error,
+                    contentColor = crimsonDelete,
                 ),
             ) {
                 Icon(
@@ -477,6 +488,7 @@ private fun SettingsTabContent(
     watchScreenWidthPx: Int?,
     onOpenLicenses: () -> Unit,
     isPro: Boolean = false,
+    onUpgrade: () -> Unit = {},
 ) {
     if (settings == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -510,7 +522,7 @@ private fun SettingsTabContent(
     val ov = s.romOverrides[romId]
     val haptic = LocalHapticFeedback.current
     val uriHandler = LocalUriHandler.current
-    val crimson = Color(0xFFEC1358)
+    val crimson = Crimson
 
     // Effective values (respecting ROM mode)
     val effectiveScaleMode = if (isRomMode && isGba) ov?.gbaScaleMode ?: s.gbaScaleMode
@@ -581,7 +593,27 @@ private fun SettingsTabContent(
                     Switch(
                         checked = isRomMode,
                         onCheckedChange = { viewModel.setRomMode(it) },
+                        enabled = isPro,
                     )
+                }
+            }
+            if (!isPro) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onUpgrade,
+                    modifier = Modifier.fillMaxWidth(),
+                    border = BorderStroke(1.dp, crimson),
+                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                        contentColor = crimson,
+                    ),
+                ) {
+                    Icon(
+                        Icons.Default.Lock,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Unlock Settings Override")
                 }
             }
         }
@@ -654,11 +686,10 @@ private fun SettingsTabContent(
         item {
             SettingsCard {
                 SwitchSetting(
-                    if (!isPro && isIntegerScale) "Integer Scale (custom: full version)"
-                    else "Integer Scale",
+                    "Integer Scale",
                     isIntegerScale,
+                    enabled = isPro || !isIntegerScale,
                 ) {
-                    if (!isPro && isIntegerScale) return@SwitchSetting // block switching to Custom in demo
                     val newMode = if (isIntegerScale) ScaleMode.CUSTOM else ScaleMode.INTEGER
                     viewModel.updateSettings(
                         romTransform = { ro ->
@@ -692,23 +723,31 @@ private fun SettingsTabContent(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("Scale", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "Scale",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (isPro) MaterialTheme.colorScheme.onSurface
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                        )
                         Spacer(Modifier.weight(1f))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             (1..maxInt).forEach { v ->
                                 FilterChip(
                                     selected = effectiveCustomScale.roundToInt() == v,
+                                    enabled = isPro,
                                     onClick = {
-                                        viewModel.updateSettings(
-                                            romTransform = { ro ->
-                                                if (isGba) ro.copy(gbaCustomScale = v.toFloat())
-                                                else ro.copy(gbCustomScale = v.toFloat())
-                                            },
-                                            globalTransform = {
-                                                if (isGba) it.copy(gbaCustomScale = v.toFloat())
-                                                else it.copy(gbCustomScale = v.toFloat())
-                                            },
-                                        )
+                                        if (isPro) {
+                                            viewModel.updateSettings(
+                                                romTransform = { ro ->
+                                                    if (isGba) ro.copy(gbaCustomScale = v.toFloat())
+                                                    else ro.copy(gbCustomScale = v.toFloat())
+                                                },
+                                                globalTransform = {
+                                                    if (isGba) it.copy(gbaCustomScale = v.toFloat())
+                                                    else it.copy(gbCustomScale = v.toFloat())
+                                                },
+                                            )
+                                        }
                                     },
                                     label = { Text("${v}x") },
                                 )
@@ -721,15 +760,18 @@ private fun SettingsTabContent(
                         "%.2fx".format(effectiveCustomScale) +
                             if (hasScreenInfo) " (max %.1fx)".format(maxScale) else "",
                         effectiveCustomScale.coerceIn(1f, maxScale), 1f..maxScale,
+                        enabled = isPro,
                     ) { v ->
-                        viewModel.updateSettings(
-                            romTransform = { ro ->
-                                if (isGba) ro.copy(gbaCustomScale = v) else ro.copy(gbCustomScale = v)
-                            },
-                            globalTransform = {
-                                if (isGba) it.copy(gbaCustomScale = v) else it.copy(gbCustomScale = v)
-                            },
-                        )
+                        if (isPro) {
+                            viewModel.updateSettings(
+                                romTransform = { ro ->
+                                    if (isGba) ro.copy(gbaCustomScale = v) else ro.copy(gbCustomScale = v)
+                                },
+                                globalTransform = {
+                                    if (isGba) it.copy(gbaCustomScale = v) else it.copy(gbCustomScale = v)
+                                },
+                            )
+                        }
                     }
                     if (!hasScreenInfo && !watchConnected) {
                         Text(
@@ -743,31 +785,57 @@ private fun SettingsTabContent(
                     modifier = Modifier.padding(vertical = 4.dp),
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
                 )
-                SwitchSetting("Bilinear Filter", effectiveFilterEnabled) {
-                    viewModel.updateSettings(
-                        romTransform = { ro ->
-                            if (isGba) ro.copy(gbaFilterEnabled = !(ro.gbaFilterEnabled ?: s.gbaFilterEnabled))
-                            else ro.copy(gbFilterEnabled = !(ro.gbFilterEnabled ?: s.gbFilterEnabled))
-                        },
-                        globalTransform = {
-                            if (isGba) it.copy(gbaFilterEnabled = !it.gbaFilterEnabled)
-                            else it.copy(gbFilterEnabled = !it.gbFilterEnabled)
-                        },
-                    )
+                SwitchSetting("Bilinear Filter", effectiveFilterEnabled, enabled = isPro) {
+                    if (isPro) {
+                        viewModel.updateSettings(
+                            romTransform = { ro ->
+                                if (isGba) ro.copy(gbaFilterEnabled = !(ro.gbaFilterEnabled ?: s.gbaFilterEnabled))
+                                else ro.copy(gbFilterEnabled = !(ro.gbFilterEnabled ?: s.gbFilterEnabled))
+                            },
+                            globalTransform = {
+                                if (isGba) it.copy(gbaFilterEnabled = !it.gbaFilterEnabled)
+                                else it.copy(gbFilterEnabled = !it.gbFilterEnabled)
+                            },
+                        )
+                    }
                 }
                 HorizontalDivider(
                     modifier = Modifier.padding(vertical = 4.dp),
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
                 )
-                FrameskipSetting("Frameskip", effectiveFrameskip) { value ->
-                    viewModel.updateSettings(
-                        romTransform = { ro ->
-                            if (isGba) ro.copy(gbaFrameskip = value) else ro.copy(gbFrameskip = value)
-                        },
-                        globalTransform = {
-                            if (isGba) it.copy(gbaFrameskip = value) else it.copy(gbFrameskip = value)
-                        },
+                FrameskipSetting("Frameskip", effectiveFrameskip, enabled = isPro) { value ->
+                    if (isPro) {
+                        viewModel.updateSettings(
+                            romTransform = { ro ->
+                                if (isGba) ro.copy(gbaFrameskip = value) else ro.copy(gbFrameskip = value)
+                            },
+                            globalTransform = {
+                                if (isGba) it.copy(gbaFrameskip = value) else it.copy(gbFrameskip = value)
+                            },
+                        )
+                    }
+                }
+                if (!isPro) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 4.dp),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
                     )
+                    OutlinedButton(
+                        onClick = onUpgrade,
+                        modifier = Modifier.fillMaxWidth(),
+                        border = BorderStroke(1.dp, crimson),
+                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                            contentColor = crimson,
+                        ),
+                    ) {
+                        Icon(
+                            Icons.Default.Lock,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("Unlock Display Settings")
+                    }
                 }
             }
         }
@@ -787,6 +855,25 @@ private fun SettingsTabContent(
                         },
                         isPro = isPro,
                     )
+                    if (!isPro) {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = onUpgrade,
+                            modifier = Modifier.fillMaxWidth(),
+                            border = BorderStroke(1.dp, crimson),
+                            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                                contentColor = crimson,
+                            ),
+                        ) {
+                            Icon(
+                                Icons.Default.Lock,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("Unlock All Palettes")
+                        }
+                    }
                 }
             }
         }
@@ -1148,14 +1235,19 @@ private fun SettingsCard(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun SwitchSetting(label: String, checked: Boolean, onToggle: () -> Unit) {
+private fun SwitchSetting(label: String, checked: Boolean, enabled: Boolean = true, onToggle: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (enabled) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+        )
         Spacer(Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = { onToggle() })
+        Switch(checked = checked, onCheckedChange = { if (enabled) onToggle() }, enabled = enabled)
     }
 }
 
@@ -1166,6 +1258,7 @@ private fun SliderSetting(
     value: Float,
     range: ClosedFloatingPointRange<Float>,
     steps: Int = 0,
+    enabled: Boolean = true,
     onValueChange: (Float) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -1173,12 +1266,19 @@ private fun SliderSetting(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(label, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+            )
             Spacer(Modifier.weight(1f))
             Text(
                 valueLabel,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.let {
+                    if (enabled) it else it.copy(alpha = 0.38f)
+                },
             )
         }
         Slider(
@@ -1186,24 +1286,31 @@ private fun SliderSetting(
             onValueChange = onValueChange,
             valueRange = range,
             steps = steps,
+            enabled = enabled,
             modifier = Modifier.fillMaxWidth(),
         )
     }
 }
 
 @Composable
-private fun FrameskipSetting(label: String, current: Int, onSelect: (Int) -> Unit) {
+private fun FrameskipSetting(label: String, current: Int, enabled: Boolean = true, onSelect: (Int) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (enabled) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+        )
         Spacer(Modifier.weight(1f))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(0 to "Off", 1 to "1", 2 to "2", 3 to "3").forEach { (value, chip) ->
                 FilterChip(
                     selected = current == value,
-                    onClick = { onSelect(value) },
+                    onClick = { if (enabled) onSelect(value) },
+                    enabled = enabled,
                     label = { Text(chip) },
                 )
             }
@@ -1219,10 +1326,8 @@ private fun PaletteSetting(
     isPro: Boolean = false,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val availablePalettes = if (isPro) GbColorPalette.ALL
-        else GbColorPalette.ALL.take(DemoLimits.PALETTE_COUNT)
-    val selected = availablePalettes.getOrNull(selectedIndex)
-        ?: availablePalettes[0]
+    val allPalettes = GbColorPalette.ALL
+    val selected = allPalettes.getOrNull(selectedIndex) ?: allPalettes[0]
 
     Column(modifier = Modifier.fillMaxWidth()) {
         ExposedDropdownMenuBox(
@@ -1242,7 +1347,8 @@ private fun PaletteSetting(
                 singleLine = true,
             )
             ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                availablePalettes.forEachIndexed { index, palette ->
+                allPalettes.forEachIndexed { index, palette ->
+                    val locked = !isPro && index >= DemoLimits.PALETTE_COUNT
                     DropdownMenuItem(
                         text = {
                             Row(
@@ -1250,10 +1356,24 @@ private fun PaletteSetting(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
                                 PaletteSwatch(palette = palette, size = 22.dp)
-                                Text(palette.name, style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    palette.name,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (locked) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                        else MaterialTheme.colorScheme.onSurface,
+                                )
+                                if (locked) {
+                                    Icon(
+                                        Icons.Default.Lock,
+                                        contentDescription = "Locked",
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                    )
+                                }
                             }
                         },
-                        onClick = { onSelect(index); expanded = false },
+                        onClick = { if (!locked) { onSelect(index); expanded = false } },
+                        enabled = !locked,
                     )
                 }
             }
@@ -1286,54 +1406,79 @@ private fun WatchSaveCard(
     backupIsError: Boolean,
     watchConnected: Boolean,
     backupEnabled: Boolean = true,
+    onUpgrade: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val crimson = Crimson
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(entry.fileName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    Formatter.formatShortFileSize(context, entry.sizeBytes),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
-                        .format(Date(entry.lastModified)),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                AnimatedVisibility(
-                    visible = backupMessage != null,
-                    enter = fadeIn(),
-                    exit = fadeOut(tween(600)),
-                ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(entry.fileName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(2.dp))
                     Text(
-                        backupMessage ?: "",
+                        Formatter.formatShortFileSize(context, entry.sizeBytes),
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (backupIsError) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.primary,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    Text(
+                        DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+                            .format(Date(entry.lastModified)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    AnimatedVisibility(
+                        visible = backupMessage != null,
+                        enter = fadeIn(),
+                        exit = fadeOut(tween(600)),
+                    ) {
+                        Text(
+                            backupMessage ?: "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (backupIsError) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                if (backupInProgress) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                } else if (backupEnabled) {
+                    IconButton(onClick = onBackup, enabled = watchConnected) {
+                        Icon(
+                            Icons.Default.CloudDownload,
+                            contentDescription = "Backup to phone",
+                        )
+                    }
                 }
             }
-            Spacer(Modifier.width(8.dp))
-            if (backupInProgress) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-            } else {
-                IconButton(onClick = onBackup, enabled = watchConnected && backupEnabled) {
+            if (!backupEnabled) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onUpgrade,
+                    modifier = Modifier.fillMaxWidth(),
+                    border = BorderStroke(1.dp, crimson),
+                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                        contentColor = crimson,
+                    ),
+                ) {
                     Icon(
-                        if (backupEnabled) Icons.Default.CloudDownload else Icons.Default.Lock,
-                        contentDescription = if (backupEnabled) "Backup to phone" else "Full version only",
+                        Icons.Default.Lock,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
                     )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Unlock Save Downloads")
                 }
             }
         }

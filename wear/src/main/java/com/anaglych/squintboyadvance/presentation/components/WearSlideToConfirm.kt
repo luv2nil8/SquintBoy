@@ -48,6 +48,8 @@ import androidx.wear.compose.material.Button
 import androidx.wear.compose.material.ButtonDefaults
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.Text
+import com.anaglych.squintboyadvance.presentation.theme.Crimson
+import com.anaglych.squintboyadvance.presentation.theme.WarningAmber
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -68,7 +70,7 @@ private const val SLIDE_THRESHOLD     = 0.90f   // absolute position to fire
 fun WearSlideToConfirm(
     slideText: String = "Slide to confirm",
     warningText: String? = null,
-    confirmColor: Color = Color(0xFFEC1358),
+    confirmColor: Color = Crimson,
     onConfirmed: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
@@ -110,7 +112,7 @@ fun WearSlideToConfirm(
                 Text(
                     text       = warningText,
                     fontSize   = 11.sp,
-                    color      = Color(0xFFFFB74D),
+                    color      = WarningAmber,
                     textAlign  = TextAlign.Center,
                     lineHeight = 14.sp,
                     modifier   = Modifier.fillMaxWidth(),

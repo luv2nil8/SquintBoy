@@ -10,7 +10,7 @@ import com.anaglych.squintboyadvance.ui.theme.SquintBoyTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        MobileEntitlementCache.init(this)
+        MobileBillingManager.getInstance(this)
         enableEdgeToEdge()
         setContent {
             SquintBoyTheme {

@@ -46,7 +46,11 @@ object WearMessageConstants {
     const val PATH_WATCH_PING = "/watch/ping"
     const val PATH_WATCH_PONG = "/watch/pong"
 
-    // Entitlement: watch pushes purchase state to phone for mobile-side gating.
+    // Watch → Phone: asks phone to launch the IAP purchase flow.
+    const val PATH_PURCHASE_ON_PHONE = "/purchase/phone"
+
+    // Entitlement sync: phone is authoritative (owns BillingClient).
+    // Phone pushes state to watch after purchase or on connect.
     const val PATH_ENTITLEMENT_PUSH = "/entitlement/push"
     const val PATH_ENTITLEMENT_REQUEST = "/entitlement/request"
     const val PATH_ENTITLEMENT_RESPONSE = "/entitlement/response"

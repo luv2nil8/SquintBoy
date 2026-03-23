@@ -35,6 +35,7 @@ import com.anaglych.squintboyadvance.presentation.ui.drawOverlayGrid
 import com.anaglych.squintboyadvance.presentation.ui.drawGbaCircle
 import com.anaglych.squintboyadvance.presentation.ui.OverlayLabels
 import com.anaglych.squintboyadvance.presentation.ui.GbaCircleLabels
+import com.anaglych.squintboyadvance.presentation.theme.Crimson
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -263,7 +264,7 @@ fun TouchOverlay(
                     }
 
                     // 3) Pause button — starts solid red, fades to outline-only
-                    val pauseRed = Color(0xFFEC1358)
+                    val pauseRed = Crimson
                     if (pf > 0f) {
                         drawCircle(
                             color = pauseRed.copy(alpha = drawAlpha * pf),

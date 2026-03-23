@@ -30,6 +30,7 @@ import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import com.anaglych.squintboyadvance.presentation.rememberScreenshot
 import com.anaglych.squintboyadvance.presentation.theme.GbBadge
+import com.anaglych.squintboyadvance.presentation.theme.NearBlack
 import com.anaglych.squintboyadvance.presentation.theme.GbaBadge
 import com.anaglych.squintboyadvance.presentation.theme.GbcBadge
 import com.anaglych.squintboyadvance.presentation.theme.OnSurface
@@ -65,7 +66,7 @@ fun RomCard(
                 modifier = Modifier
                     .fillMaxHeight()
                     .aspectRatio(1.5f)
-                    .background(Color(0xFF1A1A1A))
+                    .background(NearBlack)
             ) {
                 if (thumbnail != null) {
                     Image(

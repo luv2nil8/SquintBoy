@@ -76,6 +76,7 @@ dependencies {
     implementation("androidx.wear:wear-remote-interactions:1.1.0")
     implementation(libs.kotlinx.serialization.json)
     implementation("androidx.navigation:navigation-compose:2.8.5")
+    implementation(libs.billing.ktx)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

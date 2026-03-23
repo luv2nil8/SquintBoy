@@ -1,5 +1,6 @@
 package com.anaglych.squintboyadvance.ui
 
+import android.app.Activity
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -43,7 +45,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,12 +70,18 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.wear.remote.interactions.RemoteActivityHelper
+import com.anaglych.squintboyadvance.MobileBillingManager
+import com.anaglych.squintboyadvance.PurchaseRequestSignal
 import com.anaglych.squintboyadvance.WatchPongSignal
 import com.anaglych.squintboyadvance.shared.model.SystemType
 import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
+import com.anaglych.squintboyadvance.ui.components.OverlayCard
+import com.anaglych.squintboyadvance.ui.theme.Crimson
 import com.anaglych.squintboyadvance.ui.roms.RomManagementScreen
 import com.anaglych.squintboyadvance.ui.roms.RomsTab
 import com.anaglych.squintboyadvance.ui.roms.WatchRomListViewModel
+import com.anaglych.squintboyadvance.ui.theme.DarkNavy
+import com.anaglych.squintboyadvance.ui.theme.GbGreen
 import com.anaglych.squintboyadvance.ui.settings.LicensesScreen
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.Job
@@ -282,6 +294,7 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
         installPollJob = null
         _isPollingForInstall.value = false
     }
+
 }
 
 // ── Companion app UI ─────────────────────────────────────────────────────────
@@ -301,6 +314,26 @@ fun CompanionApp(
 
     val watchConnected = connectionState == WatchConnectionState.CONNECTED
     val isRootRoute = currentRoute == ROUTE_ROMS
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val billingManager = MobileBillingManager.getInstance(context.applicationContext)
+    val isPro by billingManager.isPro.collectAsStateWithLifecycle()
+
+    // Upgrade overlay
+    var showUpgradeOverlay by remember { mutableStateOf(false) }
+    val doUpgrade: () -> Unit = { showUpgradeOverlay = true }
+
+    // Watch can request purchase via Wearable message
+    LaunchedEffect(Unit) {
+        PurchaseRequestSignal.requests.collect {
+            showUpgradeOverlay = true
+            PurchaseRequestSignal.consume()
+        }
+    }
+
+    // Auto-dismiss upgrade overlay when purchase completes
+    LaunchedEffect(isPro) {
+        if (isPro) showUpgradeOverlay = false
+    }
 
     // Banner is shown for WATCH_NO_APP (always) or NO_WATCH (first-time users only)
     val showBanner = when (connectionState) {
@@ -309,6 +342,7 @@ fun CompanionApp(
         else -> false
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -353,6 +387,13 @@ fun CompanionApp(
                 )
             }
 
+            // Upgrade prompt — shown when connected to watch + demo tier
+            if (watchConnected && !isPro && isRootRoute) {
+                UpgradeOnWatchBanner(
+                    onUpgrade = doUpgrade,
+                )
+            }
+
             NavHost(
                 navController = navController,
                 startDestination = ROUTE_ROMS,
@@ -367,6 +408,8 @@ fun CompanionApp(
                                 "rom_management/${Uri.encode(entry.romId)}/${entry.systemType.name}"
                             )
                         },
+                        isPro = isPro,
+                        onUpgrade = doUpgrade,
                     )
                 }
                 composable(ROUTE_LICENSES) {
@@ -395,11 +438,60 @@ fun CompanionApp(
                             watchRomListViewModel.setDisplayName(romId, newName)
                         },
                         onOpenLicenses = { navController.navigate(ROUTE_LICENSES) },
+                        onUpgrade = doUpgrade,
                     )
                 }
             }
         }
     }
+
+    // ── Upgrade overlay with perks + purchase ─────────────────────────
+    if (showUpgradeOverlay) {
+        OverlayCard(
+            onDismiss = { showUpgradeOverlay = false },
+            icon = Icons.Default.Lock,
+            iconTint = GreenPrimary,
+            title = "Squint Boy Pro",
+            subtitle = "Unlock everything",
+        ) {
+            // Feature list
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.White.copy(alpha = 0.06f))
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                UpgradeFeatureRow("Unlimited ROMs")
+                UpgradeFeatureRow("Unlimited session time")
+                UpgradeFeatureRow("Save states")
+                UpgradeFeatureRow("Fast forward")
+                UpgradeFeatureRow("Custom scaling")
+                UpgradeFeatureRow("All 24 color palettes")
+                UpgradeFeatureRow("Save backups & exports")
+            }
+
+            Spacer(Modifier.height(4.dp))
+
+            Button(
+                onClick = {
+                    (context as? Activity)?.let { activity ->
+                        billingManager.launchPurchase(activity)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = GreenPrimary,
+                    contentColor = DarkNavy,
+                ),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text("Upgrade", fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+    } // Box
 }
 
 // ── Status bar ───────────────────────────────────────────────────────────────
@@ -466,8 +558,7 @@ fun ConnectionStatusBar(
 
 // ── Install banner ───────────────────────────────────────────────────────────
 
-private val GreenPrimary = Color(0xFF9BBC0F)
-private val DarkNavy = Color(0xFF16213E)
+private val GreenPrimary = GbGreen
 
 @Composable
 fun WatchAppInstallBanner(
@@ -639,5 +730,75 @@ fun WatchAppInstallBanner(
                 }
             }
         }
+    }
+}
+
+// ── Upgrade on Watch banner ─────────────────────────────────────────────────
+
+@Composable
+fun UpgradeOnWatchBanner(onUpgrade: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(GreenPrimary.copy(alpha = 0.12f)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.Lock,
+                contentDescription = null,
+                tint = GreenPrimary,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Free Version",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = GreenPrimary,
+                )
+                Text(
+                    "Upgrade for full access",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Button(
+                onClick = onUpgrade,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = GreenPrimary,
+                    contentColor = DarkNavy,
+                ),
+                shape = RoundedCornerShape(8.dp),
+            ) {
+                Text("Upgrade", fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpgradeFeatureRow(text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            Icons.Default.CheckCircle,
+            contentDescription = null,
+            tint = GreenPrimary,
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text,
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.White.copy(alpha = 0.85f),
+        )
     }
 }

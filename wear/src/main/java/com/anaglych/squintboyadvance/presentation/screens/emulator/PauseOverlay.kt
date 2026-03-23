@@ -122,8 +122,12 @@ import com.anaglych.squintboyadvance.shared.model.DemoLimits
 import com.anaglych.squintboyadvance.shared.model.GbColorPalette
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 
-private val RED = Color(0xFFEC1358)
-private val BLUE = Color(0xFF6A5ACD)
+import com.anaglych.squintboyadvance.presentation.theme.Crimson
+import com.anaglych.squintboyadvance.presentation.theme.GbaBadge
+import com.anaglych.squintboyadvance.presentation.theme.SurfaceMedium
+
+private val RED = Crimson
+private val BLUE = GbaBadge
 private val CELL_GAP = 6.dp
 
 private object PauseTuning {
@@ -148,6 +152,7 @@ private data class PauseAction(
     val waveArrows: Int = 2,
     val expandContent: (@Composable () -> Unit)? = null,
     val onLongClick: (() -> Unit)? = null,
+    val locked: Boolean = false,
 )
 
 /**
@@ -298,56 +303,85 @@ fun PauseOverlay(
             },
             onLongClick = {}, // placeholder, overridden in layout to toggle expand
         ))
-        // 1: Save (expandable)
+        // 1: Save (expandable; locked in demo)
         add(PauseAction(
             Icons.Default.Save, "Save", {},
             backgroundColor = green.copy(alpha = 0.85f),
+            locked = isDemo,
             expandContent = {
-                SaveExpandContent(
-                    hasSaveState = hasSaveState,
-                    canUndoSave = canUndoSave,
-                    canUndoLoad = canUndoLoad,
-                    onSave = onSave,
-                    onLoad = onLoad,
-                    onUndoSave = onUndoSave,
-                    onUndoLoad = onUndoLoad,
-                )
+                Column {
+                    SaveExpandContent(
+                        hasSaveState = hasSaveState,
+                        canUndoSave = canUndoSave,
+                        canUndoLoad = canUndoLoad,
+                        onSave = onSave,
+                        onLoad = onLoad,
+                        onUndoSave = onUndoSave,
+                        onUndoLoad = onUndoLoad,
+                        enabled = !isDemo,
+                    )
+                    if (isDemo) {
+                        Spacer(Modifier.height(4.dp))
+                        UnlockChip("Unlock Save States", onUpgrade)
+                    }
+                }
             },
         ))
-        // 2: Fast Forward (long-press to select speed on GB/GBC; 2× only on GBA)
+        // 2: Fast Forward (long-press to select speed on GB/GBC; 2× only on GBA; locked in demo)
         if (isGba) {
-            add(PauseAction(Icons.Default.FastForward, "Fast Fwd", onClick = onFastForward, enabled = ffSpeed >= 2, shimmerStyle = ShimmerStyle.WAVE, waveArrows = 2))
+            add(PauseAction(
+                Icons.Default.FastForward, "Fast Fwd",
+                onClick = if (isDemo) ({}) else onFastForward,
+                enabled = !isDemo && ffSpeed >= 2,
+                shimmerStyle = if (!isDemo) ShimmerStyle.WAVE else ShimmerStyle.NONE,
+                waveArrows = 2,
+                locked = isDemo,
+                expandContent = if (isDemo) ({
+                    Column {
+                        FfSpeedExpandContent(
+                            currentSpeed = ffSelectedSpeed,
+                            onSetSpeed = onSetFfSpeed,
+                            enabled = false,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        UnlockChip("Unlock Fast Forward", onUpgrade)
+                    }
+                }) else null,
+            ))
         } else {
             add(PauseAction(
                 Icons.Default.FastForward, "Fast Fwd",
-                onClick = onFastForward,
-                enabled = ffSpeed >= 2,
-                shimmerStyle = ShimmerStyle.WAVE,
-                waveArrows = if (ffSpeed >= 2) ffSpeed else 2,
+                onClick = if (isDemo) ({}) else onFastForward,
+                enabled = !isDemo && ffSpeed >= 2,
+                shimmerStyle = if (!isDemo) ShimmerStyle.WAVE else ShimmerStyle.NONE,
+                waveArrows = if (!isDemo && ffSpeed >= 2) ffSpeed else 2,
+                locked = isDemo,
                 expandContent = {
-                    FfSpeedExpandContent(
-                        currentSpeed = ffSelectedSpeed,
-                        onSetSpeed = onSetFfSpeed,
-                    )
+                    Column {
+                        FfSpeedExpandContent(
+                            currentSpeed = ffSelectedSpeed,
+                            onSetSpeed = onSetFfSpeed,
+                            enabled = !isDemo,
+                        )
+                        if (isDemo) {
+                            Spacer(Modifier.height(4.dp))
+                            UnlockChip("Unlock Fast Forward", onUpgrade)
+                        }
+                    }
                 },
-                onLongClick = {},
+                onLongClick = if (isDemo) null else ({}),
             ))
         }
         // 3: Resume
         add(PauseAction(Icons.Default.PlayArrow, "Resume", onResume, iconColor = green))
-        // 4: Scale (tap to expand panel; locked in demo → triggers upgrade)
-        if (isDemo) {
-            add(PauseAction(
-                Icons.Default.Lock, "Scale",
-                onClick = onUpgrade,
-                backgroundColor = Color.White.copy(alpha = 0.08f),
-                iconColor = Color.White.copy(alpha = 0.5f),
-            ))
-        } else {
-            add(PauseAction(
-                Icons.Default.AspectRatio, "Scale", {},
-                backgroundColor = green.copy(alpha = 0.85f),
-                expandContent = {
+        // 4: Scale (tap to expand panel; locked in demo — controls visible but disabled)
+        add(PauseAction(
+            Icons.Default.AspectRatio, "Scale",
+            onClick = {},
+            backgroundColor = green.copy(alpha = 0.85f),
+            locked = isDemo,
+            expandContent = {
+                Column {
                     ScaleExpandContent(
                         customScale = customScale,
                         isGba = isGba,
@@ -360,10 +394,15 @@ fun PauseOverlay(
                         onInteraction = onInteraction,
                         ghostProgress = ghostProgress,
                         isDemo = isDemo,
+                        enabled = !isDemo,
                     )
-                },
-            ))
-        }
+                    if (isDemo) {
+                        Spacer(Modifier.height(4.dp))
+                        UnlockChip("Unlock Scaling", onUpgrade)
+                    }
+                }
+            },
+        ))
         // 5: Controls (tap toggles OSC visibility, long-press expands panel)
         add(PauseAction(
             Icons.Default.Gamepad, "Controls",
@@ -597,20 +636,22 @@ private fun SaveExpandContent(
     onLoad: () -> Unit,
     onUndoSave: () -> Unit,
     onUndoLoad: () -> Unit,
+    enabled: Boolean = true,
 ) {
     val green = MaterialTheme.colors.primary
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = if (!enabled) Modifier.graphicsLayer { alpha = 0.4f } else Modifier,
     ) {
         CompactSaveLoadRow(
             label = "Save",
             icon = Icons.Default.Save,
             chipBg = green.copy(alpha = 0.85f),
-            chipEnabled = true,
+            chipEnabled = enabled,
             onChip = onSave,
             accentColor = green,
-            undoEnabled = canUndoSave,
+            undoEnabled = enabled && canUndoSave,
             onUndo = onUndoSave,
         )
         CompactSaveLoadRow(
@@ -618,10 +659,10 @@ private fun SaveExpandContent(
             icon = Icons.Default.Restore,
             chipBg = BLUE.copy(alpha = 0.85f),
             disabledChipBg = BLUE.copy(alpha = 0.15f),
-            chipEnabled = hasSaveState,
+            chipEnabled = enabled && hasSaveState,
             onChip = onLoad,
             accentColor = BLUE,
-            undoEnabled = canUndoLoad,
+            undoEnabled = enabled && canUndoLoad,
             onUndo = onUndoLoad,
         )
     }
@@ -928,10 +969,11 @@ private fun ScaleExpandContent(
     onInteraction: () -> Unit,
     ghostProgress: Float = 0f,
     isDemo: Boolean = false,
+    enabled: Boolean = true,
 ) {
     val green = MaterialTheme.colors.primary
     val frameW = if (isGba) GBA_FRAME_W else GB_FRAME_W
-    val contentAlpha = 1f - ghostProgress
+    val contentAlpha = (1f - ghostProgress) * if (!enabled) 0.4f else 1f
     var integerLock by remember { mutableStateOf(false) }
 
     val screenWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
@@ -954,10 +996,10 @@ private fun ScaleExpandContent(
         ) {
             CompactTrackSlider(
                 value = customScale,
-                onValueChange = { onSetCustomScale(snap(it)); onInteraction() },
+                onValueChange = { if (enabled) { onSetCustomScale(snap(it)); onInteraction() } },
                 valueRange = 1.0f..maxScale,
                 tickerStep = tickerStep,
-                onInteraction = onInteraction,
+                onInteraction = if (enabled) onInteraction else ({}),
             )
             // Integer | scale label | Filter
             Row(
@@ -973,10 +1015,10 @@ private fun ScaleExpandContent(
                             if (integerLock) green.copy(alpha = 0.85f)
                             else Color.White.copy(alpha = 0.12f)
                         )
-                        .clickable {
+                        .then(if (enabled) Modifier.clickable {
                             integerLock = !integerLock
                             if (integerLock) onSetCustomScale(snap(customScale))
-                        }
+                        } else Modifier)
                         .padding(horizontal = 10.dp),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -996,7 +1038,7 @@ private fun ScaleExpandContent(
                             if (filterEnabled) green.copy(alpha = 0.85f)
                             else Color.White.copy(alpha = 0.12f)
                         )
-                        .clickable { onToggleFilter() }
+                        .then(if (enabled) Modifier.clickable { onToggleFilter() } else Modifier)
                         .padding(horizontal = 10.dp),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -1027,7 +1069,7 @@ private fun ScaleExpandContent(
                                 if (currentFrameskip == skip) green.copy(alpha = 0.85f)
                                 else Color.White.copy(alpha = 0.12f)
                             )
-                            .clickable { onSetFrameskip(skip) },
+                            .then(if (enabled) Modifier.clickable { onSetFrameskip(skip) } else Modifier),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(skipLabels[skip], style = MaterialTheme.typography.caption2, color = Color.White, fontSize = 11.sp)
@@ -1038,7 +1080,7 @@ private fun ScaleExpandContent(
 
         // Ghost-only overlays: [-], [+], scale label
         if (ghostProgress > 0f) {
-            val panelBg = Color(0xFF16213E)
+            val panelBg = SurfaceMedium
             val scope = rememberCoroutineScope()
             val valueRef = rememberUpdatedState(customScale)
             val stepRef = rememberUpdatedState(tickerStep)
@@ -2058,7 +2100,7 @@ private fun HexButtonLayout(
 private fun MorphPanel(expandProgress: Float, ghostProgress: Float = 0f, content: @Composable () -> Unit) {
     val cornerRadius = androidx.compose.ui.unit.lerp(24.dp, 20.dp, expandProgress)
     val panelAlpha = 0.95f * (1f - ghostProgress)
-    val bg = lerp(Color.Transparent, Color(0xFF16213E).copy(alpha = panelAlpha), expandProgress)
+    val bg = lerp(Color.Transparent, SurfaceMedium.copy(alpha = panelAlpha), expandProgress)
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -2140,20 +2182,24 @@ private fun FfRippleIcon(arrowCount: Int = 3) {
 private fun FfSpeedExpandContent(
     currentSpeed: Int,
     onSetSpeed: (Int) -> Unit,
+    enabled: Boolean = true,
 ) {
     val green = MaterialTheme.colors.primary
     Row(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth()
+            .then(if (!enabled) Modifier.graphicsLayer { alpha = 0.4f } else Modifier),
     ) {
         for (speed in 2..4) {
             val selected = currentSpeed == speed
             Button(
-                onClick = { onSetSpeed(speed) },
+                onClick = { if (enabled) onSetSpeed(speed) },
+                enabled = enabled,
                 modifier = Modifier.weight(1f).height(36.dp),
                 colors = ButtonDefaults.buttonColors(
                     backgroundColor = if (selected) green.copy(alpha = 0.85f)
                         else Color.White.copy(alpha = 0.12f),
+                    disabledBackgroundColor = Color.White.copy(alpha = 0.08f),
                 ),
             ) {
                 Text("${speed}x", style = MaterialTheme.typography.body2)
@@ -2386,6 +2432,16 @@ private fun HexButton(action: PauseAction) {
                     }
                 }
             }
+            if (action.locked) { LockBadge(modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp)) }
+        }
+    } else if (action.locked) {
+        Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+            Button(
+                onClick = action.onClick,
+                modifier = Modifier.fillMaxSize(),
+                colors = ButtonDefaults.buttonColors(backgroundColor = effectiveBg),
+            ) { iconContent() }
+            LockBadge(modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp))
         }
     } else {
         Button(
@@ -2394,6 +2450,43 @@ private fun HexButton(action: PauseAction) {
             colors = ButtonDefaults.buttonColors(backgroundColor = effectiveBg),
         ) { iconContent() }
     }
+}
+
+@Composable
+private fun LockBadge(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(20.dp)
+            .background(RED, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Default.Lock,
+            contentDescription = "Locked",
+            tint = Color.White,
+            modifier = Modifier.size(12.dp),
+        )
+    }
+}
+
+@Composable
+private fun UnlockChip(label: String, onUpgrade: () -> Unit) {
+    Chip(
+        modifier = Modifier.fillMaxWidth().height(36.dp),
+        onClick = onUpgrade,
+        colors = ChipDefaults.chipColors(backgroundColor = RED.copy(alpha = 0.85f)),
+        label = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Lock,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(label, style = MaterialTheme.typography.caption2)
+            }
+        },
+    )
 }
 
 @Composable
