@@ -103,6 +103,7 @@ import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.InlineSliderDefaults
 import androidx.wear.compose.material.MaterialTheme
+import androidx.wear.compose.material.PositionIndicator
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.ToggleChip
 import androidx.wear.compose.material.ToggleChipDefaults
@@ -1809,6 +1810,7 @@ private fun ScrollableHexGrid(
                 ghostProgress        = ghostProgress,
             )
         }
+        PositionIndicator(scrollState = scrollState)
     }
 }
 

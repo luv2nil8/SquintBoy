@@ -217,6 +217,8 @@ fun RomLibraryScreen(
             ) {
                 Column(
                     modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
                         .clip(RoundedCornerShape(16.dp))
                         .background(MaterialTheme.colors.surface)
                         .padding(horizontal = 20.dp, vertical = 16.dp),
@@ -277,6 +279,8 @@ fun RomLibraryScreen(
             ) {
                 Column(
                     modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
                         .clip(RoundedCornerShape(16.dp))
                         .background(MaterialTheme.colors.surface)
                         .padding(horizontal = 20.dp, vertical = 16.dp),
