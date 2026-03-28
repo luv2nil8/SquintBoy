@@ -124,6 +124,29 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
                     audioPlayer?.setVolume(volume)
                 }
         }
+        // Apply audio enabled/disabled changes live.
+        viewModelScope.launch {
+            settingsRepo.settings
+                .map { it.audioEnabled }
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    if (_state.value != EmulatorState.RUNNING) return@collect
+                    if (enabled && !audioEnabled) {
+                        val emu = emulator ?: return@collect
+                        val settings = settingsRepo.settings.value
+                        val player = AudioPlayer(OUTPUT_SAMPLE_RATE)
+                        player.setVolume(settings.audioVolume)
+                        audioPlayer = player
+                        emu.initAudio(OUTPUT_SAMPLE_RATE)
+                        player.start()
+                    } else if (!enabled && audioEnabled) {
+                        audioPlayer?.stop()
+                        audioPlayer?.release()
+                        audioPlayer = null
+                    }
+                    audioEnabled = enabled
+                }
+        }
     }
 
     fun loadRom(romId: String, romTitle: String) {

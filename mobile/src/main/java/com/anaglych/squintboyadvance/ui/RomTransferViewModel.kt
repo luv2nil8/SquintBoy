@@ -21,6 +21,8 @@ import java.util.concurrent.ConcurrentHashMap
 import com.anaglych.squintboyadvance.shared.model.SystemType
 import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
 import java.io.OutputStream
+import java.util.zip.Deflater
+import java.util.zip.DeflaterOutputStream
 
 enum class TransferStatus { PENDING, SENDING, COMPLETE, ERROR }
 
@@ -130,13 +132,15 @@ class RomTransferViewModel(application: Application) : AndroidViewModel(applicat
                 channelClient.openChannel(node.id, WearMessageConstants.PATH_ROM_TRANSFER).await()
 
             try {
-                val outputStream: OutputStream =
+                val rawOut: OutputStream =
                     channelClient.getOutputStream(channel).await()
+                val out: OutputStream =
+                    DeflaterOutputStream(rawOut, Deflater(Deflater.BEST_SPEED, true), 8192)
 
-                outputStream.use { out ->
-                    // Write filename + filesize headers
-                    out.write("${item.displayName}\n".toByteArray(Charsets.UTF_8))
-                    out.write("${item.size}\n".toByteArray(Charsets.UTF_8))
+                out.use { stream ->
+                    // Write filename + filesize headers (uncompressed size for validation)
+                    stream.write("${item.displayName}\n".toByteArray(Charsets.UTF_8))
+                    stream.write("${item.size}\n".toByteArray(Charsets.UTF_8))
 
                     // Stream ROM bytes
                     val resolver = getApplication<Application>().contentResolver
@@ -145,7 +149,7 @@ class RomTransferViewModel(application: Application) : AndroidViewModel(applicat
                         var totalWritten = 0L
                         var read: Int
                         while (input.read(buffer).also { read = it } != -1) {
-                            out.write(buffer, 0, read)
+                            stream.write(buffer, 0, read)
                             totalWritten += read
                             if (item.size > 0) {
                                 updateRomStatus(
