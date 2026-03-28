@@ -61,6 +61,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun RomLibraryScreen(
     onRomSelected: (RomMetadata) -> Unit,
+    onLicenses: () -> Unit = {},
     viewModel: RomLibraryViewModel = viewModel()
 ) {
     val roms by viewModel.roms.collectAsState()
@@ -152,6 +153,21 @@ fun RomLibraryScreen(
                         )
                     }
                 }
+
+                // ── Licenses ───────────────────────────────────────────
+                item {
+                    Text(
+                        "Licenses",
+                        style = MaterialTheme.typography.caption3,
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.4f),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .clickable { onLicenses() },
+                    )
+                }
+
             }
         }
 

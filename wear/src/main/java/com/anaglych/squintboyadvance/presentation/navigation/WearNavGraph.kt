@@ -9,6 +9,7 @@ import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import com.anaglych.squintboyadvance.presentation.screens.emulator.EmulatorActivity
 import com.anaglych.squintboyadvance.presentation.screens.library.RomLibraryScreen
+import com.anaglych.squintboyadvance.presentation.screens.licenses.WearLicensesScreen
 
 @Composable
 fun WearNavGraph(modifier: Modifier = Modifier) {
@@ -30,7 +31,11 @@ fun WearNavGraph(modifier: Modifier = Modifier) {
                         }
                     )
                 },
+                onLicenses = { navController.navigate(Screen.Licenses.route) },
             )
+        }
+        composable(Screen.Licenses.route) {
+            WearLicensesScreen()
         }
     }
 }
