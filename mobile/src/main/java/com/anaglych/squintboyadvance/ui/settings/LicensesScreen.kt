@@ -37,6 +37,13 @@ private data class LicenseEntry(
 
 private val LICENSES = listOf(
     LicenseEntry(
+        name = "Apotris",
+        copyright = "© akouzoukos",
+        licenseType = "GNU Affero General Public License v3.0 (AGPL-3.0)",
+        sourceUrl = "https://gitea.com/akouzoukos/apotris",
+        notes = "Bundled unmodified as a demo ROM. Source code available at the link above.",
+    ),
+    LicenseEntry(
         name = "mGBA",
         copyright = "© 2013–2024 Jeffrey Pfau",
         licenseType = "Mozilla Public License 2.0",
