@@ -46,6 +46,13 @@ private data class LicenseEntry(
 
 private val LICENSES = listOf(
     LicenseEntry(
+        name = "Apotris",
+        copyright = "akouzoukos",
+        license = "AGPL-3.0",
+        source = "https://gitea.com/akouzoukos/apotris",
+        notes = "Bundled unmodified as demo ROM.",
+    ),
+    LicenseEntry(
         name = "mGBA",
         copyright = "Jeffrey Pfau",
         license = "MPL-2.0",
