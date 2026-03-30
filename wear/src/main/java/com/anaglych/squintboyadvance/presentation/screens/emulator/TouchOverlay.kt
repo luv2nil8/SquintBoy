@@ -35,6 +35,10 @@ import com.anaglych.squintboyadvance.presentation.ui.drawOverlayGrid
 import com.anaglych.squintboyadvance.presentation.ui.drawGbaCircle
 import com.anaglych.squintboyadvance.presentation.ui.OverlayLabels
 import com.anaglych.squintboyadvance.presentation.ui.GbaCircleLabels
+import com.anaglych.squintboyadvance.presentation.ui.drawLayout2
+import com.anaglych.squintboyadvance.presentation.ui.Layout2Labels
+import com.anaglych.squintboyadvance.presentation.ui.GBA_CORNERS
+import com.anaglych.squintboyadvance.presentation.ui.GB_CORNERS
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -54,6 +58,7 @@ fun TouchOverlay(
     labelOpacity: Float = 0.8f,
     labelSize: Float = 14f,
     hapticEnabled: Boolean = true,
+    layoutType: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
@@ -80,8 +85,11 @@ fun TouchOverlay(
         val cellSize = screenPx / 3f
 
         val grid = if (isGba) GBA_GRID else GB_GRID
-        val circleRadius = if (isGba) screenPx * 0.25f else 0f
+        val gbaCircleRadius = screenPx * 0.25f
+        val circleRadius = if (isGba) gbaCircleRadius else 0f
         val circleCenter = screenPx / 2f
+        // Layout 2 always uses GBA circle radius for d-pad triangle geometry
+        val layout2DpadRadius = gbaCircleRadius
 
         // Track which pointers are pressing which buttons
         val activeButtons = remember { mutableStateMapOf<PointerId, ButtonId>() }
@@ -103,10 +111,11 @@ fun TouchOverlay(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(systemType, hapticEnabled) {
+                .pointerInput(systemType, hapticEnabled, layoutType) {
+                    val pauseRadius = cellSize * 0.22f
+
                     coroutineScope {
                         awaitPointerEventScope {
-                            // Track long-press jobs for center cell
                             val longPressJobs = mutableMapOf<PointerId, Job>()
 
                             while (true) {
@@ -119,71 +128,135 @@ fun TouchOverlay(
                                             if (!change.pressed) continue
                                             val pos = change.position
 
-                                            // Check if pointer is in center cell
-                                            val inCenter = isInCenterCell(
-                                                pos, cellSize
-                                            )
+                                            if (layoutType == 1) {
+                                                // ── Layout 2 hit testing ──
+                                                val cx = screenPx / 2f
+                                                val cy = screenPx / 2f
 
-                                            if (inCenter) {
-                                                // For GBA, check circle halves first (tap)
+                                                // 1) Pause button (small circle in center)
+                                                val dx = pos.x - cx
+                                                val dy = pos.y - cy
+                                                val inPause = dx * dx + dy * dy <= pauseRadius * pauseRadius
+
+                                                if (inPause) {
+                                                    if (event.type == PointerEventType.Press &&
+                                                        longPressJobs[change.id] == null
+                                                    ) {
+                                                        longPressJobs[change.id] = launch {
+                                                            delay(LONG_PRESS_MS)
+                                                            val btn = activeButtons.remove(change.id)
+                                                            if (btn != null) onButtonRelease(btn)
+                                                            if (hapticEnabled) haptic.performHapticFeedback(
+                                                                HapticFeedbackType.LongPress
+                                                            )
+                                                            onPause()
+                                                        }
+                                                    }
+                                                    change.consume()
+                                                    continue
+                                                }
+
+                                                // Cancel long-press if moved out of pause
+                                                longPressJobs.remove(change.id)?.cancel()
+
+                                                // 2) GBA SE/ST circle (same as layout 1)
                                                 if (isGba) {
-                                                    val circleBtn = hitTestCircle(
-                                                        pos, screenPx
-                                                    )
-                                                    val prevBtn = activeButtons[change.id]
-                                                    if (circleBtn != null && circleBtn != prevBtn) {
-                                                        if (prevBtn != null) onButtonRelease(prevBtn)
-                                                        activeButtons[change.id] = circleBtn
-                                                        onButtonPress(circleBtn)
+                                                    val circleBtn = hitTestCircle(pos, screenPx)
+                                                    if (circleBtn != null) {
+                                                        val prevBtn = activeButtons[change.id]
+                                                        if (circleBtn != prevBtn) {
+                                                            if (prevBtn != null) onButtonRelease(prevBtn)
+                                                            activeButtons[change.id] = circleBtn
+                                                            onButtonPress(circleBtn)
+                                                            if (event.type == PointerEventType.Press && hapticEnabled) {
+                                                                haptic.performHapticFeedback(
+                                                                    HapticFeedbackType.TextHandleMove
+                                                                )
+                                                            }
+                                                        }
+                                                        change.consume()
+                                                        continue
+                                                    }
+                                                }
+
+                                                // 3) D-pad triangles + corner zones
+                                                val btn = hitTestLayout2(
+                                                    pos, screenPx, layout2DpadRadius, isGba
+                                                )
+
+                                                val prevBtn = activeButtons[change.id]
+                                                if (btn != prevBtn) {
+                                                    if (prevBtn != null) onButtonRelease(prevBtn)
+                                                    if (btn != null) {
+                                                        activeButtons[change.id] = btn
+                                                        onButtonPress(btn)
                                                         if (event.type == PointerEventType.Press && hapticEnabled) {
                                                             haptic.performHapticFeedback(
                                                                 HapticFeedbackType.TextHandleMove
                                                             )
                                                         }
-                                                    }
-                                                }
-
-                                                // Start long-press timer on initial press
-                                                if (event.type == PointerEventType.Press &&
-                                                    longPressJobs[change.id] == null
-                                                ) {
-                                                    longPressJobs[change.id] = launch {
-                                                        delay(LONG_PRESS_MS)
-                                                        // Release any active button first
-                                                        val btn = activeButtons.remove(change.id)
-                                                        if (btn != null) onButtonRelease(btn)
-                                                        if (hapticEnabled) haptic.performHapticFeedback(
-                                                            HapticFeedbackType.LongPress
-                                                        )
-                                                        onPause()
+                                                    } else {
+                                                        activeButtons.remove(change.id)
                                                     }
                                                 }
                                                 change.consume()
-                                                continue
-                                            }
+                                            } else {
+                                                // ── Layout 1 (original grid) ──
+                                                val inCenter = isInCenterCell(pos, cellSize)
 
-                                            // Pointer moved out of center — cancel long-press
-                                            longPressJobs.remove(change.id)?.cancel()
-
-                                            // Normal grid hit test
-                                            val btn = hitTestGrid(pos, cellSize, grid)
-
-                                            val prevBtn = activeButtons[change.id]
-                                            if (btn != prevBtn) {
-                                                if (prevBtn != null) onButtonRelease(prevBtn)
-                                                if (btn != null) {
-                                                    activeButtons[change.id] = btn
-                                                    onButtonPress(btn)
-                                                    if (event.type == PointerEventType.Press) {
-                                                        if (hapticEnabled) haptic.performHapticFeedback(
-                                                            HapticFeedbackType.TextHandleMove
-                                                        )
+                                                if (inCenter) {
+                                                    if (isGba) {
+                                                        val circleBtn = hitTestCircle(pos, screenPx)
+                                                        val prevBtn = activeButtons[change.id]
+                                                        if (circleBtn != null && circleBtn != prevBtn) {
+                                                            if (prevBtn != null) onButtonRelease(prevBtn)
+                                                            activeButtons[change.id] = circleBtn
+                                                            onButtonPress(circleBtn)
+                                                            if (event.type == PointerEventType.Press && hapticEnabled) {
+                                                                haptic.performHapticFeedback(
+                                                                    HapticFeedbackType.TextHandleMove
+                                                                )
+                                                            }
+                                                        }
                                                     }
-                                                } else {
-                                                    activeButtons.remove(change.id)
+
+                                                    if (event.type == PointerEventType.Press &&
+                                                        longPressJobs[change.id] == null
+                                                    ) {
+                                                        longPressJobs[change.id] = launch {
+                                                            delay(LONG_PRESS_MS)
+                                                            val btn = activeButtons.remove(change.id)
+                                                            if (btn != null) onButtonRelease(btn)
+                                                            if (hapticEnabled) haptic.performHapticFeedback(
+                                                                HapticFeedbackType.LongPress
+                                                            )
+                                                            onPause()
+                                                        }
+                                                    }
+                                                    change.consume()
+                                                    continue
                                                 }
+
+                                                longPressJobs.remove(change.id)?.cancel()
+
+                                                val btn = hitTestGrid(pos, cellSize, grid)
+                                                val prevBtn = activeButtons[change.id]
+                                                if (btn != prevBtn) {
+                                                    if (prevBtn != null) onButtonRelease(prevBtn)
+                                                    if (btn != null) {
+                                                        activeButtons[change.id] = btn
+                                                        onButtonPress(btn)
+                                                        if (event.type == PointerEventType.Press && hapticEnabled) {
+                                                            haptic.performHapticFeedback(
+                                                                HapticFeedbackType.TextHandleMove
+                                                            )
+                                                        }
+                                                    } else {
+                                                        activeButtons.remove(change.id)
+                                                    }
+                                                }
+                                                change.consume()
                                             }
-                                            change.consume()
                                         }
                                     }
 
@@ -207,7 +280,7 @@ fun TouchOverlay(
                     val cy = screenPx / 2f
                     val pauseRadius = cellSize * 0.22f
 
-                    // Pause circle clip path (used by both modes)
+                    // Pause circle clip path (used by both layouts)
                     val pausePath = Path().apply {
                         addOval(Rect(
                             cx - pauseRadius, cy - pauseRadius,
@@ -215,60 +288,95 @@ fun TouchOverlay(
                         ))
                     }
 
-                    // For GBA: clip grid against the larger split circle; for GB: clip against pause
-                    val gridClipPath = if (isGba) {
-                        Path().apply {
-                            addOval(Rect(
-                                circleCenter - circleRadius,
-                                circleCenter - circleRadius,
-                                circleCenter + circleRadius,
-                                circleCenter + circleRadius
-                            ))
+                    if (layoutType == 1) {
+                        // ── Layout 2: triangle d-pad + corner zones ──
+                        drawLayout2(
+                            screenPx = screenPx,
+                            isGba = isGba,
+                            circleRadius = layout2DpadRadius,
+                            pauseRadius = pauseRadius,
+                            alpha = drawAlpha,
+                            buttonOpacity = drawButtonOpacity,
+                            pressedOpacity = drawPressedOpacity,
+                            pressedButtons = pressedButtons,
+                            outlineColor = drawOutlineColor,
+                            pausePath = pausePath,
+                        )
+
+                        // GBA SE/ST split circle (same as layout 1)
+                        if (isGba) {
+                            val seIsPressed = ButtonId.SELECT in pressedButtons
+                            val stIsPressed = ButtonId.START in pressedButtons
+                            val seAlpha = if (seIsPressed) drawPressedOpacity else drawButtonOpacity
+                            val stAlpha = if (stIsPressed) drawPressedOpacity else drawButtonOpacity
+
+                            drawGbaCircle(
+                                circleCenter = circleCenter,
+                                circleRadius = circleRadius,
+                                screenPx = screenPx,
+                                alpha = drawAlpha,
+                                pausePath = pausePath,
+                                seAlpha = seAlpha,
+                                stAlpha = stAlpha,
+                                sePressed = seIsPressed,
+                                stPressed = stIsPressed,
+                                outlineColor = drawOutlineColor,
+                            )
                         }
                     } else {
-                        pausePath
-                    }
+                        // ── Layout 1: original grid ──
+                        val gridClipPath = if (isGba) {
+                            Path().apply {
+                                addOval(Rect(
+                                    circleCenter - circleRadius,
+                                    circleCenter - circleRadius,
+                                    circleCenter + circleRadius,
+                                    circleCenter + circleRadius
+                                ))
+                            }
+                        } else {
+                            pausePath
+                        }
 
-                    // 1) Grid cells
-                    drawOverlayGrid(
-                        grid = grid,
-                        cellSize = cellSize,
-                        alpha = drawAlpha,
-                        buttonOpacity = drawButtonOpacity,
-                        clipPath = gridClipPath,
-                        pressedButtons = pressedButtons,
-                        pressedOpacity = drawPressedOpacity,
-                        outlineColor = drawOutlineColor
-                    )
-
-                    // 2) GBA SE/ST split circle
-                    if (isGba) {
-                        val seIsPressed = ButtonId.SELECT in pressedButtons
-                        val stIsPressed = ButtonId.START in pressedButtons
-                        val seAlpha = if (seIsPressed) drawPressedOpacity else drawButtonOpacity
-                        val stAlpha = if (stIsPressed) drawPressedOpacity else drawButtonOpacity
-
-                        drawGbaCircle(
-                            circleCenter = circleCenter,
-                            circleRadius = circleRadius,
-                            screenPx = screenPx,
+                        drawOverlayGrid(
+                            grid = grid,
+                            cellSize = cellSize,
                             alpha = drawAlpha,
-                            pausePath = pausePath,
-                            seAlpha = seAlpha,
-                            stAlpha = stAlpha,
-                            sePressed = seIsPressed,
-                            stPressed = stIsPressed,
-                            outlineColor = drawOutlineColor
+                            buttonOpacity = drawButtonOpacity,
+                            clipPath = gridClipPath,
+                            pressedButtons = pressedButtons,
+                            pressedOpacity = drawPressedOpacity,
+                            outlineColor = drawOutlineColor,
                         )
+
+                        if (isGba) {
+                            val seIsPressed = ButtonId.SELECT in pressedButtons
+                            val stIsPressed = ButtonId.START in pressedButtons
+                            val seAlpha = if (seIsPressed) drawPressedOpacity else drawButtonOpacity
+                            val stAlpha = if (stIsPressed) drawPressedOpacity else drawButtonOpacity
+
+                            drawGbaCircle(
+                                circleCenter = circleCenter,
+                                circleRadius = circleRadius,
+                                screenPx = screenPx,
+                                alpha = drawAlpha,
+                                pausePath = pausePath,
+                                seAlpha = seAlpha,
+                                stAlpha = stAlpha,
+                                sePressed = seIsPressed,
+                                stPressed = stIsPressed,
+                                outlineColor = drawOutlineColor,
+                            )
+                        }
                     }
 
-                    // 3) Pause button — starts solid red, fades to outline-only
+                    // Pause button — starts solid red, fades to outline-only
                     val pauseRed = Color(0xFFEC1358)
                     if (pf > 0f) {
                         drawCircle(
                             color = pauseRed.copy(alpha = drawAlpha * pf),
                             radius = pauseRadius,
-                            center = Offset(cx, cy)
+                            center = Offset(cx, cy),
                         )
                     }
                     val pauseOutlineAlpha = drawAlpha * drawButtonOpacity * OUTLINE_ALPHA
@@ -276,7 +384,7 @@ fun TouchOverlay(
                         color = Color.Black.copy(alpha = pauseOutlineAlpha),
                         radius = pauseRadius,
                         center = Offset(cx, cy),
-                        style = Stroke(width = OUTLINE_WIDTH)
+                        style = Stroke(width = OUTLINE_WIDTH),
                     )
 
                     // Pause bars
@@ -287,24 +395,36 @@ fun TouchOverlay(
                     drawRect(
                         color = Color.White.copy(alpha = barAlpha),
                         topLeft = Offset(cx - barGap - barW, cy - barH / 2),
-                        size = Size(barW, barH)
+                        size = Size(barW, barH),
                     )
                     drawRect(
                         color = Color.White.copy(alpha = barAlpha),
                         topLeft = Offset(cx + barGap, cy - barH / 2),
-                        size = Size(barW, barH)
+                        size = Size(barW, barH),
                     )
                 }
         ) {
             // Text labels
             if (drawAlpha > 0f) {
-                OverlayLabels(
-                    grid = grid,
-                    screenPx = screenPx,
-                    alpha = drawAlpha,
-                    labelOpacity = drawLabelOpacity,
-                    labelSize = drawLabelSize
-                )
+                if (layoutType == 1) {
+                    Layout2Labels(
+                        isGba = isGba,
+                        screenPx = screenPx,
+                        circleRadius = layout2DpadRadius,
+                        pauseRadius = cellSize * 0.22f,
+                        alpha = drawAlpha,
+                        labelOpacity = drawLabelOpacity,
+                        labelSize = drawLabelSize,
+                    )
+                } else {
+                    OverlayLabels(
+                        grid = grid,
+                        screenPx = screenPx,
+                        alpha = drawAlpha,
+                        labelOpacity = drawLabelOpacity,
+                        labelSize = drawLabelSize,
+                    )
+                }
 
                 if (isGba) {
                     GbaCircleLabels(
@@ -312,7 +432,7 @@ fun TouchOverlay(
                         circleCenter = circleCenter,
                         alpha = drawAlpha,
                         labelOpacity = drawLabelOpacity,
-                        labelSize = drawLabelSize
+                        labelSize = drawLabelSize,
                     )
                 }
             }
@@ -347,4 +467,59 @@ private fun hitTestCircle(
     val dy = pos.y - center
     if (dx * dx + dy * dy > radius * radius) return null
     return if (dx < 0) ButtonId.SELECT else ButtonId.START
+}
+
+/**
+ * Point-in-triangle test using cross product sign.
+ */
+private fun pointInTriangle(
+    px: Float, py: Float,
+    ax: Float, ay: Float,
+    bx: Float, by: Float,
+    cx: Float, cy: Float,
+): Boolean {
+    val d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by)
+    val d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy)
+    val d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay)
+    val hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0)
+    val hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0)
+    return !(hasNeg && hasPos)
+}
+
+/**
+ * Layout 2 hit test: d-pad triangles first, then corner zones.
+ * Does NOT test the center circle or pause button (handled by caller).
+ */
+private fun hitTestLayout2(
+    pos: Offset,
+    screenPx: Float,
+    circleRadius: Float,
+    isGba: Boolean,
+): ButtonId? {
+    val cx = screenPx / 2f
+    val cy = screenPx / 2f
+
+    // D-pad triangles — 90° right triangles, half-base = height
+    val h = cx - circleRadius
+    // UP: base centered on top edge, tip at (cx, cy-circleRadius)
+    if (pointInTriangle(pos.x, pos.y, cx - h, 0f, cx + h, 0f, cx, cy - circleRadius))
+        return ButtonId.DPAD_UP
+    // DOWN: base centered on bottom edge
+    if (pointInTriangle(pos.x, pos.y, cx - h, screenPx, cx + h, screenPx, cx, cy + circleRadius))
+        return ButtonId.DPAD_DOWN
+    // LEFT: base centered on left edge
+    if (pointInTriangle(pos.x, pos.y, 0f, cy - h, 0f, cy + h, cx - circleRadius, cy))
+        return ButtonId.DPAD_LEFT
+    // RIGHT: base centered on right edge
+    if (pointInTriangle(pos.x, pos.y, screenPx, cy - h, screenPx, cy + h, cx + circleRadius, cy))
+        return ButtonId.DPAD_RIGHT
+
+    // Corner zones — full quadrants (center circle/pause already handled by caller)
+    val corners = if (isGba) GBA_CORNERS else GB_CORNERS
+    return when {
+        pos.x < cx && pos.y < cy -> corners[0] // TL
+        pos.x >= cx && pos.y < cy -> corners[1] // TR
+        pos.x < cx && pos.y >= cy -> corners[2] // BL
+        else -> corners[3] // BR
+    }
 }

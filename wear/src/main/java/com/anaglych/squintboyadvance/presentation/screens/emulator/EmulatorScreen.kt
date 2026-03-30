@@ -137,6 +137,7 @@ fun EmulatorScreen(
                     labelOpacity = settings.controllerLayout.labelOpacity,
                     labelSize = settings.controllerLayout.labelSize,
                     hapticEnabled = settings.controllerLayout.hapticFeedback,
+                    layoutType = settings.controllerLayout.layoutType,
                 )
                 if (ffSpeed >= 2) {
                     Box(
@@ -179,6 +180,7 @@ fun EmulatorScreen(
                             labelOpacity = settings.controllerLayout.labelOpacity,
                             labelSize = settings.controllerLayout.labelSize,
                             hapticEnabled = false,
+                            layoutType = settings.controllerLayout.layoutType,
                         )
                     }
                 }
@@ -227,6 +229,10 @@ fun EmulatorScreen(
                         labelOpacity = settings.controllerLayout.labelOpacity,
                         labelSize = settings.controllerLayout.labelSize,
                         hapticEnabled = settings.controllerLayout.hapticFeedback,
+                        layoutType = settings.controllerLayout.layoutType,
+                        onSetLayoutType = { type ->
+                            settingsRepo.update { it.copy(controllerLayout = it.controllerLayout.copy(layoutType = type)) }
+                        },
                         onToggleOscVisible = {
                             settingsRepo.update {
                                 it.copy(controllerLayout = it.controllerLayout.copy(visible = !it.controllerLayout.visible))

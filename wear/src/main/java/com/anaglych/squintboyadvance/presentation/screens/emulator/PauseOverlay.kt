@@ -182,6 +182,8 @@ fun PauseOverlay(
     labelOpacity: Float,
     labelSize: Float,
     hapticEnabled: Boolean,
+    layoutType: Int = 0,
+    onSetLayoutType: (Int) -> Unit = {},
     onToggleOscVisible: () -> Unit,
     onSetButtonOpacity: (Float) -> Unit,
     onSetPressedOpacity: (Float) -> Unit,
@@ -364,6 +366,8 @@ fun PauseOverlay(
                     labelOpacity = labelOpacity,
                     labelSize = labelSize,
                     hapticEnabled = hapticEnabled,
+                    layoutType = layoutType,
+                    onSetLayoutType = onSetLayoutType,
                     onSetButtonOpacity = onSetButtonOpacity,
                     onSetPressedOpacity = onSetPressedOpacity,
                     onSetLabelOpacity = onSetLabelOpacity,
@@ -1134,6 +1138,8 @@ private fun ControlsExpandContent(
     labelOpacity: Float,
     labelSize: Float,
     hapticEnabled: Boolean,
+    layoutType: Int = 0,
+    onSetLayoutType: (Int) -> Unit = {},
     onSetButtonOpacity: (Float) -> Unit,
     onSetPressedOpacity: (Float) -> Unit,
     onSetLabelOpacity: (Float) -> Unit,
@@ -1152,7 +1158,7 @@ private fun ControlsExpandContent(
             .fillMaxWidth()
             .graphicsLayer { alpha = contentAlpha },
     ) {
-        // Type row: test buttons 1-4
+        // Type row: layout selector buttons
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -1164,17 +1170,28 @@ private fun ControlsExpandContent(
                 color = Color.White.copy(alpha = 0.7f),
                 modifier = Modifier.width(36.dp),
             )
-            (1..4).forEach { num ->
+            (0..3).forEach { idx ->
+                val isActive = idx == layoutType
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .height(28.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(Color.White.copy(alpha = 0.12f))
-                        .clickable { onInteraction() },
+                        .background(
+                            if (isActive) green.copy(alpha = 0.85f)
+                            else Color.White.copy(alpha = 0.12f)
+                        )
+                        .clickable {
+                            if (idx <= 1) { onSetLayoutType(idx); onInteraction() }
+                        },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("$num", style = MaterialTheme.typography.caption2, color = Color.White, fontSize = 11.sp)
+                    Text(
+                        "${idx + 1}",
+                        style = MaterialTheme.typography.caption2,
+                        color = if (idx <= 1) Color.White else Color.White.copy(alpha = 0.3f),
+                        fontSize = 11.sp,
+                    )
                 }
             }
         }
