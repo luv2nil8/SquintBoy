@@ -1152,33 +1152,7 @@ private fun ControlsExpandContent(
             .fillMaxWidth()
             .graphicsLayer { alpha = contentAlpha },
     ) {
-        // Type row: test buttons 1-4
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                "Type",
-                style = MaterialTheme.typography.caption2,
-                color = Color.White.copy(alpha = 0.7f),
-                modifier = Modifier.width(36.dp),
-            )
-            (1..4).forEach { num ->
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(28.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color.White.copy(alpha = 0.12f))
-                        .clickable { onInteraction() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("$num", style = MaterialTheme.typography.caption2, color = Color.White, fontSize = 11.sp)
-                }
-            }
-        }
-        // Sliders (first 3)
+        // Sliders
         Column(
             verticalArrangement = Arrangement.spacedBy(2.dp),
             modifier = Modifier.fillMaxWidth(),
