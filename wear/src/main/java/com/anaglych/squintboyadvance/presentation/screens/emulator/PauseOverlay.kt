@@ -288,7 +288,7 @@ fun PauseOverlay(
                 CompactVolumeSlider(
                     volume = volume,
                     onVolumeChange = onVolumeChange,
-                    enabled = !isMuted,
+                    visualEnabled = !isMuted,
                 )
             },
             onLongClick = {}, // placeholder, overridden in layout to toggle expand
@@ -436,12 +436,12 @@ fun PauseOverlay(
 private fun CompactVolumeSlider(
     volume: Float,
     onVolumeChange: (Float) -> Unit,
-    enabled: Boolean,
+    visualEnabled: Boolean,
 ) {
     val primaryColor = MaterialTheme.colors.primary
     val disabledColor = Color.White.copy(alpha = 0.3f)
-    val activeColor = if (enabled) primaryColor else disabledColor
-    val trackColor = Color.White.copy(alpha = if (enabled) 0.12f else 0.06f)
+    val activeColor = if (visualEnabled) primaryColor else disabledColor
+    val trackColor = Color.White.copy(alpha = if (visualEnabled) 0.12f else 0.06f)
     val volumeState = rememberUpdatedState(volume)
 
     Row(
@@ -460,11 +460,11 @@ private fun CompactVolumeSlider(
             modifier = Modifier
                 .size(28.dp)
                 .clip(CircleShape)
-                .then(if (enabled) Modifier.clickable {
+                .clickable {
                     val stepped = ((volumeState.value * 10).roundToInt() - 1)
                         .coerceIn(0, 10) / 10f
                     onVolumeChange(stepped)
-                } else Modifier),
+                },
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -478,7 +478,7 @@ private fun CompactVolumeSlider(
             modifier = Modifier
                 .weight(1f)
                 .height(20.dp)
-                .then(if (enabled) Modifier.pointerInput(Unit) {
+                .pointerInput(Unit) {
                     val thumbR = 6.dp.toPx()
                     val usable = size.width - thumbR * 2
 
@@ -502,7 +502,7 @@ private fun CompactVolumeSlider(
                             onVolumeChange(fractionToVolume(down.position.x))
                         }
                     }
-                } else Modifier),
+                },
         ) {
             val trackH = 3.dp.toPx()
             val trackY = (size.height - trackH) / 2
@@ -549,11 +549,11 @@ private fun CompactVolumeSlider(
             modifier = Modifier
                 .size(28.dp)
                 .clip(CircleShape)
-                .then(if (enabled) Modifier.clickable {
+                .clickable {
                     val stepped = ((volumeState.value * 10).roundToInt() + 1)
                         .coerceIn(0, 10) / 10f
                     onVolumeChange(stepped)
-                } else Modifier),
+                },
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -1152,6 +1152,32 @@ private fun ControlsExpandContent(
             .fillMaxWidth()
             .graphicsLayer { alpha = contentAlpha },
     ) {
+        // Type row: test buttons 1-4
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                "Type",
+                style = MaterialTheme.typography.caption2,
+                color = Color.White.copy(alpha = 0.7f),
+                modifier = Modifier.width(36.dp),
+            )
+            (1..4).forEach { num ->
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(28.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color.White.copy(alpha = 0.12f))
+                        .clickable { onInteraction() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("$num", style = MaterialTheme.typography.caption2, color = Color.White, fontSize = 11.sp)
+                }
+            }
+        }
         // Sliders (first 3)
         Column(
             verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -1172,6 +1198,7 @@ private fun ControlsExpandContent(
                 valueRange = 0f..0.5f,
                 steps = 10,
                 onInteraction = onInteraction,
+                formatValue = { "${(it * 100).roundToInt()}%" },
             )
             LabeledSliderRow(
                 label = "Labels",
@@ -1318,19 +1345,18 @@ private fun CompactTrackSlider(
 
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
-                        onInteraction()
-                        val drag = awaitTouchSlopOrCancellation(down.id) { change, _ ->
-                            change.consume()
+                        // Only commit if drag direction is horizontal
+                        val drag = awaitTouchSlopOrCancellation(down.id) { change, delta ->
+                            if (abs(delta.x) > abs(delta.y)) change.consume()
                         }
                         if (drag != null) {
+                            onInteraction()
                             onValueChange(xToValue(drag.position.x))
                             horizontalDrag(drag.id) { change ->
                                 change.consume()
                                 onValueChange(xToValue(change.position.x))
                                 onInteraction()
                             }
-                        } else {
-                            onValueChange(xToValue(down.position.x))
                         }
                     }
                 },
@@ -1462,19 +1488,18 @@ private fun LabeledSliderRow(
 
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
-                        onInteraction()
-                        val drag = awaitTouchSlopOrCancellation(down.id) { change, _ ->
-                            change.consume()
+                        // Only commit if drag direction is horizontal
+                        val drag = awaitTouchSlopOrCancellation(down.id) { change, delta ->
+                            if (abs(delta.x) > abs(delta.y)) change.consume()
                         }
                         if (drag != null) {
+                            onInteraction()
                             onValueChange(xToValue(drag.position.x))
                             horizontalDrag(drag.id) { change ->
                                 change.consume()
                                 onValueChange(xToValue(change.position.x))
                                 onInteraction()
                             }
-                        } else {
-                            onValueChange(xToValue(down.position.x))
                         }
                     }
                 },
@@ -1549,6 +1574,9 @@ private fun ScrollableHexGrid(
     var resistOffset by remember { mutableStateOf(0f) }
     var dragTotal    by remember { mutableStateOf(0f) }
 
+    // ── Panel geometry for edge-aware resist ──
+    var panelMeasuredHeight by remember { mutableStateOf(0) }
+
     // ── Expand animation state (lives here so scroll can be derived from it) ──
     var lastExpandedIndex by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(expandedIndex) {
@@ -1573,6 +1601,55 @@ private fun ScrollableHexGrid(
         }
     }
 
+    // Panel top-edge Y in content-space (mirrors HexButtonLayout geometry)
+    val expandedBaseYPx = remember(activeExpandedIndex, viewportWidth, viewportHeight) {
+        if (activeExpandedIndex == null || viewportWidth == 0) return@remember 0f
+        val edgePx   = with(density) { 8.dp.toPx() }
+        val gapPx    = with(density) { CELL_GAP.toPx() }
+        val cellPx   = (viewportWidth - 2f * edgePx - 2f * gapPx) / 3f
+        val stepPx   = cellPx + gapPx
+        val halfStep = stepPx / 2f
+        val topPad   = viewportHeight / 6f
+        val trio = activeExpandedIndex / 3
+        val col  = when (activeExpandedIndex % 3) { 0 -> 1; 1 -> 0; else -> 2 }
+        topPad + trio * stepPx + if (col != 1) halfStep else 0f
+    }
+
+    // Palette grid bounds in content-space
+    val paletteBaseYPx = remember(actions.size, viewportWidth, viewportHeight) {
+        if (viewportWidth == 0) return@remember 0f
+        val edgePx   = with(density) { 8.dp.toPx() }
+        val gapPx    = with(density) { CELL_GAP.toPx() }
+        val cellPx   = (viewportWidth - 2f * edgePx - 2f * gapPx) / 3f
+        val stepPx   = cellPx + gapPx
+        val halfStep = stepPx / 2f
+        val topPad   = viewportHeight / 6f
+        val palIdx   = actions.lastIndex
+        val trio = palIdx / 3
+        val col  = when (palIdx % 3) { 0 -> 1; 1 -> 0; else -> 2 }
+        topPad + trio * stepPx + if (col != 1) halfStep else 0f
+    }
+    val paletteGridHeight = remember(actions.size, viewportWidth, paletteExpanded) {
+        if (viewportWidth == 0 || !paletteExpanded) return@remember 0f
+        val edgePx   = with(density) { 8.dp.toPx() }
+        val gapPx    = with(density) { CELL_GAP.toPx() }
+        val cellPx   = (viewportWidth - 2f * edgePx - 2f * gapPx) / 3f
+        val stepPx   = cellPx + gapPx
+        val halfStep = stepPx / 2f
+        val paletteCount = GbColorPalette.ALL.size
+        val totalItems   = (actions.size - 1) + paletteCount
+        val totalRows    = ceil(totalItems / 3f).toInt()
+        // Height from palette button row to last palette row bottom
+        val lastIdx = totalItems - 1
+        val lastTrio = lastIdx / 3
+        val lastCol  = when (lastIdx % 3) { 0 -> 1; 1 -> 0; else -> 2 }
+        val lastY = lastTrio * stepPx + if (lastCol != 1) halfStep else 0f
+        val firstTrio = actions.lastIndex / 3
+        val firstCol  = when (actions.lastIndex % 3) { 0 -> 1; 1 -> 0; else -> 2 }
+        val firstY = firstTrio * stepPx + if (firstCol != 1) halfStep else 0f
+        lastY - firstY + cellPx
+    }
+
     // Helper: compute scroll target to center a button index
     // panelBias shifts the centering point down to account for panel height
     fun scrollTargetFor(index: Int, panelBias: Float = 0f): Int {
@@ -1589,9 +1666,9 @@ private fun ScrollableHexGrid(
         return (y + cellPx / 2f + panelBias - viewportHeight / 2f).coerceAtLeast(0f).toInt()
     }
 
-    // Reset drag state on expand/collapse
-    LaunchedEffect(expandedIndex) {
-        if (expandedIndex != null) {
+    // Reset drag state on expand/collapse or palette open/close
+    LaunchedEffect(expandedIndex, paletteExpanded) {
+        if (expandedIndex != null || paletteExpanded) {
             dragTotal = 0f
             resistOffset = 0f
         } else {
@@ -1613,20 +1690,42 @@ private fun ScrollableHexGrid(
         scrollState.scrollTo(scrollTargetFor(3))
     }
 
-    // Drive scroll from expandProgress — displacement and scroll are both
-    // pure functions of the same value, so they stay perfectly in sync.
-    // Captures the pre-expand scroll position so collapse returns to it.
+    // Drive scroll during expand/collapse animations; allow free scroll when fully open.
     LaunchedEffect(activeExpandedIndex, viewportWidth, viewportHeight) {
         if (viewportWidth == 0 || viewportHeight == 0) return@LaunchedEffect
         if (activeExpandedIndex == null) return@LaunchedEffect
         val edgePx    = with(density) { 8.dp.toPx() }
         val gapPx     = with(density) { CELL_GAP.toPx() }
         val cellPx    = (viewportWidth - 2f * edgePx - 2f * gapPx) / 3f
-        val closeTarget = scrollState.value  // where we were before opening
+        val expandStartScroll = scrollState.value
         val openTarget  = scrollTargetFor(activeExpandedIndex, cellPx * 0.5f)
-        snapshotFlow { expandProgress }.collect { ep ->
-            val target = closeTarget + ((openTarget - closeTarget) * ep)
-            scrollState.scrollTo(target.toInt())
+        val closeTarget = scrollTargetFor(activeExpandedIndex)
+
+        var freeScrolling = false
+        var collapseStartScroll = 0
+
+        snapshotFlow { expandProgress to (expandedIndex != null) }.collect { (ep, isExpanded) ->
+            when {
+                isExpanded && ep < 1f -> {
+                    val target = expandStartScroll + ((openTarget - expandStartScroll) * ep)
+                    scrollState.scrollTo(target.toInt())
+                    freeScrolling = false
+                }
+                isExpanded -> {
+                    freeScrolling = true
+                }
+                !isExpanded && ep > 0f -> {
+                    if (freeScrolling) {
+                        collapseStartScroll = scrollState.value
+                        freeScrolling = false
+                    }
+                    val target = collapseStartScroll + ((closeTarget - collapseStartScroll) * (1f - ep))
+                    scrollState.scrollTo(target.toInt())
+                }
+                else -> {
+                    scrollState.scrollTo(closeTarget)
+                }
+            }
         }
     }
 
@@ -1655,40 +1754,113 @@ private fun ScrollableHexGrid(
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
-    // ── Nested scroll: block normal scroll when expanded, track drag ──
-    val expandedRef  = rememberUpdatedState(expandedIndex)
-    val thresholdRef = rememberUpdatedState(threshold)
-    val onToggleRef  = rememberUpdatedState(onExpandToggle)
+    // ── Nested scroll: edge-aware resist when expanded ──
+    // Allows normal scroll while panel is within 1/8 screen of edges.
+    // Resist kicks in when the gap exceeds 1/8 screen; threshold crossing dismisses.
+    val expandedRef     = rememberUpdatedState(expandedIndex)
+    val thresholdRef    = rememberUpdatedState(threshold)
+    val onToggleRef     = rememberUpdatedState(onExpandToggle)
+    val expandBaseYRef  = rememberUpdatedState(expandedBaseYPx)
+    val panelHeightRef  = rememberUpdatedState(panelMeasuredHeight)
+    val viewportHRef    = rememberUpdatedState(viewportHeight)
+    val scrollValRef    = rememberUpdatedState(scrollState.value)
+    val paletteExpandedRef = rememberUpdatedState(paletteExpanded)
+    val paletteBaseYRef    = rememberUpdatedState(paletteBaseYPx)
+    val paletteHeightRef   = rememberUpdatedState(paletteGridHeight)
+    val onPaletteCloseRef  = rememberUpdatedState(onPaletteClose)
 
     val nestedScroll = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                val expanded = expandedRef.value ?: return Offset.Zero
+                val isExpanded = expandedRef.value != null
+                val isPalette  = paletteExpandedRef.value
+                if (!isExpanded && !isPalette) return Offset.Zero
                 val t = thresholdRef.value
-                if (t <= 0f) return Offset(0f, available.y)
+                if (t <= 0f) return Offset.Zero
+                val isDrag = source == NestedScrollSource.Drag
 
-                dragTotal += available.y
-                val progress = (abs(dragTotal) / t).coerceIn(0f, 1f)
-                // Quadratic ease-out: moves freely at first, decelerates
-                resistOffset = dragTotal.sign * t * 0.3f *
-                    (1f - (1f - progress) * (1f - progress))
-
-                if (progress >= 1f) {
-                    onToggleRef.value(null)
+                val dy = available.y
+                val vpH = viewportHRef.value.toFloat()
+                val margin = vpH / 8f
+                val scrollY = scrollValRef.value.toFloat()
+                val panelTop: Float
+                val panelBottom: Float
+                if (isExpanded) {
+                    panelTop    = expandBaseYRef.value - scrollY
+                    panelBottom = expandBaseYRef.value + panelHeightRef.value - scrollY
+                } else {
+                    panelTop    = paletteBaseYRef.value - scrollY
+                    panelBottom = paletteBaseYRef.value + paletteHeightRef.value - scrollY
                 }
-                return Offset(0f, available.y) // consume all vertical scroll
+
+                // If already in resist, unwind first when reversing direction
+                if (dragTotal != 0f) {
+                    val sameDir = (dragTotal < 0 && dy < 0) || (dragTotal > 0 && dy > 0)
+                    if (!sameDir) {
+                        val old = dragTotal
+                        dragTotal += dy
+                        if (old.sign != dragTotal.sign || dragTotal == 0f) {
+                            dragTotal = 0f
+                            resistOffset = 0f
+                            return Offset.Zero
+                        }
+                        val progress = (abs(dragTotal) / t).coerceIn(0f, 1f)
+                        resistOffset = dragTotal.sign * t * 0.3f *
+                            (1f - (1f - progress) * (1f - progress))
+                        return Offset(0f, dy)
+                    }
+                    // Same direction — continue resist
+                    dragTotal += dy
+                    val progress = (abs(dragTotal) / t).coerceIn(0f, 1f)
+                    resistOffset = dragTotal.sign * t * 0.3f *
+                        (1f - (1f - progress) * (1f - progress))
+                    if (isDrag && progress >= 1f) {
+                        if (isExpanded) onToggleRef.value(null)
+                        else onPaletteCloseRef.value()
+                    }
+                    return Offset(0f, dy)
+                }
+
+                // Check if we've reached the edge threshold
+                val atEdge = when {
+                    dy < 0 -> panelBottom < (vpH - margin)
+                    dy > 0 -> panelTop > margin
+                    else -> false
+                }
+
+                if (atEdge) {
+                    if (!isDrag) {
+                        // Fling: hard-stop at the edge, no resist
+                        return Offset(0f, dy)
+                    }
+                    // Drag: enter resist zone
+                    dragTotal += dy
+                    val progress = (abs(dragTotal) / t).coerceIn(0f, 1f)
+                    resistOffset = dragTotal.sign * t * 0.3f *
+                        (1f - (1f - progress) * (1f - progress))
+                    if (progress >= 1f) {
+                        if (isExpanded) onToggleRef.value(null)
+                        else onPaletteCloseRef.value()
+                    }
+                    return Offset(0f, dy)
+                }
+
+                return Offset.Zero
             }
 
             override suspend fun onPreFling(available: Velocity): Velocity {
                 if (expandedRef.value != null && abs(dragTotal) > 0f && abs(dragTotal) < thresholdRef.value) {
-                    // Below threshold — spring back
                     val start = resistOffset
                     animate(start, 0f, animationSpec = tween(200, easing = FastOutSlowInEasing)) { v, _ ->
                         resistOffset = v
                     }
                     dragTotal = 0f
                 }
-                return if (expandedRef.value != null) available else Velocity.Zero
+                return if (expandedRef.value != null && abs(dragTotal) > 0f) available else Velocity.Zero
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                return Velocity.Zero
             }
         }
     }
@@ -1699,16 +1871,34 @@ private fun ScrollableHexGrid(
             .onSizeChanged { viewportWidth = it.width; viewportHeight = it.height }
             .nestedScroll(nestedScroll)
             .onRotaryScrollEvent {
-                if (expandedIndex != null) {
-                    // Rotary counts as drag when expanded
+                val isExpanded = expandedIndex != null
+                val isPalette  = paletteExpanded
+                if (isExpanded || isPalette) {
                     val t = threshold
                     if (t > 0f) {
-                        dragTotal += it.verticalScrollPixels
-                        val progress = (abs(dragTotal) / t).coerceIn(0f, 1f)
-                        resistOffset = dragTotal.sign * t * 0.3f *
-                            (1f - (1f - progress) * (1f - progress))
-                        if (progress >= 1f) {
-                            onExpandToggle(null)
+                        val dy = it.verticalScrollPixels
+                        val vpH = viewportHeight.toFloat()
+                        val margin = vpH / 8f
+                        val scrollY = scrollState.value.toFloat()
+                        val pTop: Float
+                        val pBottom: Float
+                        if (isExpanded) {
+                            pTop    = expandedBaseYPx - scrollY
+                            pBottom = expandedBaseYPx + panelMeasuredHeight - scrollY
+                        } else {
+                            pTop    = paletteBaseYPx - scrollY
+                            pBottom = paletteBaseYPx + paletteGridHeight - scrollY
+                        }
+
+                        val atEdge = dragTotal != 0f ||
+                            (dy < 0 && pBottom < (vpH - margin)) ||
+                            (dy > 0 && pTop > margin)
+
+                        if (atEdge) {
+                            // Rotary acts like fling — stop at edge, no resist
+                            // (don't accumulate dragTotal)
+                        } else {
+                            coroutineScope.launch { scrollState.scrollBy(dy) }
                         }
                     }
                 } else {
@@ -1740,6 +1930,7 @@ private fun ScrollableHexGrid(
                 selectedPaletteIndex = selectedPaletteIndex,
                 onPaletteSelected    = onPaletteSelected,
                 ghostProgress        = ghostProgress,
+                onPanelHeightMeasured = { panelMeasuredHeight = it },
             )
         }
         PositionIndicator(scrollState = scrollState)
@@ -1763,6 +1954,7 @@ private fun HexButtonLayout(
     selectedPaletteIndex: Int,
     onPaletteSelected: (Int) -> Unit,
     ghostProgress: Float = 0f,
+    onPanelHeightMeasured: (Int) -> Unit = {},
 ) {
     Layout(
         content = {
@@ -1832,6 +2024,7 @@ private fun HexButtonLayout(
             constraints.copy(minWidth = panelWidth, maxWidth = panelWidth, minHeight = 0)
         )
         val panelExtra = (panelPlaceable.height - cellPx).coerceAtLeast(0)
+        onPanelHeightMeasured(panelPlaceable.height)
 
         // Measure palette swatches at cell size
         val palettePlaceables = if (showPalettes) {
