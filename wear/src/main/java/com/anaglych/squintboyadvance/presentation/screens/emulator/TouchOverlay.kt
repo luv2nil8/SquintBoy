@@ -1,5 +1,6 @@
 package com.anaglych.squintboyadvance.presentation.screens.emulator
 
+import android.annotation.SuppressLint
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
@@ -39,6 +40,8 @@ import com.anaglych.squintboyadvance.presentation.ui.drawLayout2
 import com.anaglych.squintboyadvance.presentation.ui.Layout2Labels
 import com.anaglych.squintboyadvance.presentation.ui.GBA_CORNERS
 import com.anaglych.squintboyadvance.presentation.ui.GB_CORNERS
+import kotlin.math.PI
+import kotlin.math.atan2
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -46,6 +49,7 @@ import kotlinx.coroutines.launch
 
 private const val LONG_PRESS_MS = 500L
 
+@SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
 fun TouchOverlay(
     systemType: SystemType?,
@@ -93,9 +97,13 @@ fun TouchOverlay(
 
         // Track which pointers are pressing which buttons
         val activeButtons = remember { mutableStateMapOf<PointerId, ButtonId>() }
+        // Buttons locked by tapping pause while held (Layout 1 only)
+        val lockedButtons = remember { mutableStateMapOf<ButtonId, Unit>() }
+        // Virtual d-pad directions active via drag (Layout 2 only)
+        val vdpadDirs = remember { mutableStateMapOf<ButtonId, Unit>() }
 
         // Derive the set of currently pressed button IDs for visual feedback
-        val pressedButtons = activeButtons.values.toSet()
+        val pressedButtons = activeButtons.values.toSet() + lockedButtons.keys + vdpadDirs.keys
 
         // When visible: steady display with configured settings
         // When hidden: brief flash with default values
@@ -117,6 +125,8 @@ fun TouchOverlay(
                     coroutineScope {
                         awaitPointerEventScope {
                             val longPressJobs = mutableMapOf<PointerId, Job>()
+                            var vdpadPointerId: PointerId? = null
+                            var vdpadCenter = Offset.Zero
 
                             while (true) {
                                 val event = awaitPointerEvent()
@@ -130,6 +140,37 @@ fun TouchOverlay(
 
                                             if (layoutType == 1) {
                                                 // ── Layout 2 hit testing ──
+
+                                                // Virtual d-pad: owner pointer handles drag
+                                                if (change.id == vdpadPointerId) {
+                                                    val vdx = pos.x - vdpadCenter.x
+                                                    val vdy = pos.y - vdpadCenter.y
+                                                    val distSq = vdx * vdx + vdy * vdy
+                                                    val threshold = screenPx / 9f
+                                                    val newDirs = if (distSq > threshold * threshold) {
+                                                        dpadDirsFromDrag(vdx, vdy)
+                                                    } else {
+                                                        emptySet()
+                                                    }
+                                                    for (dir in vdpadDirs.keys.toList()) {
+                                                        if (dir !in newDirs) {
+                                                            vdpadDirs.remove(dir)
+                                                            onButtonRelease(dir)
+                                                        }
+                                                    }
+                                                    for (dir in newDirs) {
+                                                        if (dir !in vdpadDirs) {
+                                                            vdpadDirs[dir] = Unit
+                                                            onButtonPress(dir)
+                                                            if (hapticEnabled) haptic.performHapticFeedback(
+                                                                HapticFeedbackType.TextHandleMove
+                                                            )
+                                                        }
+                                                    }
+                                                    change.consume()
+                                                    continue
+                                                }
+
                                                 val cx = screenPx / 2f
                                                 val cy = screenPx / 2f
 
@@ -159,6 +200,27 @@ fun TouchOverlay(
                                                 // Cancel long-press if moved out of pause
                                                 longPressJobs.remove(change.id)?.cancel()
 
+                                                // DMG: while vdpad active on A or B, other taps fire the other face button
+                                                if (vdpadPointerId != null && !isGba) {
+                                                    val lockedBtn = activeButtons[vdpadPointerId]
+                                                    val otherBtn = when (lockedBtn) {
+                                                        ButtonId.A -> ButtonId.B
+                                                        ButtonId.B -> ButtonId.A
+                                                        else -> null
+                                                    }
+                                                    if (otherBtn != null) {
+                                                        if (event.type == PointerEventType.Press) {
+                                                            activeButtons[change.id] = otherBtn
+                                                            onButtonPress(otherBtn)
+                                                            if (hapticEnabled) haptic.performHapticFeedback(
+                                                                HapticFeedbackType.TextHandleMove
+                                                            )
+                                                        }
+                                                        change.consume()
+                                                        continue
+                                                    }
+                                                }
+
                                                 // 2) GBA SE/ST circle (same as layout 1)
                                                 if (isGba) {
                                                     val circleBtn = hitTestCircle(pos, screenPx)
@@ -180,9 +242,13 @@ fun TouchOverlay(
                                                 }
 
                                                 // 3) D-pad triangles + corner zones
-                                                val btn = hitTestLayout2(
+                                                val rawBtn = hitTestLayout2(
                                                     pos, screenPx, layout2DpadRadius, isGba
                                                 )
+                                                // Don't claim a button reserved by the active vdpad
+                                                val btn = if (vdpadPointerId != null && rawBtn != null &&
+                                                    (rawBtn == activeButtons[vdpadPointerId] || rawBtn in vdpadDirs)
+                                                ) null else rawBtn
 
                                                 val prevBtn = activeButtons[change.id]
                                                 if (btn != prevBtn) {
@@ -199,13 +265,27 @@ fun TouchOverlay(
                                                         activeButtons.remove(change.id)
                                                     }
                                                 }
+
+                                                // Activate virtual d-pad on press of non-SE/ST button
+                                                if (event.type == PointerEventType.Press &&
+                                                    vdpadPointerId == null && rawBtn != null &&
+                                                    rawBtn != ButtonId.START && rawBtn != ButtonId.SELECT
+                                                ) {
+                                                    vdpadPointerId = change.id
+                                                    vdpadCenter = pos
+                                                }
+
                                                 change.consume()
                                             } else {
                                                 // ── Layout 1 (original grid) ──
                                                 val inCenter = isInCenterCell(pos, cellSize)
 
                                                 if (inCenter) {
-                                                    if (isGba) {
+                                                    val cdx = pos.x - screenPx / 2f
+                                                    val cdy = pos.y - screenPx / 2f
+                                                    val inPause = cdx * cdx + cdy * cdy <= pauseRadius * pauseRadius
+
+                                                    if (isGba && !inPause) {
                                                         val circleBtn = hitTestCircle(pos, screenPx)
                                                         val prevBtn = activeButtons[change.id]
                                                         if (circleBtn != null && circleBtn != prevBtn) {
@@ -240,6 +320,22 @@ fun TouchOverlay(
                                                 longPressJobs.remove(change.id)?.cancel()
 
                                                 val btn = hitTestGrid(pos, cellSize, grid)
+
+                                                // Pressing a locked button unlocks it
+                                                if (btn != null && btn in lockedButtons) {
+                                                    if (event.type == PointerEventType.Press) {
+                                                        lockedButtons.remove(btn)
+                                                        onButtonRelease(btn)
+                                                        if (hapticEnabled) haptic.performHapticFeedback(
+                                                            HapticFeedbackType.TextHandleMove
+                                                        )
+                                                    }
+                                                    val prev = activeButtons.remove(change.id)
+                                                    if (prev != null && prev !in lockedButtons) onButtonRelease(prev)
+                                                    change.consume()
+                                                    continue
+                                                }
+
                                                 val prevBtn = activeButtons[change.id]
                                                 if (btn != prevBtn) {
                                                     if (prevBtn != null) onButtonRelease(prevBtn)
@@ -261,10 +357,45 @@ fun TouchOverlay(
                                     }
 
                                     PointerEventType.Release -> {
+                                        // First pass: detect Layout 1 pause taps → toggle locks
                                         for (change in changes) {
-                                            longPressJobs.remove(change.id)?.cancel()
+                                            if (change.pressed) continue
+                                            val job = longPressJobs.remove(change.id)
+                                            val wasCenterTap = job != null && job.isActive
+                                            job?.cancel()
+                                            if (wasCenterTap && layoutType == 0) {
+                                                val toToggle = activeButtons.values
+                                                    .filter { it != ButtonId.START && it != ButtonId.SELECT }
+                                                    .toSet()
+                                                for (btn in toToggle) {
+                                                    if (btn in lockedButtons) {
+                                                        lockedButtons.remove(btn)
+                                                        onButtonRelease(btn)
+                                                    } else {
+                                                        lockedButtons[btn] = Unit
+                                                    }
+                                                }
+                                                if (toToggle.isNotEmpty() && hapticEnabled) {
+                                                    haptic.performHapticFeedback(
+                                                        HapticFeedbackType.TextHandleMove
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        // Second pass: release active buttons (skip locked) + vdpad cleanup
+                                        for (change in changes) {
+                                            if (change.pressed) continue
+                                            if (change.id == vdpadPointerId) {
+                                                for (dir in vdpadDirs.keys.toList()) {
+                                                    onButtonRelease(dir)
+                                                }
+                                                vdpadDirs.clear()
+                                                vdpadPointerId = null
+                                            }
                                             val prevBtn = activeButtons.remove(change.id)
-                                            if (prevBtn != null) onButtonRelease(prevBtn)
+                                            if (prevBtn != null && prevBtn !in lockedButtons) {
+                                                onButtonRelease(prevBtn)
+                                            }
                                             change.consume()
                                         }
                                     }
@@ -521,5 +652,25 @@ private fun hitTestLayout2(
         pos.x >= cx && pos.y < cy -> corners[1] // TR
         pos.x < cx && pos.y >= cy -> corners[2] // BL
         else -> corners[3] // BR
+    }
+}
+
+/**
+ * 8-way d-pad direction from drag vector. Returns 1 (cardinal) or 2 (diagonal) ButtonIds.
+ */
+private fun dpadDirsFromDrag(dx: Float, dy: Float): Set<ButtonId> {
+    val angle = atan2(dy.toDouble(), dx.toDouble())
+    val norm = if (angle < 0) angle + 2 * PI else angle
+    val sector = ((norm + PI / 8) / (PI / 4)).toInt() % 8
+    return when (sector) {
+        0 -> setOf(ButtonId.DPAD_RIGHT)
+        1 -> setOf(ButtonId.DPAD_DOWN, ButtonId.DPAD_RIGHT)
+        2 -> setOf(ButtonId.DPAD_DOWN)
+        3 -> setOf(ButtonId.DPAD_DOWN, ButtonId.DPAD_LEFT)
+        4 -> setOf(ButtonId.DPAD_LEFT)
+        5 -> setOf(ButtonId.DPAD_UP, ButtonId.DPAD_LEFT)
+        6 -> setOf(ButtonId.DPAD_UP)
+        7 -> setOf(ButtonId.DPAD_UP, ButtonId.DPAD_RIGHT)
+        else -> emptySet()
     }
 }

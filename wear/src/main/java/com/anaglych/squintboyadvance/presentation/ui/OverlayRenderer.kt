@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -17,6 +18,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -260,7 +262,7 @@ fun GbaCircleLabels(
             .size(circleDp),
         contentAlignment = Alignment.Center
     ) {
-        Box(modifier = Modifier.offset(x = -(circleDp / 4))) {
+        Box(modifier = Modifier.offset(x = -(circleDp / 3.14f))) {
             OutlinedLabel(
                 text = "SE",
                 alpha = alpha * labelOpacity,
@@ -268,7 +270,7 @@ fun GbaCircleLabels(
                 outlineColor = Color.White
             )
         }
-        Box(modifier = Modifier.offset(x = circleDp / 4)) {
+        Box(modifier = Modifier.offset(x = circleDp / 3.14f)) {
             OutlinedLabel(
                 text = "ST",
                 alpha = alpha * labelOpacity,
@@ -433,7 +435,9 @@ fun Layout2Labels(
         val xDp = with(density) { (centroid.x - boxSizePx / 2f).toDp() }
         val yDp = with(density) { (centroid.y - boxSizePx / 2f).toDp() }
         Box(
-            modifier = Modifier.offset(x = xDp, y = yDp).size(boxSizeDp),
+            modifier = Modifier
+                .offset(x = xDp, y = yDp)
+                .size(boxSizeDp),
             contentAlignment = Alignment.Center,
         ) {
             OutlinedLabel(
@@ -447,10 +451,10 @@ fun Layout2Labels(
 
     // Corner labels
     val cornerPositions = arrayOf(
-        Offset(screenPx * 0.15f, screenPx * 0.15f), // TL
-        Offset(screenPx * 0.85f, screenPx * 0.15f), // TR
-        Offset(screenPx * 0.15f, screenPx * 0.85f), // BL
-        Offset(screenPx * 0.85f, screenPx * 0.85f), // BR
+        Offset(screenPx * 0.25f, screenPx * 0.25f), // TL
+        Offset(screenPx * 0.75f, screenPx * 0.25f), // TR
+        Offset(screenPx * 0.25f, screenPx * 0.75f), // BL
+        Offset(screenPx * 0.75f, screenPx * 0.75f), // BR
     )
     for (i in corners.indices) {
         val pos = cornerPositions[i]
@@ -459,7 +463,9 @@ fun Layout2Labels(
         val xDp = with(density) { (pos.x - boxSizePx / 2f).toDp() }
         val yDp = with(density) { (pos.y - boxSizePx / 2f).toDp() }
         Box(
-            modifier = Modifier.offset(x = xDp, y = yDp).size(boxSizeDp),
+            modifier = Modifier
+                .offset(x = xDp, y = yDp)
+                .size(boxSizeDp),
             contentAlignment = Alignment.Center,
         ) {
             OutlinedLabel(
@@ -475,6 +481,38 @@ fun Layout2Labels(
 /**
  * Text label with black fill and a 1px colored outline stroke.
  */
+
+
+@Composable
+private fun OutlinedLabel(
+    text: String,
+    alpha: Float,
+    fontSize: Float,
+    outlineColor: Color
+) {
+    Box(contentAlignment = Alignment.Center) {
+        // Outline stroke
+        Text(
+            text = text,
+            color = outlineColor.copy(alpha = alpha),
+            fontSize = fontSize.sp,
+            style = TextStyle(
+                drawStyle = Stroke(width = 4f, join = StrokeJoin.Round),
+                textAlign = TextAlign.Center
+            )
+        )
+        // Black fill
+        Text(
+            text = text,
+            color = Color.Black.copy(alpha = alpha),
+            fontSize = fontSize.sp,
+            style = TextStyle(
+                textAlign = TextAlign.Center
+            )
+        )
+    }
+}
+/*
 @Composable
 private fun OutlinedLabel(
     text: String,
@@ -502,3 +540,4 @@ private fun OutlinedLabel(
         )
     }
 }
+*/
