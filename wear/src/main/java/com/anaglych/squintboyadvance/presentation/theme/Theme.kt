@@ -17,7 +17,7 @@ private val SquintBoyColors = Colors(
     onBackground = OnSurface,
     onSurface = OnSurface,
     onSurfaceVariant = OnSurfaceDim,
-    error = Color(0xFFEC1358),
+    error = DangerCrimson,
     onError = Color.White
 )
 

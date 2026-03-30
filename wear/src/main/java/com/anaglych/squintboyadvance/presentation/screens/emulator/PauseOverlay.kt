@@ -664,7 +664,7 @@ private fun CompactSaveLoadRow(
 private const val COMPACT_SLIDE_INITIAL     = 0.12f
 private const val COMPACT_SLIDE_PULSE_AMP   = 0.07f
 private const val COMPACT_SLIDE_PULSE_DELAY = 500L
-private const val COMPACT_SLIDE_THRESHOLD   = 0.90f
+private const val COMPACT_SLIDE_THRESHOLD   = 1.0f
 
 /**
  * Compact swipe-to-confirm bar. Absolute position tracking — the end is always
@@ -1183,7 +1183,7 @@ private fun ControlsExpandContent(
             )
         }
         // Size row: label buttons + haptic toggle
-        val sizeSteps = listOf(9f to "Xs", 11f to "Sm", 13f to "Md", 15f to "Lg", 17f to "Xl")
+        val sizeSteps = listOf(9f to "T", 11f to "S", 13f to "M", 15f to "L", 17f to "H")
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,

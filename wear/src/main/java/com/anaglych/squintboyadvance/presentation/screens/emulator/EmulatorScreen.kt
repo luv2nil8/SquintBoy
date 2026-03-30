@@ -281,8 +281,8 @@ fun EmulatorScreen(
                     )
 
                     PauseUiState.CONFIRM_RESET -> WearSlideToConfirm(
-                        slideText = "Slide to reset",
-                        warningText = "The game will restart from the beginning. Your save file is preserved.",
+                        slideText = "Slide to confirm",
+                        warningText = "The emulator will restart",
                         confirmColor = Color(0xFFEC1358),
                         onConfirmed = { viewModel.resetRom() },
                         onDismiss = { pauseUiState = PauseUiState.MENU },

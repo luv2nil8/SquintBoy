@@ -54,7 +54,7 @@ import kotlinx.coroutines.launch
 private const val SLIDE_INITIAL       = 0.12f   // resting fill — signals interactivity
 private const val SLIDE_PULSE_AMP     = 0.07f   // single-breath amplitude
 private const val SLIDE_PULSE_DELAY   = 500L    // ms before pulse begins
-private const val SLIDE_THRESHOLD     = 0.90f   // absolute position to fire
+private const val SLIDE_THRESHOLD     = 1.0f    // absolute position to fire
 
 /**
  * Full-screen slide-to-confirm overlay for Wear OS.

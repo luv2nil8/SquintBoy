@@ -137,7 +137,6 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
                         val settings = settingsRepo.settings.value
                         val player = AudioPlayer(OUTPUT_SAMPLE_RATE)
                         player.setVolume(settings.audioVolume)
-                        emu.initAudio(OUTPUT_SAMPLE_RATE)
                         player.start()
                         audioPlayer = player
                         emulatorThread?.audioPlayer = player
@@ -210,12 +209,12 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         saveStateManager?.restoreAll()
         refreshSaveStateAvailability()
 
-        // Set up audio with resampler
+        // Init resampler once so live audio toggle doesn't need to reinit mid-playback
+        emu.initAudio(OUTPUT_SAMPLE_RATE)
         if (audioEnabled) {
             val player = AudioPlayer(OUTPUT_SAMPLE_RATE)
             player.setVolume(settings.audioVolume)
             audioPlayer = player
-            emu.initAudio(OUTPUT_SAMPLE_RATE)
             player.start()
         }
 
