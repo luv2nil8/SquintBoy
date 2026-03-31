@@ -526,9 +526,9 @@ private fun OutlinedLabel(
             text = text,
             color = outlineColor.copy(alpha = alpha),
             fontSize = fontSize.sp,
-            textAlign = TextAlign.Center,
             style = TextStyle(
-                drawStyle = Stroke(width = 3f, join = StrokeJoin.Round)
+                drawStyle = Stroke(width = 3f, join = StrokeJoin.Round),
+                textAlign = TextAlign.Center
             )
         )
         // Black fill
@@ -536,7 +536,9 @@ private fun OutlinedLabel(
             text = text,
             color = Color.Black.copy(alpha = alpha),
             fontSize = fontSize.sp,
-            textAlign = TextAlign.Center
+            style = TextStyle(
+                textAlign = TextAlign.Center
+            )
         )
     }
 }

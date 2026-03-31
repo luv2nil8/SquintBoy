@@ -1138,8 +1138,6 @@ private fun ControlsExpandContent(
     labelOpacity: Float,
     labelSize: Float,
     hapticEnabled: Boolean,
-    layoutType: Int = 0,
-    onSetLayoutType: (Int) -> Unit = {},
     onSetButtonOpacity: (Float) -> Unit,
     onSetPressedOpacity: (Float) -> Unit,
     onSetLabelOpacity: (Float) -> Unit,

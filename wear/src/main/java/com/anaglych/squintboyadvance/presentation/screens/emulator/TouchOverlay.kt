@@ -62,7 +62,6 @@ fun TouchOverlay(
     labelOpacity: Float = 0.8f,
     labelSize: Float = 14f,
     hapticEnabled: Boolean = true,
-    layoutType: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
@@ -89,8 +88,6 @@ fun TouchOverlay(
         val cellSize = screenPx / 3f
 
         val grid = if (isGba) GBA_GRID else GB_GRID
-        val gbaCircleRadius = screenPx * 0.25f
-        val circleRadius = if (isGba) gbaCircleRadius else 0f
         val circleCenter = screenPx / 2f
         // Layout 2 always uses GBA circle radius for d-pad triangle geometry
         val layout2DpadRadius = gbaCircleRadius
@@ -125,8 +122,6 @@ fun TouchOverlay(
                     coroutineScope {
                         awaitPointerEventScope {
                             val longPressJobs = mutableMapOf<PointerId, Job>()
-                            var vdpadPointerId: PointerId? = null
-                            var vdpadCenter = Offset.Zero
 
                             while (true) {
                                 val event = awaitPointerEvent()
@@ -138,46 +133,6 @@ fun TouchOverlay(
                                             if (!change.pressed) continue
                                             val pos = change.position
 
-                                            if (layoutType == 1) {
-                                                // ── Layout 2 hit testing ──
-
-                                                // Virtual d-pad: owner pointer handles drag
-                                                if (change.id == vdpadPointerId) {
-                                                    val vdx = pos.x - vdpadCenter.x
-                                                    val vdy = pos.y - vdpadCenter.y
-                                                    val distSq = vdx * vdx + vdy * vdy
-                                                    val threshold = screenPx / 9f
-                                                    val newDirs = if (distSq > threshold * threshold) {
-                                                        dpadDirsFromDrag(vdx, vdy)
-                                                    } else {
-                                                        emptySet()
-                                                    }
-                                                    for (dir in vdpadDirs.keys.toList()) {
-                                                        if (dir !in newDirs) {
-                                                            vdpadDirs.remove(dir)
-                                                            onButtonRelease(dir)
-                                                        }
-                                                    }
-                                                    for (dir in newDirs) {
-                                                        if (dir !in vdpadDirs) {
-                                                            vdpadDirs[dir] = Unit
-                                                            onButtonPress(dir)
-                                                            if (hapticEnabled) haptic.performHapticFeedback(
-                                                                HapticFeedbackType.TextHandleMove
-                                                            )
-                                                        }
-                                                    }
-                                                    change.consume()
-                                                    continue
-                                                }
-
-                                                val cx = screenPx / 2f
-                                                val cy = screenPx / 2f
-
-                                                // 1) Pause button (small circle in center)
-                                                val dx = pos.x - cx
-                                                val dy = pos.y - cy
-                                                val inPause = dx * dx + dy * dy <= pauseRadius * pauseRadius
 
                                                 if (inPause) {
                                                     if (event.type == PointerEventType.Press &&
@@ -261,44 +216,13 @@ fun TouchOverlay(
                                                                 HapticFeedbackType.TextHandleMove
                                                             )
                                                         }
-                                                    } else {
-                                                        activeButtons.remove(change.id)
                                                     }
                                                 }
 
-                                                // Activate virtual d-pad on press of non-SE/ST button
                                                 if (event.type == PointerEventType.Press &&
-                                                    vdpadPointerId == null && rawBtn != null &&
-                                                    rawBtn != ButtonId.START && rawBtn != ButtonId.SELECT
                                                 ) {
-                                                    vdpadPointerId = change.id
-                                                    vdpadCenter = pos
                                                 }
-
                                                 change.consume()
-                                            } else {
-                                                // ── Layout 1 (original grid) ──
-                                                val inCenter = isInCenterCell(pos, cellSize)
-
-                                                if (inCenter) {
-                                                    val cdx = pos.x - screenPx / 2f
-                                                    val cdy = pos.y - screenPx / 2f
-                                                    val inPause = cdx * cdx + cdy * cdy <= pauseRadius * pauseRadius
-
-                                                    if (isGba && !inPause) {
-                                                        val circleBtn = hitTestCircle(pos, screenPx)
-                                                        val prevBtn = activeButtons[change.id]
-                                                        if (circleBtn != null && circleBtn != prevBtn) {
-                                                            if (prevBtn != null) onButtonRelease(prevBtn)
-                                                            activeButtons[change.id] = circleBtn
-                                                            onButtonPress(circleBtn)
-                                                            if (event.type == PointerEventType.Press && hapticEnabled) {
-                                                                haptic.performHapticFeedback(
-                                                                    HapticFeedbackType.TextHandleMove
-                                                                )
-                                                            }
-                                                        }
-                                                    }
 
                                                     if (event.type == PointerEventType.Press &&
                                                         longPressJobs[change.id] == null
@@ -321,8 +245,27 @@ fun TouchOverlay(
 
                                                 val btn = hitTestGrid(pos, cellSize, grid)
 
-                                                // Pressing a locked button unlocks it
-                                                if (btn != null && btn in lockedButtons) {
+                                            // Pressing a locked button unlocks it
+                                            if (btn != null && btn in lockedButtons) {
+                                                if (event.type == PointerEventType.Press) {
+                                                    lockedButtons.remove(btn)
+                                                    onButtonRelease(btn)
+                                                    if (hapticEnabled) haptic.performHapticFeedback(
+                                                        HapticFeedbackType.TextHandleMove
+                                                    )
+                                                }
+                                                val prev = activeButtons.remove(change.id)
+                                                if (prev != null && prev !in lockedButtons) onButtonRelease(prev)
+                                                change.consume()
+                                                continue
+                                            }
+
+                                            val prevBtn = activeButtons[change.id]
+                                            if (btn != prevBtn) {
+                                                if (prevBtn != null) onButtonRelease(prevBtn)
+                                                if (btn != null) {
+                                                    activeButtons[change.id] = btn
+                                                    onButtonPress(btn)
                                                     if (event.type == PointerEventType.Press) {
                                                         lockedButtons.remove(btn)
                                                         onButtonRelease(btn)
