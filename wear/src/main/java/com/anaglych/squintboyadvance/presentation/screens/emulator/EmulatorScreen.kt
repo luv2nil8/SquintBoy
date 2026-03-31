@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.anaglych.squintboyadvance.presentation.ReviewTracker
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FastForward
 import androidx.wear.compose.material.Icon
@@ -107,6 +108,8 @@ fun EmulatorScreen(
     // Pause sub-screen state — resets to MENU whenever the emulator resumes
     var pauseUiState by rememberSaveable { mutableStateOf(PauseUiState.MENU) }
     var pauseGhostProgress by remember { mutableFloatStateOf(0f) }
+    var showReviewPrompt by remember { mutableStateOf(false) }
+    val reviewContext = LocalContext.current
     LaunchedEffect(state) {
         if (state == EmulatorState.RUNNING) pauseUiState = PauseUiState.MENU
     }
@@ -120,6 +123,7 @@ fun EmulatorScreen(
             pauseUiState = PauseUiState.MENU
         }
     }
+    LaunchedEffect(Unit) { ReviewTracker.sessionStarted(reviewContext) }
 
     LaunchedEffect(romId) {
         viewModel.loadRom(romId, romTitle)
@@ -294,7 +298,11 @@ fun EmulatorScreen(
                         },
                         onExit = {
                             viewModel.stop()
-                            onExit()
+                            if (ReviewTracker.shouldPromptOnExit(reviewContext)) {
+                                showReviewPrompt = true
+                            } else {
+                                onExit()
+                            }
                         },
                         isDemo = !isPro,
                         onUpgrade = { pauseUiState = PauseUiState.UPGRADE_DETAILS },
@@ -344,6 +352,10 @@ fun EmulatorScreen(
             EmulatorState.IDLE -> {
                 // Nothing to show
             }
+        }
+
+        if (showReviewPrompt) {
+            ReviewPromptDialog(onDismiss = onExit)
         }
     }
 }

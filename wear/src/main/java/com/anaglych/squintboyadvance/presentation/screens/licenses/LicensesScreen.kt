@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -105,6 +106,27 @@ fun WearLicensesScreen() {
                     style = MaterialTheme.typography.title3,
                     fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center,
+                )
+            }
+
+            item {
+                Text(
+                    "Rate Squint Boy",
+                    style = MaterialTheme.typography.body2,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    color = Color(0xFF9BBC0F),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .clickable {
+                            context.startActivity(
+                                Intent(
+                                    Intent.ACTION_VIEW,
+                                    Uri.parse("market://details?id=com.anaglych.squintboyadvance"),
+                                ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+                            )
+                        },
                 )
             }
 

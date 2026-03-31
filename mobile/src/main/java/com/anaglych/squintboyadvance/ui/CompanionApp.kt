@@ -52,6 +52,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -84,6 +85,7 @@ import com.anaglych.squintboyadvance.ui.theme.DarkNavy
 import com.anaglych.squintboyadvance.ui.theme.GbGreen
 import com.anaglych.squintboyadvance.ui.settings.LicensesScreen
 import com.google.android.gms.wearable.Wearable
+import com.google.android.play.core.review.ReviewManagerFactory
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -93,6 +95,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import com.google.android.play.core.review.ReviewInfo
 
 private const val ROUTE_ROMS = "roms"
 private const val ROUTE_LICENSES = "licenses"
@@ -304,6 +307,7 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
 fun CompanionApp(
     connectionViewModel: ConnectionViewModel = viewModel(),
     watchRomListViewModel: WatchRomListViewModel = viewModel(),
+    transferViewModel: RomTransferViewModel = viewModel(),
 ) {
     val navController = rememberNavController()
     val navBackStack by navController.currentBackStackEntryAsState()
@@ -333,6 +337,19 @@ fun CompanionApp(
     // Auto-dismiss upgrade overlay when purchase completes
     LaunchedEffect(isPro) {
         if (isPro) showUpgradeOverlay = false
+    }
+
+    val shouldRequestReview by transferViewModel.shouldRequestReview.collectAsStateWithLifecycle()
+    val activity = LocalContext.current as? Activity
+    LaunchedEffect(shouldRequestReview) {
+        if (shouldRequestReview && activity != null) {
+            try {
+                val manager = ReviewManagerFactory.create(activity)
+                val reviewInfo: ReviewInfo = manager.requestReviewFlow().await()
+                manager.launchReviewFlow(activity, reviewInfo).await()
+            } catch (_: Exception) { }
+            transferViewModel.onReviewHandled()
+        }
     }
 
     // Banner is shown for WATCH_NO_APP (always) or NO_WATCH (first-time users only)

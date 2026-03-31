@@ -1,6 +1,7 @@
 package com.anaglych.squintboyadvance.ui
 
 import android.app.Application
+import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Log
@@ -50,6 +51,11 @@ class RomTransferViewModel(application: Application) : AndroidViewModel(applicat
     private val _sending = MutableStateFlow(false)
     val sending: StateFlow<Boolean> = _sending.asStateFlow()
 
+    private val _shouldRequestReview = MutableStateFlow(false)
+    val shouldRequestReview: StateFlow<Boolean> = _shouldRequestReview.asStateFlow()
+
+    private val reviewPrefs = application.getSharedPreferences("mobile_review", Context.MODE_PRIVATE)
+
     private val nodeClient = Wearable.getNodeClient(application)
     private val channelClient = Wearable.getChannelClient(application)
 
@@ -62,6 +68,9 @@ class RomTransferViewModel(application: Application) : AndroidViewModel(applicat
                 pendingTimeouts.remove(result.filename)?.cancel()
                 if (result.success) {
                     updateRomStatusByName(result.filename, TransferStatus.COMPLETE, progress = 1f)
+                    val count = reviewPrefs.getInt("upload_success_count", 0) + 1
+                    reviewPrefs.edit().putInt("upload_success_count", count).apply()
+                    if (count == 3) _shouldRequestReview.value = true
                 } else {
                     updateRomStatusByName(
                         result.filename, TransferStatus.ERROR,
@@ -96,6 +105,10 @@ class RomTransferViewModel(application: Application) : AndroidViewModel(applicat
                 }
             }
         _roms.update { it + newItems }
+    }
+
+    fun onReviewHandled() {
+        _shouldRequestReview.value = false
     }
 
     fun removeRom(item: RomTransferItem) {
