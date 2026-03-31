@@ -352,6 +352,19 @@ fun CompanionApp(
         }
     }
 
+    val shouldRequestReview by transferViewModel.shouldRequestReview.collectAsStateWithLifecycle()
+    val activity = LocalContext.current as? Activity
+    LaunchedEffect(shouldRequestReview) {
+        if (shouldRequestReview && activity != null) {
+            try {
+                val manager = ReviewManagerFactory.create(activity)
+                val reviewInfo: ReviewInfo = manager.requestReviewFlow().await()
+                manager.launchReviewFlow(activity, reviewInfo).await()
+            } catch (_: Exception) { }
+            transferViewModel.onReviewHandled()
+        }
+    }
+
     // Banner is shown for WATCH_NO_APP (always) or NO_WATCH (first-time users only)
     val showBanner = when (connectionState) {
         WatchConnectionState.WATCH_NO_APP -> true
