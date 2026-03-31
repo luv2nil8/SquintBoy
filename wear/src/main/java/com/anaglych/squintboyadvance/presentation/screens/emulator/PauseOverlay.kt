@@ -807,16 +807,20 @@ private fun SettingsExpandContent(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
+        Text(
+            "Settings Overrides",
+            style = MaterialTheme.typography.caption2,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
         // Standard Wear OS toggle chip — matches the rest of the app's switch style
         ToggleChip(
             checked = isRomMode,
             onCheckedChange = onSetRomMode,
-            label = { Text("Settings Override", style = MaterialTheme.typography.caption2) },
-            secondaryLabel = {
+            label = {
                 Text(
-                    if (isRomMode) "ROM-specific settings" else "Using/Editing Globals",
-                    style = MaterialTheme.typography.caption3,
-                    color = Color.White.copy(alpha = 0.55f),
+                    if (isRomMode) "ROM-specific" else "Global Edit",
+                    style = MaterialTheme.typography.caption2,
                 )
             },
             toggleControl = {
@@ -1672,7 +1676,10 @@ private fun ScrollableHexGrid(
         val gapPx     = with(density) { CELL_GAP.toPx() }
         val cellPx    = (viewportWidth - 2f * edgePx - 2f * gapPx) / 3f
         val expandStartScroll = scrollState.value
-        val openTarget  = scrollTargetFor(activeExpandedIndex, cellPx * 0.5f)
+        // Scroll panel top to the resist margin — predictable position
+        // regardless of which button or how tall the content is.
+        val margin = viewportHeight / 8f
+        val openTarget  = (expandedBaseYPx - margin).coerceAtLeast(0f).toInt()
         val closeTarget = scrollTargetFor(activeExpandedIndex)
 
         var freeScrolling = false
@@ -2063,7 +2070,16 @@ private fun HexButtonLayout(
         } else rows
         val paletteExtraH = ((totalRows - rows) * stepPx * paletteProgress).toInt()
 
-        val contentH = topPad + stepPx * rows + halfStep + topPad + insertHeight + paletteExtraH
+        // Extra bottom padding so the scroll can reach the resist-margin target
+        // for panels on the last row. Without this, maxScrollValue is too small.
+        val margin = viewportHeight / 8
+        val panelPad = if (activeExpandedIndex != null && expandProgress > 0f) {
+            val baseContent = topPad + stepPx * rows + halfStep + topPad + insertHeight + paletteExtraH
+            val neededScroll = (expandedBaseYPx - margin).coerceAtLeast(0)
+            val neededContent = neededScroll + viewportHeight
+            ((neededContent - baseContent) * expandProgress).toInt().coerceAtLeast(0)
+        } else 0
+        val contentH = topPad + stepPx * rows + halfStep + topPad + insertHeight + paletteExtraH + panelPad
 
         val halfViewport = viewportHeight / 2f
         val deadZone = halfViewport * PauseTuning.DEAD_ZONE
