@@ -16,8 +16,8 @@ private val SquintBoyColors = Colors(
     onBackground = OnSurface,
     onSurface = OnSurface,
     onSurfaceVariant = OnSurfaceDim,
-    error = Crimson,
-    onError = androidx.compose.ui.graphics.Color.White
+    error = DangerCrimson,
+    onError = Color.White
 )
 
 @Composable

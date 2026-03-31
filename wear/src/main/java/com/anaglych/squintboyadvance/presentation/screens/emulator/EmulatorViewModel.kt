@@ -162,21 +162,23 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
                 }
         }
         // Apply audio enabled/disabled changes live.
+        // Hot-swaps the audioPlayer on the running EmulatorThread (volatile var).
         viewModelScope.launch {
             settingsRepo.settings
                 .map { it.audioEnabled }
                 .distinctUntilChanged()
                 .collect { enabled ->
                     if (_state.value != EmulatorState.RUNNING) return@collect
+                    val emu = emulator ?: return@collect
                     if (enabled && !audioEnabled) {
-                        val emu = emulator ?: return@collect
                         val settings = settingsRepo.settings.value
                         val player = AudioPlayer(OUTPUT_SAMPLE_RATE)
                         player.setVolume(settings.audioVolume)
-                        audioPlayer = player
-                        emu.initAudio(OUTPUT_SAMPLE_RATE)
                         player.start()
+                        audioPlayer = player
+                        emulatorThread?.audioPlayer = player
                     } else if (!enabled && audioEnabled) {
+                        emulatorThread?.audioPlayer = null
                         audioPlayer?.stop()
                         audioPlayer?.release()
                         audioPlayer = null
@@ -248,12 +250,12 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         saveStateManager?.restoreAll()
         refreshSaveStateAvailability()
 
-        // Set up audio with resampler
+        // Init resampler once so live audio toggle doesn't need to reinit mid-playback
+        emu.initAudio(OUTPUT_SAMPLE_RATE)
         if (audioEnabled) {
             val player = AudioPlayer(OUTPUT_SAMPLE_RATE)
             player.setVolume(settings.audioVolume)
             audioPlayer = player
-            emu.initAudio(OUTPUT_SAMPLE_RATE)
             player.start()
         }
 
