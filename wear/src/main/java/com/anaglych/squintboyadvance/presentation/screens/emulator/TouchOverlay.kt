@@ -85,9 +85,11 @@ fun TouchOverlay(
 
         // Track which pointers are pressing which buttons
         val activeButtons = remember { mutableStateMapOf<PointerId, ButtonId>() }
+        // Buttons locked by tapping pause while held (Layout 1 only)
+        val lockedButtons = remember { mutableStateMapOf<ButtonId, Unit>() }
 
         // Derive the set of currently pressed button IDs for visual feedback
-        val pressedButtons = activeButtons.values.toSet()
+        val pressedButtons = activeButtons.values.toSet() + lockedButtons.keys
 
         // When visible: steady display with configured settings
         // When hidden: brief flash with default values
@@ -104,6 +106,8 @@ fun TouchOverlay(
             modifier = Modifier
                 .fillMaxSize()
                 .pointerInput(systemType, hapticEnabled) {
+                    val pauseRadius = cellSize * 0.22f
+
                     coroutineScope {
                         awaitPointerEventScope {
                             // Track long-press jobs for center cell
@@ -125,8 +129,11 @@ fun TouchOverlay(
                                             )
 
                                             if (inCenter) {
-                                                // For GBA, check circle halves first (tap)
-                                                if (isGba) {
+                                                val cdx = pos.x - screenPx / 2f
+                                                val cdy = pos.y - screenPx / 2f
+                                                val inPause = cdx * cdx + cdy * cdy <= pauseRadius * pauseRadius
+
+                                                if (isGba && !inPause) {
                                                     val circleBtn = hitTestCircle(
                                                         pos, screenPx
                                                     )
@@ -168,6 +175,21 @@ fun TouchOverlay(
                                             // Normal grid hit test
                                             val btn = hitTestGrid(pos, cellSize, grid)
 
+                                            // Pressing a locked button unlocks it
+                                            if (btn != null && btn in lockedButtons) {
+                                                if (event.type == PointerEventType.Press) {
+                                                    lockedButtons.remove(btn)
+                                                    onButtonRelease(btn)
+                                                    if (hapticEnabled) haptic.performHapticFeedback(
+                                                        HapticFeedbackType.TextHandleMove
+                                                    )
+                                                }
+                                                val prev = activeButtons.remove(change.id)
+                                                if (prev != null && prev !in lockedButtons) onButtonRelease(prev)
+                                                change.consume()
+                                                continue
+                                            }
+
                                             val prevBtn = activeButtons[change.id]
                                             if (btn != prevBtn) {
                                                 if (prevBtn != null) onButtonRelease(prevBtn)
@@ -188,10 +210,38 @@ fun TouchOverlay(
                                     }
 
                                     PointerEventType.Release -> {
+                                        // First pass: detect pause taps → toggle locks
                                         for (change in changes) {
-                                            longPressJobs.remove(change.id)?.cancel()
+                                            if (change.pressed) continue
+                                            val job = longPressJobs.remove(change.id)
+                                            val wasCenterTap = job != null && job.isActive
+                                            job?.cancel()
+                                            if (wasCenterTap) {
+                                                val toToggle = activeButtons.values
+                                                    .filter { it != ButtonId.START && it != ButtonId.SELECT }
+                                                    .toSet()
+                                                for (btn in toToggle) {
+                                                    if (btn in lockedButtons) {
+                                                        lockedButtons.remove(btn)
+                                                        onButtonRelease(btn)
+                                                    } else {
+                                                        lockedButtons[btn] = Unit
+                                                    }
+                                                }
+                                                if (toToggle.isNotEmpty() && hapticEnabled) {
+                                                    haptic.performHapticFeedback(
+                                                        HapticFeedbackType.TextHandleMove
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        // Second pass: release active buttons (skip locked)
+                                        for (change in changes) {
+                                            if (change.pressed) continue
                                             val prevBtn = activeButtons.remove(change.id)
-                                            if (prevBtn != null) onButtonRelease(prevBtn)
+                                            if (prevBtn != null && prevBtn !in lockedButtons) {
+                                                onButtonRelease(prevBtn)
+                                            }
                                             change.consume()
                                         }
                                     }
