@@ -73,6 +73,7 @@ import androidx.navigation.navArgument
 import androidx.wear.remote.interactions.RemoteActivityHelper
 import com.anaglych.squintboyadvance.MobileBillingManager
 import com.anaglych.squintboyadvance.PurchaseRequestSignal
+import com.anaglych.squintboyadvance.ReviewRequestSignal
 import com.anaglych.squintboyadvance.WatchPongSignal
 import com.anaglych.squintboyadvance.shared.model.SystemType
 import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
@@ -85,7 +86,9 @@ import com.anaglych.squintboyadvance.ui.theme.DarkNavy
 import com.anaglych.squintboyadvance.ui.theme.GbGreen
 import com.anaglych.squintboyadvance.ui.settings.LicensesScreen
 import com.google.android.gms.wearable.Wearable
+import com.anaglych.squintboyadvance.BuildConfig
 import com.google.android.play.core.review.ReviewManagerFactory
+import com.google.android.play.core.review.testing.FakeReviewManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -344,24 +347,26 @@ fun CompanionApp(
     LaunchedEffect(shouldRequestReview) {
         if (shouldRequestReview && activity != null) {
             try {
-                val manager = ReviewManagerFactory.create(activity)
+                val manager = if (BuildConfig.DEBUG) FakeReviewManager(activity) else ReviewManagerFactory.create(activity)
                 val reviewInfo: ReviewInfo = manager.requestReviewFlow().await()
                 manager.launchReviewFlow(activity, reviewInfo).await()
             } catch (_: Exception) { }
             transferViewModel.onReviewHandled()
         }
     }
-
-    val shouldRequestReview by transferViewModel.shouldRequestReview.collectAsStateWithLifecycle()
-    val activity = LocalContext.current as? Activity
-    LaunchedEffect(shouldRequestReview) {
-        if (shouldRequestReview && activity != null) {
+    LaunchedEffect(Unit) {
+        ReviewRequestSignal.requests.collect {
             try {
-                val manager = ReviewManagerFactory.create(activity)
-                val reviewInfo: ReviewInfo = manager.requestReviewFlow().await()
-                manager.launchReviewFlow(activity, reviewInfo).await()
+                if (activity != null) {
+                    // Wait for the activity window to be fully attached and focused —
+                    // launchReviewFlow silently no-ops if called before the window is ready.
+                    delay(800)
+                    val manager = if (BuildConfig.DEBUG) FakeReviewManager(activity) else ReviewManagerFactory.create(activity)
+                    val reviewInfo: ReviewInfo = manager.requestReviewFlow().await()
+                    manager.launchReviewFlow(activity, reviewInfo).await()
+                }
             } catch (_: Exception) { }
-            transferViewModel.onReviewHandled()
+            ReviewRequestSignal.consume()
         }
     }
 
@@ -387,7 +392,16 @@ fun CompanionApp(
                         }
                     }
                 },
-                actions = {},
+                actions = {
+                    if (BuildConfig.DEBUG && isRootRoute) {
+                        TextButton(onClick = { billingManager.debugSetPro(!isPro) }) {
+                            Text(
+                                if (isPro) "PRO" else "FREE",
+                                color = if (isPro) Color(0xFF9BBC0F) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.primary,

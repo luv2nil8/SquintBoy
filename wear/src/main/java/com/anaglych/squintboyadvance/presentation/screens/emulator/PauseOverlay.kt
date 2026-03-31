@@ -49,6 +49,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Gamepad
 import androidx.compose.material.icons.filled.Vibration
@@ -115,6 +116,7 @@ import kotlin.math.sign
 import kotlin.math.sin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material.icons.filled.Lock
@@ -122,11 +124,11 @@ import com.anaglych.squintboyadvance.shared.model.DemoLimits
 import com.anaglych.squintboyadvance.shared.model.GbColorPalette
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 
-import com.anaglych.squintboyadvance.presentation.theme.Crimson
+import com.anaglych.squintboyadvance.presentation.theme.DangerCrimson
 import com.anaglych.squintboyadvance.presentation.theme.GbaBadge
 import com.anaglych.squintboyadvance.presentation.theme.SurfaceMedium
 
-private val RED = Crimson
+private val RED = DangerCrimson
 private val BLUE = GbaBadge
 private val CELL_GAP = 6.dp
 
@@ -211,6 +213,7 @@ fun PauseOverlay(
     selectedPaletteIndex: Int,
     onPaletteSelected: (Int) -> Unit,
     onExit: () -> Unit,
+    showRateOnExit: Boolean = false,
     isDemo: Boolean = false,
     onUpgrade: () -> Unit = {},
     sessionRemainingMs: Long = Long.MAX_VALUE,
@@ -448,8 +451,14 @@ fun PauseOverlay(
         ))
         // 7: Reset
         add(PauseAction(Icons.Default.Refresh, "Reset", onReset, iconColor = RED))
-        // 8: Exit
-        add(PauseAction(Icons.Default.Close, "Exit", onExit, backgroundColor = RED.copy(alpha = 0.85f)))
+        // 8: Exit — conditionally shows rate prompt via expander
+        add(PauseAction(
+            icon = Icons.Default.Close,
+            label = "Exit",
+            onClick = onExit,
+            backgroundColor = RED.copy(alpha = 0.85f),
+            expandContent = if (showRateOnExit) ({ RateExpandContent(onRate = onExit, onSkip = onExit) }) else null,
+        ))
         // 9: Palette (GB only)
         if (isGb) {
             add(PauseAction(
@@ -620,6 +629,120 @@ private fun CompactVolumeSlider(
                 imageVector = InlineSliderDefaults.Increase,
                 contentDescription = "Increase",
                 tint = activeColor,
+            )
+        }
+    }
+}
+
+// ── Exit / Rate expand content ──────────────────────────────────────
+
+@Composable
+private fun RateExpandContent(
+    onRate: () -> Unit,
+    onSkip: () -> Unit,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    var sent by remember { mutableStateOf(false) }
+
+    if (!sent) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                "Enjoying Squint Boy?",
+                style = MaterialTheme.typography.caption1,
+                textAlign = TextAlign.Center,
+                color = Color.White,
+            )
+            Text(
+                "Leave a review to help others find the app.",
+                style = MaterialTheme.typography.caption1,
+                textAlign = TextAlign.Center,
+                color = Color.White.copy(alpha = 0.65f),
+            )
+            Chip(
+                modifier = Modifier.height(36.dp),
+                onClick = {
+                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        try {
+                            val nodes = com.google.android.gms.wearable.Wearable
+                                .getNodeClient(context).connectedNodes
+                                .await()
+                            for (node in nodes) {
+                                com.google.android.gms.wearable.Wearable
+                                    .getMessageClient(context)
+                                    .sendMessage(node.id,
+                                        com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants.PATH_TRIGGER_REVIEW,
+                                        byteArrayOf())
+                                    .await()
+                            }
+                        } catch (_: Exception) { }
+                    }
+                    com.anaglych.squintboyadvance.presentation.ReviewTracker
+                        .setState(context, com.anaglych.squintboyadvance.presentation.ReviewState.DONE)
+                    sent = true
+                },
+                colors = ChipDefaults.chipColors(backgroundColor = Color(0xFF9BBC0F)),
+                label = { Text("Rate Me?", style = MaterialTheme.typography.body2) },
+            )
+            Text(
+                "Not now",
+                style = MaterialTheme.typography.caption2,
+                textAlign = TextAlign.Center,
+                color = Color.White.copy(alpha = 0.45f),
+                modifier = Modifier.clickable {
+                    com.anaglych.squintboyadvance.presentation.ReviewTracker
+                        .setState(context, com.anaglych.squintboyadvance.presentation.ReviewState.LATER)
+                    onSkip()
+                },
+            )
+        }
+    } else {
+        // "Check your phone" confirmation with pulse animation
+        val pulse = rememberInfiniteTransition(label = "phonePulse")
+        val ringScale by pulse.animateFloat(
+            initialValue = 1f, targetValue = 1.8f,
+            animationSpec = infiniteRepeatable(tween(1200), RepeatMode.Restart),
+            label = "ringScale",
+        )
+        val ringAlpha by pulse.animateFloat(
+            initialValue = 0.5f, targetValue = 0f,
+            animationSpec = infiniteRepeatable(tween(1200), RepeatMode.Restart),
+            label = "ringAlpha",
+        )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.clickable(onClick = onRate),
+        ) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(48.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .graphicsLayer { scaleX = ringScale; scaleY = ringScale }
+                        .clip(CircleShape)
+                        .background(Color(0xFF9BBC0F).copy(alpha = ringAlpha)),
+                )
+                Icon(
+                    Icons.Default.PhoneAndroid,
+                    contentDescription = null,
+                    tint = Color(0xFF9BBC0F),
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+            Text(
+                "Check your phone",
+                style = MaterialTheme.typography.caption2,
+                textAlign = TextAlign.Center,
+                color = Color.White.copy(alpha = 0.7f),
+            )
+            Text(
+                "Tap to dismiss",
+                style = MaterialTheme.typography.caption2,
+                textAlign = TextAlign.Center,
+                color = Color.White.copy(alpha = 0.35f),
             )
         }
     }
@@ -869,16 +992,20 @@ private fun SettingsExpandContent(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
+        Text(
+            "Settings Overrides",
+            style = MaterialTheme.typography.caption2,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
         // Standard Wear OS toggle chip — matches the rest of the app's switch style
         ToggleChip(
             checked = isRomMode,
             onCheckedChange = onSetRomMode,
-            label = { Text("Settings Override", style = MaterialTheme.typography.caption2) },
-            secondaryLabel = {
+            label = {
                 Text(
-                    if (isRomMode) "ROM-specific settings" else "Using/Editing Globals",
-                    style = MaterialTheme.typography.caption3,
-                    color = Color.White.copy(alpha = 0.55f),
+                    if (isRomMode) "ROM-specific" else "Global Edit",
+                    style = MaterialTheme.typography.caption2,
                 )
             },
             toggleControl = {
@@ -1738,7 +1865,10 @@ private fun ScrollableHexGrid(
         val gapPx     = with(density) { CELL_GAP.toPx() }
         val cellPx    = (viewportWidth - 2f * edgePx - 2f * gapPx) / 3f
         val expandStartScroll = scrollState.value
-        val openTarget  = scrollTargetFor(activeExpandedIndex, cellPx * 0.5f)
+        // Scroll panel top to the resist margin — predictable position
+        // regardless of which button or how tall the content is.
+        val margin = viewportHeight / 8f
+        val openTarget  = (expandedBaseYPx - margin).coerceAtLeast(0f).toInt()
         val closeTarget = scrollTargetFor(activeExpandedIndex)
 
         var freeScrolling = false
@@ -2134,7 +2264,18 @@ private fun HexButtonLayout(
         } else rows
         val paletteExtraH = ((totalRows - rows) * stepPx * paletteProgress).toInt()
 
-        val contentH = topPad + stepPx * rows + halfStep + topPad + insertHeight + paletteExtraH
+        // Extra bottom padding so the scroll can reach the resist-margin target
+        // for panels on the last row. Without this, maxScrollValue is too small.
+        val margin = viewportHeight / 8
+        val panelPad = if (activeExpandedIndex != null && expandProgress > 0f) {
+            val panelBottom = expandedBaseY + cellPx + panelExtra
+            // How much scroll we need vs how much content we'd have without padding
+            val baseContent = topPad + stepPx * rows + halfStep + topPad + insertHeight + paletteExtraH
+            val neededScroll = (expandedBaseY - margin).coerceAtLeast(0)
+            val neededContent = neededScroll + viewportHeight
+            ((neededContent - baseContent) * expandProgress).toInt().coerceAtLeast(0)
+        } else 0
+        val contentH = topPad + stepPx * rows + halfStep + topPad + insertHeight + paletteExtraH + panelPad
 
         val halfViewport = viewportHeight / 2f
         val deadZone = halfViewport * PauseTuning.DEAD_ZONE

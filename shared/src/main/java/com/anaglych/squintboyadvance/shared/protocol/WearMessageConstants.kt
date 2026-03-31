@@ -49,6 +49,9 @@ object WearMessageConstants {
     // Watch → Phone: asks phone to launch the IAP purchase flow.
     const val PATH_PURCHASE_ON_PHONE = "/purchase/phone"
 
+    // Watch → Phone: asks phone to show the Play in-app review sheet.
+    const val PATH_TRIGGER_REVIEW = "/review/trigger"
+
     // Entitlement sync: phone is authoritative (owns BillingClient).
     // Phone pushes state to watch after purchase or on connect.
     const val PATH_ENTITLEMENT_PUSH = "/entitlement/push"

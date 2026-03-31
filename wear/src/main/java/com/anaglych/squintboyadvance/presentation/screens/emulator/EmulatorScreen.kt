@@ -20,7 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.anaglych.squintboyadvance.presentation.ReviewTracker
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FastForward
 import androidx.wear.compose.material.Icon
@@ -28,6 +27,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.compose.material.CircularProgressIndicator
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
+import com.anaglych.squintboyadvance.presentation.ReviewTracker
 import com.anaglych.squintboyadvance.presentation.EntitlementRepository
 import com.anaglych.squintboyadvance.presentation.SettingsRepository
 import com.anaglych.squintboyadvance.presentation.components.WearSlideToConfirm
@@ -36,7 +36,7 @@ import com.anaglych.squintboyadvance.shared.model.EmulatorSettings
 import com.anaglych.squintboyadvance.shared.model.RomOverrides
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 import com.anaglych.squintboyadvance.shared.model.SystemType
-import com.anaglych.squintboyadvance.presentation.theme.Crimson
+import com.anaglych.squintboyadvance.presentation.theme.DangerCrimson
 
 private enum class PauseUiState { MENU, CONFIRM_RESET, SESSION_EXPIRED, UPGRADE_DETAILS }
 
@@ -83,7 +83,7 @@ fun EmulatorScreen(
     } else settings
 
     val isGba = systemType == SystemType.GBA
-    val scaleMode = if (isGba) effectiveSettings.gbaScaleMode else effectiveSettings.gbScaleMode
+    val scaleMode = if (!isPro) ScaleMode.INTEGER else if (isGba) effectiveSettings.gbaScaleMode else effectiveSettings.gbScaleMode
     val customScale = if (isGba) effectiveSettings.gbaCustomScale else effectiveSettings.gbCustomScale
     val filterEnabled = if (isGba) effectiveSettings.gbaFilterEnabled else effectiveSettings.gbFilterEnabled
 
@@ -108,8 +108,8 @@ fun EmulatorScreen(
     // Pause sub-screen state — resets to MENU whenever the emulator resumes
     var pauseUiState by rememberSaveable { mutableStateOf(PauseUiState.MENU) }
     var pauseGhostProgress by remember { mutableFloatStateOf(0f) }
-    var showReviewPrompt by remember { mutableStateOf(false) }
-    val reviewContext = LocalContext.current
+    val showRateOnExit = remember { ReviewTracker.shouldPrompt(context) }
+    LaunchedEffect(Unit) { ReviewTracker.sessionStarted(context) }
     LaunchedEffect(state) {
         if (state == EmulatorState.RUNNING) pauseUiState = PauseUiState.MENU
     }
@@ -123,7 +123,6 @@ fun EmulatorScreen(
             pauseUiState = PauseUiState.MENU
         }
     }
-    LaunchedEffect(Unit) { ReviewTracker.sessionStarted(reviewContext) }
 
     LaunchedEffect(romId) {
         viewModel.loadRom(romId, romTitle)
@@ -298,12 +297,10 @@ fun EmulatorScreen(
                         },
                         onExit = {
                             viewModel.stop()
-                            if (ReviewTracker.shouldPromptOnExit(reviewContext)) {
-                                showReviewPrompt = true
-                            } else {
-                                onExit()
-                            }
+                            ReviewTracker.recordExit(context)
+                            onExit()
                         },
+                        showRateOnExit = showRateOnExit,
                         isDemo = !isPro,
                         onUpgrade = { pauseUiState = PauseUiState.UPGRADE_DETAILS },
                         sessionRemainingMs = sessionRemainingMs,
@@ -311,9 +308,9 @@ fun EmulatorScreen(
                     )
 
                     PauseUiState.CONFIRM_RESET -> WearSlideToConfirm(
-                        slideText = "Slide to reset",
-                        warningText = "The game will restart from the beginning. Your save file is preserved.",
-                        confirmColor = Crimson,
+                        slideText = "Slide to confirm",
+                        warningText = "Restart the emulator?",
+                        confirmColor = DangerCrimson,
                         onConfirmed = { viewModel.resetRom() },
                         onDismiss = { pauseUiState = PauseUiState.MENU },
                     )
@@ -344,7 +341,7 @@ fun EmulatorScreen(
             EmulatorState.ERROR -> {
                 Text(
                     text = errorMessage ?: "Unknown error",
-                    color = Crimson,
+                    color = DangerCrimson,
                     style = MaterialTheme.typography.body2,
                 )
             }
@@ -354,8 +351,5 @@ fun EmulatorScreen(
             }
         }
 
-        if (showReviewPrompt) {
-            ReviewPromptDialog(onDismiss = onExit)
-        }
     }
 }

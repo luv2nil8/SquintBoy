@@ -1,6 +1,7 @@
 package com.anaglych.squintboyadvance.presentation.theme
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.wear.compose.material.Colors
 import androidx.wear.compose.material.MaterialTheme
 
