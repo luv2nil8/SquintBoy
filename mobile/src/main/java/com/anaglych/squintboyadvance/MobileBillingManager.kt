@@ -172,6 +172,8 @@ class MobileBillingManager private constructor(context: Context) {
         pushEntitlementToWatch()
     }
 
+    fun debugSetPro(isPro: Boolean) = setProState(isPro)
+
     fun launchPurchase(activity: Activity) {
         val productList = listOf(
             QueryProductDetailsParams.Product.newBuilder()

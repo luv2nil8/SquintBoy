@@ -260,7 +260,7 @@ fun GbaCircleLabels(
             .size(circleDp),
         contentAlignment = Alignment.Center
     ) {
-        Box(modifier = Modifier.offset(x = -(circleDp / 4))) {
+        Box(modifier = Modifier.offset(x = -(circleDp / 3.14f))) {
             OutlinedLabel(
                 text = "SE",
                 alpha = alpha * labelOpacity,
@@ -268,7 +268,7 @@ fun GbaCircleLabels(
                 outlineColor = Color.White
             )
         }
-        Box(modifier = Modifier.offset(x = circleDp / 4)) {
+        Box(modifier = Modifier.offset(x = circleDp / 3.14f)) {
             OutlinedLabel(
                 text = "ST",
                 alpha = alpha * labelOpacity,
@@ -295,9 +295,9 @@ private fun OutlinedLabel(
             text = text,
             color = outlineColor.copy(alpha = alpha),
             fontSize = fontSize.sp,
-            textAlign = TextAlign.Center,
             style = TextStyle(
-                drawStyle = Stroke(width = 3f, join = StrokeJoin.Round)
+                drawStyle = Stroke(width = 3f, join = StrokeJoin.Round),
+                textAlign = TextAlign.Center
             )
         )
         // Black fill
@@ -305,7 +305,9 @@ private fun OutlinedLabel(
             text = text,
             color = Color.Black.copy(alpha = alpha),
             fontSize = fontSize.sp,
-            textAlign = TextAlign.Center
+            style = TextStyle(
+                textAlign = TextAlign.Center
+            )
         )
     }
 }

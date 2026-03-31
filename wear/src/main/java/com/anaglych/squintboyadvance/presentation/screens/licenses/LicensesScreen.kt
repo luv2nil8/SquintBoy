@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,8 +13,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import com.anaglych.squintboyadvance.presentation.EntitlementRepository
+import com.anaglych.squintboyadvance.wear.BuildConfig
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -33,8 +38,8 @@ import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.TimeText
 import androidx.wear.compose.material.Vignette
-import androidx.wear.compose.material.VignettePosition
 import kotlinx.coroutines.launch
+import androidx.wear.compose.material.VignettePosition
 
 private data class LicenseEntry(
     val name: String,
@@ -78,6 +83,8 @@ fun WearLicensesScreen() {
     val focusRequester = remember { FocusRequester() }
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
+    val entitlementRepo = EntitlementRepository.getInstance(context)
+    val isPro by entitlementRepo.isPro.collectAsState()
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
@@ -105,6 +112,19 @@ fun WearLicensesScreen() {
                     style = MaterialTheme.typography.title3,
                     fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center,
+                )
+            }
+
+if (BuildConfig.DEBUG) item {
+                Text(
+                    if (isPro) "Pro: ON  (tap to disable)" else "Pro: OFF  (tap to enable)",
+                    style = MaterialTheme.typography.caption1,
+                    textAlign = TextAlign.Center,
+                    color = if (isPro) Color(0xFF9BBC0F) else MaterialTheme.colors.onSurface.copy(alpha = 0.5f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .clickable { entitlementRepo.handleEntitlementPush(!isPro) },
                 )
             }
 

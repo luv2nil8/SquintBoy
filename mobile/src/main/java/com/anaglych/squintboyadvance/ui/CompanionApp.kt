@@ -52,6 +52,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -72,6 +73,7 @@ import androidx.navigation.navArgument
 import androidx.wear.remote.interactions.RemoteActivityHelper
 import com.anaglych.squintboyadvance.MobileBillingManager
 import com.anaglych.squintboyadvance.PurchaseRequestSignal
+import com.anaglych.squintboyadvance.ReviewRequestSignal
 import com.anaglych.squintboyadvance.WatchPongSignal
 import com.anaglych.squintboyadvance.shared.model.SystemType
 import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
@@ -84,6 +86,9 @@ import com.anaglych.squintboyadvance.ui.theme.DarkNavy
 import com.anaglych.squintboyadvance.ui.theme.GbGreen
 import com.anaglych.squintboyadvance.ui.settings.LicensesScreen
 import com.google.android.gms.wearable.Wearable
+import com.anaglych.squintboyadvance.BuildConfig
+import com.google.android.play.core.review.ReviewManagerFactory
+import com.google.android.play.core.review.testing.FakeReviewManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -93,6 +98,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import com.google.android.play.core.review.ReviewInfo
 
 private const val ROUTE_ROMS = "roms"
 private const val ROUTE_LICENSES = "licenses"
@@ -304,6 +310,7 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
 fun CompanionApp(
     connectionViewModel: ConnectionViewModel = viewModel(),
     watchRomListViewModel: WatchRomListViewModel = viewModel(),
+    transferViewModel: RomTransferViewModel = viewModel(),
 ) {
     val navController = rememberNavController()
     val navBackStack by navController.currentBackStackEntryAsState()
@@ -335,6 +342,34 @@ fun CompanionApp(
         if (isPro) showUpgradeOverlay = false
     }
 
+    val shouldRequestReview by transferViewModel.shouldRequestReview.collectAsStateWithLifecycle()
+    val activity = LocalContext.current as? Activity
+    LaunchedEffect(shouldRequestReview) {
+        if (shouldRequestReview && activity != null) {
+            try {
+                val manager = if (BuildConfig.DEBUG) FakeReviewManager(activity) else ReviewManagerFactory.create(activity)
+                val reviewInfo: ReviewInfo = manager.requestReviewFlow().await()
+                manager.launchReviewFlow(activity, reviewInfo).await()
+            } catch (_: Exception) { }
+            transferViewModel.onReviewHandled()
+        }
+    }
+    LaunchedEffect(Unit) {
+        ReviewRequestSignal.requests.collect {
+            try {
+                if (activity != null) {
+                    // Wait for the activity window to be fully attached and focused —
+                    // launchReviewFlow silently no-ops if called before the window is ready.
+                    delay(800)
+                    val manager = if (BuildConfig.DEBUG) FakeReviewManager(activity) else ReviewManagerFactory.create(activity)
+                    val reviewInfo: ReviewInfo = manager.requestReviewFlow().await()
+                    manager.launchReviewFlow(activity, reviewInfo).await()
+                }
+            } catch (_: Exception) { }
+            ReviewRequestSignal.consume()
+        }
+    }
+
     // Banner is shown for WATCH_NO_APP (always) or NO_WATCH (first-time users only)
     val showBanner = when (connectionState) {
         WatchConnectionState.WATCH_NO_APP -> true
@@ -357,7 +392,16 @@ fun CompanionApp(
                         }
                     }
                 },
-                actions = {},
+                actions = {
+                    if (BuildConfig.DEBUG && isRootRoute) {
+                        TextButton(onClick = { billingManager.debugSetPro(!isPro) }) {
+                            Text(
+                                if (isPro) "PRO" else "FREE",
+                                color = if (isPro) Color(0xFF9BBC0F) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.primary,

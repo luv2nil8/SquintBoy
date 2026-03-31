@@ -52,6 +52,14 @@ class MobileListenerService : WearableListenerService() {
                 startActivity(intent)
                 Log.i(TAG, "Purchase requested from watch — launching activity")
             }
+            WearMessageConstants.PATH_TRIGGER_REVIEW -> {
+                ReviewRequestSignal.emit()
+                val intent = Intent(this, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                }
+                startActivity(intent)
+                Log.i(TAG, "Review requested from watch — launching activity")
+            }
             WearMessageConstants.PATH_ENTITLEMENT_REQUEST -> {
                 // Watch asks for current entitlement status (startup sync)
                 val billing = MobileBillingManager.getInstance(this)

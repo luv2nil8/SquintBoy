@@ -17,7 +17,7 @@ val GbaBadge = Color(0xFF6A5ACD)
 val GbcBadge = Color(0xFFDA70D6)
 val GbBadge = GbGreenDark
 
-val Crimson = Color(0xFFEC1358)
 val WarningAmber = Color(0xFFFFB74D)
 val NearBlack = Color(0xFF1A1A1A)
 val ScrimBlack = Color(0xCC000000)
+val DangerCrimson = Color(0xFFEC1358)

@@ -1,6 +1,7 @@
 package com.anaglych.squintboyadvance.ui
 
 import android.app.Application
+import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Log
@@ -21,6 +22,8 @@ import java.util.concurrent.ConcurrentHashMap
 import com.anaglych.squintboyadvance.shared.model.SystemType
 import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
 import java.io.OutputStream
+import java.util.zip.Deflater
+import java.util.zip.DeflaterOutputStream
 
 enum class TransferStatus { PENDING, SENDING, COMPLETE, ERROR }
 
@@ -48,6 +51,11 @@ class RomTransferViewModel(application: Application) : AndroidViewModel(applicat
     private val _sending = MutableStateFlow(false)
     val sending: StateFlow<Boolean> = _sending.asStateFlow()
 
+    private val _shouldRequestReview = MutableStateFlow(false)
+    val shouldRequestReview: StateFlow<Boolean> = _shouldRequestReview.asStateFlow()
+
+    private val reviewPrefs = application.getSharedPreferences("mobile_review", Context.MODE_PRIVATE)
+
     private val nodeClient = Wearable.getNodeClient(application)
     private val channelClient = Wearable.getChannelClient(application)
 
@@ -60,6 +68,9 @@ class RomTransferViewModel(application: Application) : AndroidViewModel(applicat
                 pendingTimeouts.remove(result.filename)?.cancel()
                 if (result.success) {
                     updateRomStatusByName(result.filename, TransferStatus.COMPLETE, progress = 1f)
+                    val count = reviewPrefs.getInt("upload_success_count", 0) + 1
+                    reviewPrefs.edit().putInt("upload_success_count", count).apply()
+                    if (count == 3) _shouldRequestReview.value = true
                 } else {
                     updateRomStatusByName(
                         result.filename, TransferStatus.ERROR,
@@ -96,6 +107,10 @@ class RomTransferViewModel(application: Application) : AndroidViewModel(applicat
         _roms.update { it + newItems }
     }
 
+    fun onReviewHandled() {
+        _shouldRequestReview.value = false
+    }
+
     fun removeRom(item: RomTransferItem) {
         _roms.update { list -> list.filter { it.uri != item.uri } }
     }
@@ -130,13 +145,15 @@ class RomTransferViewModel(application: Application) : AndroidViewModel(applicat
                 channelClient.openChannel(node.id, WearMessageConstants.PATH_ROM_TRANSFER).await()
 
             try {
-                val outputStream: OutputStream =
+                val rawOut: OutputStream =
                     channelClient.getOutputStream(channel).await()
+                val out: OutputStream =
+                    DeflaterOutputStream(rawOut, Deflater(Deflater.BEST_SPEED, true), 8192)
 
-                outputStream.use { out ->
-                    // Write filename + filesize headers
-                    out.write("${item.displayName}\n".toByteArray(Charsets.UTF_8))
-                    out.write("${item.size}\n".toByteArray(Charsets.UTF_8))
+                out.use { stream ->
+                    // Write filename + filesize headers (uncompressed size for validation)
+                    stream.write("${item.displayName}\n".toByteArray(Charsets.UTF_8))
+                    stream.write("${item.size}\n".toByteArray(Charsets.UTF_8))
 
                     // Stream ROM bytes
                     val resolver = getApplication<Application>().contentResolver
@@ -145,7 +162,7 @@ class RomTransferViewModel(application: Application) : AndroidViewModel(applicat
                         var totalWritten = 0L
                         var read: Int
                         while (input.read(buffer).also { read = it } != -1) {
-                            out.write(buffer, 0, read)
+                            stream.write(buffer, 0, read)
                             totalWritten += read
                             if (item.size > 0) {
                                 updateRomStatus(

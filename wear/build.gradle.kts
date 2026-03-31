@@ -21,8 +21,8 @@ android {
         applicationId = "com.anaglych.squintboyadvance"
         minSdk = 30
         targetSdk = 36
-        versionCode = 219
-        versionName = "1.2.4"
+        versionCode = 222
+        versionName = "1.2.5"
     }
 
     signingConfigs {
@@ -62,6 +62,7 @@ android {
     useLibrary("wear-sdk")
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     packaging {
         jniLibs {

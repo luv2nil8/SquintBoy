@@ -21,8 +21,8 @@ android {
         applicationId = "com.anaglych.squintboyadvance"
         minSdk = 30
         targetSdk = 36
-        versionCode = 119
-        versionName = "1.2.4"
+        versionCode = 122
+        versionName = "1.2.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -56,6 +56,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -77,6 +78,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation("androidx.navigation:navigation-compose:2.8.5")
     implementation(libs.billing.ktx)
+    implementation(libs.play.review)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

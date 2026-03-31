@@ -15,7 +15,10 @@ import kotlinx.serialization.json.Json
 import java.io.BufferedInputStream
 import java.io.DataOutputStream
 import java.io.File
+import java.io.InputStream
 import java.nio.ByteBuffer
+import java.util.zip.Inflater
+import java.util.zip.InflaterInputStream
 
 class RomReceiverService : WearableListenerService() {
 
@@ -71,8 +74,9 @@ class RomReceiverService : WearableListenerService() {
         var safeName = ""
 
         try {
+            val rawStream: InputStream = Tasks.await(Wearable.getChannelClient(this).getInputStream(channel))
             val inputStream = BufferedInputStream(
-                Tasks.await(Wearable.getChannelClient(this).getInputStream(channel))
+                InflaterInputStream(rawStream, Inflater(true))
             )
 
             val filename = readLine(inputStream)

@@ -48,7 +48,7 @@ import androidx.wear.compose.material.Button
 import androidx.wear.compose.material.ButtonDefaults
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.Text
-import com.anaglych.squintboyadvance.presentation.theme.Crimson
+import com.anaglych.squintboyadvance.presentation.theme.DangerCrimson
 import com.anaglych.squintboyadvance.presentation.theme.WarningAmber
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -56,7 +56,7 @@ import kotlinx.coroutines.launch
 private const val SLIDE_INITIAL       = 0.12f   // resting fill — signals interactivity
 private const val SLIDE_PULSE_AMP     = 0.07f   // single-breath amplitude
 private const val SLIDE_PULSE_DELAY   = 500L    // ms before pulse begins
-private const val SLIDE_THRESHOLD     = 0.90f   // absolute position to fire
+private const val SLIDE_THRESHOLD     = 1.0f    // absolute position to fire
 
 /**
  * Full-screen slide-to-confirm overlay for Wear OS.
@@ -70,7 +70,7 @@ private const val SLIDE_THRESHOLD     = 0.90f   // absolute position to fire
 fun WearSlideToConfirm(
     slideText: String = "Slide to confirm",
     warningText: String? = null,
-    confirmColor: Color = Crimson,
+    confirmColor: Color = DangerCrimson,
     onConfirmed: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,

@@ -19,9 +19,15 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import com.anaglych.squintboyadvance.MobileBillingManager
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -88,12 +94,32 @@ private val LICENSES = listOf(
 @Composable
 fun LicensesScreen() {
     val context = LocalContext.current
+    val billingManager = MobileBillingManager.getInstance(context)
+    val isPro by billingManager.isPro.collectAsState()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Pro override",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF9BBC0F),
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(
+                    checked = isPro,
+                    onCheckedChange = { billingManager.debugSetPro(it) },
+                )
+            }
+        }
+
         item {
             Text(
                 "Open Source Licenses",
