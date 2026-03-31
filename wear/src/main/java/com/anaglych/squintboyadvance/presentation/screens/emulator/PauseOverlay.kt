@@ -2075,7 +2075,7 @@ private fun HexButtonLayout(
         val margin = viewportHeight / 8
         val panelPad = if (activeExpandedIndex != null && expandProgress > 0f) {
             val baseContent = topPad + stepPx * rows + halfStep + topPad + insertHeight + paletteExtraH
-            val neededScroll = (expandedBaseYPx - margin).coerceAtLeast(0)
+            val neededScroll = (expandedBaseY - margin).coerceAtLeast(0)
             val neededContent = neededScroll + viewportHeight
             ((neededContent - baseContent) * expandProgress).toInt().coerceAtLeast(0)
         } else 0
