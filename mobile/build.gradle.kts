@@ -21,8 +21,8 @@ android {
         applicationId = "com.anaglych.squintboyadvance"
         minSdk = 30
         targetSdk = 36
-        versionCode = 120
-        versionName = "1.2.4"
+        versionCode = 122
+        versionName = "1.2.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
