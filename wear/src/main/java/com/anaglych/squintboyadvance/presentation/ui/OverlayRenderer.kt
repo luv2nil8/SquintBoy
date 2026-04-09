@@ -512,6 +512,153 @@ private fun OutlinedLabel(
         )
     }
 }
+// ── Layout 3: hemicircle A/B + arc Start/Select/L/R ────────────────
+
+/** Radius of the Start/Select (and GBA L/R) arc band in Layout 3 — half the screen width. */
+fun layout3ArcRadius(screenPx: Float) = screenPx / 4f
+
+/**
+ * Draws Layout 3 overlay:
+ * - B (left watch hemicircle) and A (right watch hemicircle) dominate the display
+ * - Start/Select: quarter-circles forming a semicircle on the bottom edge, centered
+ * - GBA: L/R mirror of Start/Select on the top edge
+ * - Two cutout circles (safe d-pad drag zones) vertically centred at ¼ and ¾ screen width
+ */
+fun DrawScope.drawLayout3(
+    screenPx: Float,
+    isGba: Boolean,
+    dpadRadius: Float,
+    pauseRadius: Float,
+    alpha: Float,
+    buttonOpacity: Float,
+    pressedOpacity: Float,
+    pressedButtons: Set<ButtonId>,
+    outlineColor: Color,
+    pausePath: Path,
+) {
+    val cx = screenPx / 2f
+    val cy = screenPx / 2f
+    val arcR = layout3ArcRadius(screenPx)
+    val cutoutLx = screenPx / 4f
+    val cutoutRx = 3f * screenPx / 4f
+
+    // ── Shared clip path builders ────────────────────────────────────
+    val bottomArcClip = Path().apply {
+        addOval(Rect(cx - arcR, screenPx - arcR, cx + arcR, screenPx + arcR))
+    }
+    val topArcClip = Path().apply {
+        addOval(Rect(cx - arcR, -arcR, cx + arcR, arcR))
+    }
+    val leftHalf  = Path().apply { addRect(Rect(0f, 0f, cx, screenPx)) }
+    val rightHalf = Path().apply { addRect(Rect(cx, 0f, screenPx, screenPx)) }
+
+    // ── Bottom arc: Select (left quarter) + Start (right quarter) ────
+    val seIsPressed = ButtonId.SELECT in pressedButtons
+    val stIsPressed = ButtonId.START in pressedButtons
+    val seOpacity = if (seIsPressed) pressedOpacity else buttonOpacity
+    val stOpacity = if (stIsPressed) pressedOpacity else buttonOpacity
+
+    clipPath(leftHalf) {
+        if (seIsPressed) drawPath(bottomArcClip, Color.White.copy(alpha = alpha * pressedOpacity))
+        drawPath(bottomArcClip, color = outlineColor.copy(alpha = alpha * seOpacity * OUTLINE_ALPHA),
+            style = Stroke(width = OUTLINE_WIDTH, join = StrokeJoin.Round))
+    }
+    clipPath(rightHalf) {
+        if (stIsPressed) drawPath(bottomArcClip, Color.White.copy(alpha = alpha * pressedOpacity))
+        drawPath(bottomArcClip, color = outlineColor.copy(alpha = alpha * stOpacity * OUTLINE_ALPHA),
+            style = Stroke(width = OUTLINE_WIDTH, join = StrokeJoin.Round))
+    }
+    drawLine(
+        color = outlineColor.copy(alpha = alpha * ((seOpacity + stOpacity) / 2f) * OUTLINE_ALPHA),
+        start = Offset(cx, screenPx - arcR), end = Offset(cx, screenPx),
+        strokeWidth = OUTLINE_WIDTH,
+    )
+
+    // ── Top arc: L (left quarter) + R (right quarter) — GBA only ─────
+    if (isGba) {
+        val lIsPressed = ButtonId.L in pressedButtons
+        val rIsPressed = ButtonId.R in pressedButtons
+        val lOpacity = if (lIsPressed) pressedOpacity else buttonOpacity
+        val rOpacity = if (rIsPressed) pressedOpacity else buttonOpacity
+
+        clipPath(leftHalf) {
+            if (lIsPressed) drawPath(topArcClip, Color.White.copy(alpha = alpha * pressedOpacity))
+            drawPath(topArcClip, color = outlineColor.copy(alpha = alpha * lOpacity * OUTLINE_ALPHA),
+                style = Stroke(width = OUTLINE_WIDTH, join = StrokeJoin.Round))
+        }
+        clipPath(rightHalf) {
+            if (rIsPressed) drawPath(topArcClip, Color.White.copy(alpha = alpha * pressedOpacity))
+            drawPath(topArcClip, color = outlineColor.copy(alpha = alpha * rOpacity * OUTLINE_ALPHA),
+                style = Stroke(width = OUTLINE_WIDTH, join = StrokeJoin.Round))
+        }
+        drawLine(
+            color = outlineColor.copy(alpha = alpha * ((lOpacity + rOpacity) / 2f) * OUTLINE_ALPHA),
+            start = Offset(cx, 0f), end = Offset(cx, arcR),
+            strokeWidth = OUTLINE_WIDTH,
+        )
+    }
+
+    // ── Cutout circle outlines (safe d-pad drag zones) ────────────────
+    val cutoutAlpha = buttonOpacity * 0.7f
+    drawCircle(
+        color = outlineColor.copy(alpha = alpha * cutoutAlpha * OUTLINE_ALPHA),
+        radius = pauseRadius,
+        center = Offset(cutoutLx, cy),
+        style = Stroke(width = OUTLINE_WIDTH),
+    )
+    drawCircle(
+        color = outlineColor.copy(alpha = alpha * cutoutAlpha * OUTLINE_ALPHA),
+        radius = pauseRadius,
+        center = Offset(cutoutRx, cy),
+        style = Stroke(width = OUTLINE_WIDTH),
+    )
+}
+
+/**
+ * Labels for Layout 3 zones.
+ */
+@Composable
+fun Layout3Labels(
+    isGba: Boolean,
+    screenPx: Float,
+    dpadRadius: Float,
+    alpha: Float,
+    labelOpacity: Float,
+    labelSize: Float,
+) {
+    val density = LocalDensity.current
+    val cx = screenPx / 2f
+    val arcR = layout3ArcRadius(screenPx)
+
+    // Start/Select and (GBA) L/R arc labels only — A/B/dpad are shown via floating indicator
+    val arcInfo = buildList {
+        add(ButtonId.SELECT to Offset(cx - arcR * 0.5f, screenPx - arcR * 0.5f))
+        add(ButtonId.START  to Offset(cx + arcR * 0.5f, screenPx - arcR * 0.5f))
+        if (isGba) {
+            add(ButtonId.L to Offset(cx - arcR * 0.5f, arcR * 0.5f))
+            add(ButtonId.R to Offset(cx + arcR * 0.5f, arcR * 0.5f))
+        }
+    }
+
+    for ((btnId, centroid) in arcInfo) {
+        val boxSizePx = screenPx / 4f
+        val boxSizeDp = with(density) { boxSizePx.toDp() }
+        val xDp = with(density) { (centroid.x - boxSizePx / 2f).toDp() }
+        val yDp = with(density) { (centroid.y - boxSizePx / 2f).toDp() }
+        Box(
+            modifier = Modifier.offset(x = xDp, y = yDp).size(boxSizeDp),
+            contentAlignment = Alignment.Center,
+        ) {
+            OutlinedLabel(
+                text = labelFor(btnId),
+                alpha = alpha * labelOpacity,
+                fontSize = labelSize,
+                outlineColor = Color.White,
+            )
+        }
+    }
+}
+
 /*
 @Composable
 private fun OutlinedLabel(

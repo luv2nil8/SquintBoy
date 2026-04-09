@@ -100,6 +100,7 @@ fun EmulatorScreen(
     // Pause sub-screen state — resets to MENU whenever the emulator resumes
     var pauseUiState by rememberSaveable { mutableStateOf(PauseUiState.MENU) }
     var pauseGhostProgress by remember { mutableFloatStateOf(0f) }
+    var ghostDemoMode by remember { mutableStateOf(0) }
     LaunchedEffect(state) {
         if (state == EmulatorState.RUNNING) pauseUiState = PauseUiState.MENU
     }
@@ -138,6 +139,7 @@ fun EmulatorScreen(
                     labelSize = settings.controllerLayout.labelSize,
                     hapticEnabled = settings.controllerLayout.hapticFeedback,
                     layoutType = settings.controllerLayout.layoutType,
+                    vdpadThresholdFactor = settings.controllerLayout.vdpadThresholdFactor,
                 )
                 if (ffSpeed >= 2) {
                     Box(
@@ -181,6 +183,8 @@ fun EmulatorScreen(
                             labelSize = settings.controllerLayout.labelSize,
                             hapticEnabled = false,
                             layoutType = settings.controllerLayout.layoutType,
+                            vdpadThresholdFactor = settings.controllerLayout.vdpadThresholdFactor,
+                            ghostDemo = ghostDemoMode,
                         )
                     }
                 }
@@ -233,6 +237,10 @@ fun EmulatorScreen(
                         onSetLayoutType = { type ->
                             settingsRepo.update { it.copy(controllerLayout = it.controllerLayout.copy(layoutType = type)) }
                         },
+                        vdpadThresholdFactor = settings.controllerLayout.vdpadThresholdFactor,
+                        onSetVdpadThreshold = { v ->
+                            settingsRepo.update { it.copy(controllerLayout = it.controllerLayout.copy(vdpadThresholdFactor = v)) }
+                        },
                         onToggleOscVisible = {
                             settingsRepo.update {
                                 it.copy(controllerLayout = it.controllerLayout.copy(visible = !it.controllerLayout.visible))
@@ -284,6 +292,7 @@ fun EmulatorScreen(
                             onExit()
                         },
                         onGhostProgressChange = { pauseGhostProgress = it },
+                        onGhostDemoChange = { ghostDemoMode = it },
                     )
 
                     PauseUiState.CONFIRM_RESET -> WearSlideToConfirm(
