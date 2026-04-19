@@ -48,6 +48,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Brush
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Gamepad
@@ -205,6 +206,9 @@ fun PauseOverlay(
     onSaveRomToGlobal: () -> Unit,
     onResetRomToGlobal: () -> Unit,
     onReset: () -> Unit,
+    // Gamepad
+    gamepadEnabled: Boolean = false,
+    onGamepadSettings: () -> Unit = {},
     selectedPaletteIndex: Int,
     onPaletteSelected: (Int) -> Unit,
     onExit: () -> Unit,
@@ -395,7 +399,16 @@ fun PauseOverlay(
                 )
             },
         ))
-        // 7: Reset
+        // 7: Bluetooth gamepad settings
+        add(PauseAction(
+            Icons.Default.Bluetooth, "BT Pad",
+            onClick = onGamepadSettings,
+            backgroundColor = if (gamepadEnabled) green.copy(alpha = 0.85f)
+                else Color.White.copy(alpha = 0.08f),
+            iconColor = if (gamepadEnabled) Color.White else Color.White.copy(alpha = 0.5f),
+            enabled = gamepadEnabled,
+        ))
+        // 8: Reset
         add(PauseAction(Icons.Default.Refresh, "Reset", onReset, iconColor = RED))
         // 8: Exit
         add(PauseAction(Icons.Default.Close, "Exit", onExit, backgroundColor = RED.copy(alpha = 0.85f)))

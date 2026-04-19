@@ -34,7 +34,7 @@ import com.anaglych.squintboyadvance.shared.model.RomOverrides
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 import com.anaglych.squintboyadvance.shared.model.SystemType
 
-private enum class PauseUiState { MENU, CONFIRM_RESET }
+private enum class PauseUiState { MENU, CONFIRM_RESET, GAMEPAD_SETTINGS }
 
 @Composable
 fun EmulatorScreen(
@@ -54,6 +54,7 @@ fun EmulatorScreen(
     val canUndoLoad by viewModel.canUndoLoad.collectAsState()
     val isRomMode by viewModel.isRomMode.collectAsState()
     val currentRomId by viewModel.currentRomId.collectAsState()
+    val gamepadRecording by viewModel.gamepadRecording.collectAsState()
 
     val settingsRepo = SettingsRepository.getInstance(viewModel.getApplication())
     val settings by settingsRepo.settings.collectAsState()
@@ -276,6 +277,8 @@ fun EmulatorScreen(
                         onSaveRomToGlobal = viewModel::saveRomToGlobal,
                         onResetRomToGlobal = viewModel::resetRomToGlobal,
                         onReset = { pauseUiState = PauseUiState.CONFIRM_RESET },
+                        gamepadEnabled = settings.controllerLayout.gamepadEnabled,
+                        onGamepadSettings = { pauseUiState = PauseUiState.GAMEPAD_SETTINGS },
                         selectedPaletteIndex = effectiveSettings.gbPaletteIndex,
                         onPaletteSelected = { idx ->
                             updateDisplaySetting(
@@ -301,6 +304,18 @@ fun EmulatorScreen(
                         confirmColor = Color(0xFFEC1358),
                         onConfirmed = { viewModel.resetRom() },
                         onDismiss = { pauseUiState = PauseUiState.MENU },
+                    )
+
+                    PauseUiState.GAMEPAD_SETTINGS -> GamepadSettingsScreen(
+                        gamepadMapping = settings.controllerLayout.gamepadMapping,
+                        recordingState = gamepadRecording,
+                        onStartRecordAll = viewModel::startRecordAll,
+                        onSkip = viewModel::skipRecording,
+                        onResetDefaults = viewModel::resetGamepadMapping,
+                        onDismiss = {
+                            viewModel.stopRecording()
+                            pauseUiState = PauseUiState.MENU
+                        },
                     )
                 }
             }

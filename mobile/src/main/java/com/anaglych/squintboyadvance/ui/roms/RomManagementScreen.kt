@@ -27,6 +27,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
@@ -789,6 +790,17 @@ private fun SettingsTabContent(
                             },
                         )
                     },
+                    gamepadEnabled = s.controllerLayout.gamepadEnabled,
+                    onToggleGamepad = {
+                        viewModel.updateSettings(
+                            globalTransform = {
+                                it.copy(controllerLayout = it.controllerLayout.copy(
+                                    gamepadEnabled = !it.controllerLayout.gamepadEnabled
+                                ))
+                            },
+                        )
+                    },
+                    gamepadMapping = s.controllerLayout.gamepadMapping,
                 )
                 if (s.controllerLayout.layoutType >= 1) {
                     HorizontalDivider(
@@ -1526,6 +1538,9 @@ private fun UploadConfirmOverlay(
 private fun ControlSchemeSetting(
     currentScheme: Int,
     onSchemeSelected: (Int) -> Unit,
+    gamepadEnabled: Boolean,
+    onToggleGamepad: () -> Unit,
+    gamepadMapping: com.anaglych.squintboyadvance.shared.model.GamepadMapping,
 ) {
     data class SchemeInfo(val label: String, val name: String, val description: String)
     val schemes = listOf(
@@ -1549,7 +1564,8 @@ private fun ControlSchemeSetting(
             "either drag zone beside the center to anchor the D-pad. Long-press center to pause.",
         ),
     )
-    val scheme = schemes[currentScheme.coerceIn(0, schemes.lastIndex)]
+
+    var btTabActive by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -1561,18 +1577,104 @@ private fun ControlSchemeSetting(
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 schemes.forEachIndexed { idx, info ->
                     FilterChip(
-                        selected = currentScheme == idx,
-                        onClick = { onSchemeSelected(idx) },
+                        selected = !btTabActive && currentScheme == idx,
+                        onClick = { btTabActive = false; onSchemeSelected(idx) },
                         label = { Text(info.label) },
                     )
                 }
+                FilterChip(
+                    selected = btTabActive,
+                    onClick = { btTabActive = !btTabActive },
+                    label = {
+                        Icon(
+                            Icons.Default.Bluetooth,
+                            contentDescription = "Bluetooth Controller",
+                            modifier = Modifier.size(14.dp),
+                        )
+                    },
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        if (btTabActive) {
+            GamepadMobileSection(
+                gamepadEnabled = gamepadEnabled,
+                onToggleGamepad = onToggleGamepad,
+                gamepadMapping = gamepadMapping,
+            )
+        } else {
+            val scheme = schemes[currentScheme.coerceIn(0, schemes.lastIndex)]
+            Text(
+                text = "${scheme.name} — ${scheme.description}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun GamepadMobileSection(
+    gamepadEnabled: Boolean,
+    onToggleGamepad: () -> Unit,
+    gamepadMapping: com.anaglych.squintboyadvance.shared.model.GamepadMapping,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        SwitchSetting("Bluetooth Gamepad", gamepadEnabled, onToggleGamepad)
+        HorizontalDivider(
+            modifier = Modifier.padding(vertical = 4.dp),
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+        )
+        Text(
+            "Button Mapping",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        com.anaglych.squintboyadvance.shared.model.ButtonId.values().forEach { button ->
+            val keyCode = gamepadMapping.forButton(button)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    gamepadButtonLabel(button),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    if (keyCode != null)
+                        com.anaglych.squintboyadvance.shared.model.GamepadMapping.keyCodeLabel(keyCode)
+                    else "—",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (keyCode != null)
+                        MaterialTheme.colorScheme.primary
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                )
             }
         }
         Spacer(Modifier.height(4.dp))
         Text(
-            text = "${scheme.name} — ${scheme.description}",
+            "To remap buttons, open the pause menu on the watch → BT Pad.",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
         )
     }
 }
+
+private fun gamepadButtonLabel(button: com.anaglych.squintboyadvance.shared.model.ButtonId): String =
+    when (button) {
+        com.anaglych.squintboyadvance.shared.model.ButtonId.A          -> "A"
+        com.anaglych.squintboyadvance.shared.model.ButtonId.B          -> "B"
+        com.anaglych.squintboyadvance.shared.model.ButtonId.START      -> "Start"
+        com.anaglych.squintboyadvance.shared.model.ButtonId.SELECT     -> "Select"
+        com.anaglych.squintboyadvance.shared.model.ButtonId.DPAD_UP    -> "D-pad Up"
+        com.anaglych.squintboyadvance.shared.model.ButtonId.DPAD_DOWN  -> "D-pad Down"
+        com.anaglych.squintboyadvance.shared.model.ButtonId.DPAD_LEFT  -> "D-pad Left"
+        com.anaglych.squintboyadvance.shared.model.ButtonId.DPAD_RIGHT -> "D-pad Right"
+        com.anaglych.squintboyadvance.shared.model.ButtonId.L          -> "L"
+        com.anaglych.squintboyadvance.shared.model.ButtonId.R          -> "R"
+    }

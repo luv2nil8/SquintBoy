@@ -1,8 +1,11 @@
 package com.anaglych.squintboyadvance.presentation.screens.emulator
 
 import android.os.Bundle
+import android.view.InputDevice
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.WindowManager
+import com.anaglych.squintboyadvance.shared.model.ButtonId
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -60,12 +63,50 @@ class EmulatorActivity : ComponentActivity() {
         }
     }
 
+    private var prevHatX = 0f
+    private var prevHatY = 0f
+
+    private fun isGamepadSource(event: KeyEvent) =
+        event.source and InputDevice.SOURCE_GAMEPAD != 0 ||
+        event.source and InputDevice.SOURCE_JOYSTICK != 0
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (event != null && isGamepadSource(event) && viewModel.handleGamepadKeyDown(keyCode)) return true
         return when (keyCode) {
             KeyEvent.KEYCODE_VOLUME_UP -> { viewModel.adjustVolume(0.1f); true }
             KeyEvent.KEYCODE_VOLUME_DOWN -> { viewModel.adjustVolume(-0.1f); true }
             else -> super.onKeyDown(keyCode, event)
         }
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+        if (event != null && isGamepadSource(event) && viewModel.handleGamepadKeyUp(keyCode)) return true
+        return super.onKeyUp(keyCode, event)
+    }
+
+    override fun onGenericMotionEvent(event: MotionEvent): Boolean {
+        if (event.source and InputDevice.SOURCE_JOYSTICK == 0 &&
+            event.source and InputDevice.SOURCE_GAMEPAD == 0) return super.onGenericMotionEvent(event)
+        if (!viewModel.controllerLayout.gamepadEnabled) return super.onGenericMotionEvent(event)
+
+        val hatX = event.getAxisValue(MotionEvent.AXIS_HAT_X)
+        val hatY = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
+
+        if (hatX != prevHatX) {
+            if (prevHatX < -0.5f) viewModel.releaseButton(ButtonId.DPAD_LEFT)
+            if (prevHatX > 0.5f)  viewModel.releaseButton(ButtonId.DPAD_RIGHT)
+            if (hatX < -0.5f)      viewModel.pressButton(ButtonId.DPAD_LEFT)
+            else if (hatX > 0.5f)  viewModel.pressButton(ButtonId.DPAD_RIGHT)
+            prevHatX = hatX
+        }
+        if (hatY != prevHatY) {
+            if (prevHatY < -0.5f) viewModel.releaseButton(ButtonId.DPAD_UP)
+            if (prevHatY > 0.5f)  viewModel.releaseButton(ButtonId.DPAD_DOWN)
+            if (hatY < -0.5f)      viewModel.pressButton(ButtonId.DPAD_UP)
+            else if (hatY > 0.5f)  viewModel.pressButton(ButtonId.DPAD_DOWN)
+            prevHatY = hatY
+        }
+        return true
     }
 
     override fun onPause() {

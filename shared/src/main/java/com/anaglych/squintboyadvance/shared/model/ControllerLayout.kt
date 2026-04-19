@@ -22,7 +22,9 @@ data class ControllerLayout(
     val labelSize: Float = 13f,
     val hapticFeedback: Boolean = true,
     val layoutType: Int = 0,
-    val vdpadThresholdFactor: Float = 0.667f
+    val vdpadThresholdFactor: Float = 0.667f,
+    val gamepadEnabled: Boolean = false,
+    val gamepadMapping: GamepadMapping = GamepadMapping(),
 ) {
     companion object {
         fun defaultButtons(): List<ButtonPosition> = listOf(
