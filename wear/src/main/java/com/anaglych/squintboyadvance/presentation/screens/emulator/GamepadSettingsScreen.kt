@@ -4,8 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -47,6 +47,7 @@ import com.anaglych.squintboyadvance.shared.model.GamepadMapping
 
 private val RECORD_RED = Color(0xFFEC1358)
 private val SLOT_BLUE  = Color(0xFF6A5ACD)
+private val PAIR_GREEN = Color(0xFF9BBC0F)
 
 private fun buttonLabel(button: ButtonId): String = when (button) {
     ButtonId.A          -> "A"
@@ -70,9 +71,14 @@ fun GamepadSettingsScreen(
     onResetDefaults: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var showingPairScreen by remember { mutableStateOf(false) }
+
     BackHandler {
-        if (recordingState is EmulatorViewModel.RecordingState.Recording) onSkip()
-        else onDismiss()
+        when {
+            showingPairScreen -> showingPairScreen = false
+            recordingState is EmulatorViewModel.RecordingState.Recording -> onSkip()
+            else -> onDismiss()
+        }
     }
 
     val listState = rememberScalingLazyListState()
@@ -86,9 +92,7 @@ fun GamepadSettingsScreen(
         ScalingLazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                horizontal = 8.dp, vertical = 28.dp
-            ),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 28.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -100,6 +104,19 @@ fun GamepadSettingsScreen(
                     modifier = Modifier.padding(bottom = 4.dp),
                 )
             }
+            // Find & Pair chip — full width
+            item {
+                Chip(
+                    onClick = { showingPairScreen = true },
+                    colors = ChipDefaults.chipColors(backgroundColor = PAIR_GREEN.copy(alpha = 0.85f)),
+                    label = { Text("Find & Pair Controller", fontSize = 11.sp) },
+                    icon = {
+                        Icon(Icons.Default.Bluetooth, contentDescription = null, modifier = Modifier.size(14.dp))
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            // Record All / Defaults row
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Chip(
@@ -107,51 +124,33 @@ fun GamepadSettingsScreen(
                         colors = ChipDefaults.chipColors(backgroundColor = RECORD_RED.copy(alpha = 0.85f)),
                         label = { Text("Record All", fontSize = 11.sp) },
                         icon = {
-                            Icon(
-                                Icons.Default.FiberManualRecord,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
-                            )
+                            Icon(Icons.Default.FiberManualRecord, contentDescription = null, modifier = Modifier.size(14.dp))
                         },
                         modifier = Modifier.weight(1f),
                     )
                     Chip(
                         onClick = onResetDefaults,
-                        colors = ChipDefaults.chipColors(
-                            backgroundColor = Color.White.copy(alpha = 0.10f)
-                        ),
+                        colors = ChipDefaults.chipColors(backgroundColor = Color.White.copy(alpha = 0.10f)),
                         label = { Text("Defaults", fontSize = 11.sp) },
                         icon = {
-                            Icon(
-                                Icons.Default.Refresh,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
-                            )
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
                         },
                         modifier = Modifier.weight(1f),
                     )
                 }
             }
+            // Mapping list
             items(buttons) { button ->
-                MappingRow(
-                    button = button,
-                    keyCode = gamepadMapping.forButton(button),
-                )
+                MappingRow(button = button, keyCode = gamepadMapping.forButton(button))
             }
             item { Spacer(Modifier.height(8.dp)) }
             item {
                 Chip(
                     onClick = onDismiss,
-                    colors = ChipDefaults.chipColors(
-                        backgroundColor = Color.White.copy(alpha = 0.08f)
-                    ),
+                    colors = ChipDefaults.chipColors(backgroundColor = Color.White.copy(alpha = 0.08f)),
                     label = { Text("Done", fontSize = 11.sp) },
                     icon = {
-                        Icon(
-                            Icons.Default.Close,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                        )
+                        Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(14.dp))
                     },
                 )
             }
@@ -164,6 +163,10 @@ fun GamepadSettingsScreen(
                 totalSteps = recordingState.totalSteps,
                 onSkip = onSkip,
             )
+        }
+
+        if (showingPairScreen) {
+            ControllerPairScreen(onDismiss = { showingPairScreen = false })
         }
     }
 }
@@ -236,16 +239,10 @@ private fun RecordingOverlay(
             Spacer(Modifier.height(4.dp))
             Button(
                 onClick = onSkip,
-                colors = ButtonDefaults.buttonColors(
-                    backgroundColor = Color.White.copy(alpha = 0.12f)
-                ),
+                colors = ButtonDefaults.buttonColors(backgroundColor = Color.White.copy(alpha = 0.12f)),
                 modifier = Modifier.width(80.dp),
             ) {
-                Icon(
-                    Icons.Default.SkipNext,
-                    contentDescription = "Skip",
-                    modifier = Modifier.size(16.dp),
-                )
+                Icon(Icons.Default.SkipNext, contentDescription = "Skip", modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("Skip", fontSize = 11.sp)
             }
