@@ -70,18 +70,26 @@ class EmulatorActivity : ComponentActivity() {
         event.source and InputDevice.SOURCE_GAMEPAD != 0 ||
         event.source and InputDevice.SOURCE_JOYSTICK != 0
 
+    // Intercept at the earliest point so the OS never acts on gamepad buttons.
+    // PS Circle → KEYCODE_BACK, Cross → KEYCODE_BUTTON_A, etc. would otherwise
+    // trigger system back/select before reaching onKeyDown.
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (isGamepadSource(event)) {
+            when (event.action) {
+                KeyEvent.ACTION_DOWN -> viewModel.handleGamepadKeyDown(event.keyCode)
+                KeyEvent.ACTION_UP   -> viewModel.handleGamepadKeyUp(event.keyCode)
+            }
+            return true  // always consume — never let the OS touch gamepad events
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (event != null && isGamepadSource(event) && viewModel.handleGamepadKeyDown(keyCode)) return true
         return when (keyCode) {
-            KeyEvent.KEYCODE_VOLUME_UP -> { viewModel.adjustVolume(0.1f); true }
+            KeyEvent.KEYCODE_VOLUME_UP   -> { viewModel.adjustVolume(0.1f); true }
             KeyEvent.KEYCODE_VOLUME_DOWN -> { viewModel.adjustVolume(-0.1f); true }
             else -> super.onKeyDown(keyCode, event)
         }
-    }
-
-    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
-        if (event != null && isGamepadSource(event) && viewModel.handleGamepadKeyUp(keyCode)) return true
-        return super.onKeyUp(keyCode, event)
     }
 
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {
