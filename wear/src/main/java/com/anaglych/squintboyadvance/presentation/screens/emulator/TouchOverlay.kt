@@ -197,6 +197,28 @@ fun TouchOverlay(
                                                 }
                                                 longPressJobs.remove(change.id)?.cancel()
 
+                                                // GBA: the SE/ST circle extends outside the center cell into
+                                                // adjacent grid cells. Check it before hitTestGrid so those
+                                                // areas register SELECT/START rather than the wrong grid button.
+                                                if (isGba) {
+                                                    val circleBtn = hitTestCircle(pos, screenPx)
+                                                    if (circleBtn != null) {
+                                                        val prevBtn = activeButtons[change.id]
+                                                        if (circleBtn != prevBtn) {
+                                                            if (prevBtn != null) onButtonRelease(prevBtn)
+                                                            activeButtons[change.id] = circleBtn
+                                                            onButtonPress(circleBtn)
+                                                            if (event.type == PointerEventType.Press && hapticEnabled) {
+                                                                haptic.performHapticFeedback(
+                                                                    HapticFeedbackType.TextHandleMove
+                                                                )
+                                                            }
+                                                        }
+                                                        change.consume()
+                                                        continue
+                                                    }
+                                                }
+
                                                 val btn = hitTestGrid(pos, cellSize, grid)
                                                 if (btn != null && btn in lockedButtons) {
                                                     if (event.type == PointerEventType.Press) {
