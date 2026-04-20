@@ -48,6 +48,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Brush
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Gamepad
@@ -57,7 +58,9 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Tune
+import android.hardware.input.InputManager
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -90,6 +93,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -117,6 +121,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.gestures.detectTapGestures
+import com.anaglych.squintboyadvance.shared.model.ButtonId
+import com.anaglych.squintboyadvance.shared.model.GamepadMapping
 import com.anaglych.squintboyadvance.shared.model.GbColorPalette
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 
@@ -182,6 +188,10 @@ fun PauseOverlay(
     labelOpacity: Float,
     labelSize: Float,
     hapticEnabled: Boolean,
+    layoutType: Int = 0,
+    onSetLayoutType: (Int) -> Unit = {},
+    vdpadThresholdFactor: Float = 0.667f,
+    onSetVdpadThreshold: (Float) -> Unit = {},
     onToggleOscVisible: () -> Unit,
     onSetButtonOpacity: (Float) -> Unit,
     onSetPressedOpacity: (Float) -> Unit,
@@ -201,10 +211,21 @@ fun PauseOverlay(
     onSaveRomToGlobal: () -> Unit,
     onResetRomToGlobal: () -> Unit,
     onReset: () -> Unit,
+    // Gamepad / BT controller
+    gamepadEnabled: Boolean = false,
+    onToggleGamepad: () -> Unit = {},
+    gamepadMapping: GamepadMapping = GamepadMapping(),
+    liveGamepadButtons: Set<ButtonId> = emptySet(),
+    recordingState: EmulatorViewModel.RecordingState = EmulatorViewModel.RecordingState.Idle,
+    onStartRecordAll: () -> Unit = {},
+    onSkipRecording: () -> Unit = {},
+    onStopRecording: () -> Unit = {},
+    onResetGamepadMapping: () -> Unit = {},
     selectedPaletteIndex: Int,
     onPaletteSelected: (Int) -> Unit,
     onExit: () -> Unit,
     onGhostProgressChange: (Float) -> Unit = {},
+    onGhostDemoChange: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val green = MaterialTheme.colors.primary
@@ -243,22 +264,12 @@ fun PauseOverlay(
         label = "paletteProgress",
     )
 
-    // ── Ghosting: reveal emulator behind overlay during panel interaction ──
-    var lastInteraction by remember { mutableStateOf(0L) }
+    // ── Ghosting: reveal emulator behind overlay while finger is on a slider ──
     var ghostActive by remember { mutableStateOf(false) }
 
-    LaunchedEffect(lastInteraction) {
-        if (lastInteraction == 0L) return@LaunchedEffect
-        ghostActive = true
-        delay(500)
-        ghostActive = false
-    }
     // Reset ghost when panel closes
     LaunchedEffect(expandedIndex) {
-        if (expandedIndex == null) {
-            ghostActive = false
-            lastInteraction = 0L
-        }
+        if (expandedIndex == null) ghostActive = false
     }
     val overlayAlpha by animateFloatAsState(
         targetValue = if (ghostActive) 0f else 0.82f,
@@ -272,7 +283,22 @@ fun PauseOverlay(
     )
     // Report ghost progress to parent for OSC rendering
     LaunchedEffect(ghostProgress) { onGhostProgressChange(ghostProgress) }
-    val onInteraction: () -> Unit = { lastInteraction = System.nanoTime() }
+    val onInteraction: () -> Unit = { ghostActive = true }
+    val onInteractionEnd: () -> Unit = { ghostActive = false; onGhostDemoChange(0) }
+
+    val context = LocalContext.current
+    val inputManager = remember { context.getSystemService(InputManager::class.java) }
+    val btAdapter = remember { context.getSystemService(android.bluetooth.BluetoothManager::class.java)?.adapter }
+    var btConnected by remember { mutableStateOf(findConnectedGamepadName(inputManager, btAdapter) != null) }
+    DisposableEffect(Unit) {
+        val listener = object : InputManager.InputDeviceListener {
+            override fun onInputDeviceAdded(id: Int)   { btConnected = findConnectedGamepadName(inputManager, btAdapter) != null }
+            override fun onInputDeviceRemoved(id: Int) { btConnected = findConnectedGamepadName(inputManager, btAdapter) != null }
+            override fun onInputDeviceChanged(id: Int) { btConnected = findConnectedGamepadName(inputManager, btAdapter) != null }
+        }
+        inputManager.registerInputDeviceListener(listener, null)
+        onDispose { inputManager.unregisterInputDeviceListener(listener) }
+    }
 
     val actions = buildList {
         // 0: Audio (long-press to expand slider, tap toggles mute)
@@ -345,6 +371,7 @@ fun PauseOverlay(
                     gbFrameskip = gbFrameskip,
                     onSetFrameskip = onSetFrameskip,
                     onInteraction = onInteraction,
+                    onInteractionEnd = onInteractionEnd,
                     ghostProgress = ghostProgress,
                 )
             },
@@ -364,13 +391,19 @@ fun PauseOverlay(
                     labelOpacity = labelOpacity,
                     labelSize = labelSize,
                     hapticEnabled = hapticEnabled,
+                    layoutType = layoutType,
+                    onSetLayoutType = onSetLayoutType,
+                    vdpadThresholdFactor = vdpadThresholdFactor,
+                    onSetVdpadThreshold = onSetVdpadThreshold,
                     onSetButtonOpacity = onSetButtonOpacity,
                     onSetPressedOpacity = onSetPressedOpacity,
                     onSetLabelOpacity = onSetLabelOpacity,
                     onSetLabelSize = onSetLabelSize,
                     onToggleHaptic = onToggleHaptic,
                     onInteraction = onInteraction,
+                    onInteractionEnd = onInteractionEnd,
                     ghostProgress = ghostProgress,
+                    onGhostDemoChange = onGhostDemoChange,
                 )
             },
             onLongClick = {},
@@ -394,9 +427,27 @@ fun PauseOverlay(
         ))
         // 7: Reset
         add(PauseAction(Icons.Default.Refresh, "Reset", onReset, iconColor = RED))
-        // 8: Exit
+        // 8: BT gamepad — tap toggles expand; green when controller connected, muted white when not
+        add(PauseAction(
+            Icons.Default.Bluetooth, "BT Pad",
+            onClick = {},
+            backgroundColor = if (btConnected) green.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.12f),
+            iconColor = Color.White,
+            enabled = btConnected,
+            expandContent = {
+                BtPadExpandContent(
+                    liveGamepadButtons = liveGamepadButtons,
+                    recordingState = recordingState,
+                    onStartRecordAll = onStartRecordAll,
+                    onSkipRecording = onSkipRecording,
+                    onStopRecording = onStopRecording,
+                    onResetDefaults = onResetGamepadMapping,
+                )
+            },
+        ))
+        // 9: Exit
         add(PauseAction(Icons.Default.Close, "Exit", onExit, backgroundColor = RED.copy(alpha = 0.85f)))
-        // 9: Palette (GB only)
+        // 10: Palette (GB only)
         if (isGb) {
             add(PauseAction(
                 Icons.Default.Brush, "Palette",
@@ -909,6 +960,7 @@ private fun ScaleExpandContent(
     gbFrameskip: Int,
     onSetFrameskip: (Int) -> Unit,
     onInteraction: () -> Unit,
+    onInteractionEnd: () -> Unit = {},
     ghostProgress: Float = 0f,
 ) {
     val green = MaterialTheme.colors.primary
@@ -940,6 +992,7 @@ private fun ScaleExpandContent(
                 valueRange = 1.0f..maxScale,
                 tickerStep = tickerStep,
                 onInteraction = onInteraction,
+                onInteractionEnd = onInteractionEnd,
             )
             // Integer | scale label | Filter
             Row(
@@ -1138,13 +1191,19 @@ private fun ControlsExpandContent(
     labelOpacity: Float,
     labelSize: Float,
     hapticEnabled: Boolean,
+    layoutType: Int,
+    onSetLayoutType: (Int) -> Unit,
+    vdpadThresholdFactor: Float,
+    onSetVdpadThreshold: (Float) -> Unit,
     onSetButtonOpacity: (Float) -> Unit,
     onSetPressedOpacity: (Float) -> Unit,
     onSetLabelOpacity: (Float) -> Unit,
     onSetLabelSize: (Float) -> Unit,
     onToggleHaptic: () -> Unit,
     onInteraction: () -> Unit,
+    onInteractionEnd: () -> Unit = {},
     ghostProgress: Float = 0f,
+    onGhostDemoChange: (Int) -> Unit = {},
 ) {
     val green = MaterialTheme.colors.primary
     val haptic = LocalHapticFeedback.current
@@ -1156,7 +1215,42 @@ private fun ControlsExpandContent(
             .fillMaxWidth()
             .graphicsLayer { alpha = contentAlpha },
     ) {
-        // Sliders
+        // Type row: layout selector buttons
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                "Type",
+                style = MaterialTheme.typography.caption2,
+                color = Color.White.copy(alpha = 0.7f),
+                modifier = Modifier.width(36.dp),
+            )
+            (0..2).forEach { idx ->
+                val isActive = idx == layoutType
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(28.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(
+                            if (isActive) green.copy(alpha = 0.85f)
+                            else Color.White.copy(alpha = 0.12f)
+                        )
+                        .clickable { onSetLayoutType(idx) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "${idx + 1}",
+                        style = MaterialTheme.typography.caption2,
+                        color = Color.White,
+                        fontSize = 11.sp,
+                    )
+                }
+            }
+        }
+        // Sliders (first 3)
         Column(
             verticalArrangement = Arrangement.spacedBy(2.dp),
             modifier = Modifier.fillMaxWidth(),
@@ -1168,14 +1262,16 @@ private fun ControlsExpandContent(
                 valueRange = 0f..1f,
                 steps = 20,
                 onInteraction = onInteraction,
+                onInteractionEnd = onInteractionEnd,
             )
             LabeledSliderRow(
                 label = "Pressed",
                 value = pressedOpacity,
-                onValueChange = { onSetPressedOpacity(it); onInteraction() },
+                onValueChange = { onSetPressedOpacity(it); onInteraction(); onGhostDemoChange(2) },
                 valueRange = 0f..0.5f,
                 steps = 10,
                 onInteraction = onInteraction,
+                onInteractionEnd = onInteractionEnd,
                 formatValue = { "${(it * 100).roundToInt()}%" },
             )
             LabeledSliderRow(
@@ -1185,7 +1281,21 @@ private fun ControlsExpandContent(
                 valueRange = 0f..1f,
                 steps = 20,
                 onInteraction = onInteraction,
+                onInteractionEnd = onInteractionEnd,
             )
+            // Drag threshold slider — only for schemes 2 & 3
+            if (layoutType >= 1) {
+                LabeledSliderRow(
+                    label = "Drag",
+                    value = vdpadThresholdFactor,
+                    onValueChange = { onSetVdpadThreshold(it); onInteraction(); onGhostDemoChange(1) },
+                    valueRange = 0.333f..2f,
+                    steps = 20,
+                    onInteraction = onInteraction,
+                    onInteractionEnd = onInteractionEnd,
+                    formatValue = { "${(it * 100).roundToInt()}%" },
+                )
+            }
         }
         // Size row: label buttons + haptic toggle
         val sizeSteps = listOf(9f to "T", 11f to "S", 13f to "M", 15f to "L", 17f to "H")
@@ -1208,7 +1318,7 @@ private fun ControlsExpandContent(
                             if (labelSize.roundToInt() == value.roundToInt()) green.copy(alpha = 0.85f)
                             else Color.White.copy(alpha = 0.12f)
                         )
-                        .clickable { onSetLabelSize(value); onInteraction() },
+                        .clickable { onSetLabelSize(value) },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(label, style = MaterialTheme.typography.caption2, color = Color.White, fontSize = 11.sp)
@@ -1251,6 +1361,7 @@ private fun CompactTrackSlider(
     valueRange: ClosedFloatingPointRange<Float>,
     tickerStep: Float,
     onInteraction: () -> Unit,
+    onInteractionEnd: () -> Unit = {},
 ) {
     val primaryColor = MaterialTheme.colors.primary
     val trackColor = Color.White.copy(alpha = 0.12f)
@@ -1295,6 +1406,7 @@ private fun CompactTrackSlider(
                             }
                             tryAwaitRelease()
                             repeatJob.cancel()
+                            onInteractionEnd()
                         }
                     )
                 },
@@ -1335,6 +1447,7 @@ private fun CompactTrackSlider(
                                 onValueChange(xToValue(change.position.x))
                                 onInteraction()
                             }
+                            onInteractionEnd()
                         }
                     }
                 },
@@ -1396,6 +1509,7 @@ private fun CompactTrackSlider(
                             }
                             tryAwaitRelease()
                             repeatJob.cancel()
+                            onInteractionEnd()
                         }
                     )
                 },
@@ -1420,6 +1534,7 @@ private fun LabeledSliderRow(
     valueRange: ClosedFloatingPointRange<Float>,
     steps: Int,
     onInteraction: () -> Unit,
+    onInteractionEnd: () -> Unit = {},
     formatValue: ((Float) -> String)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
@@ -1478,6 +1593,7 @@ private fun LabeledSliderRow(
                                 onValueChange(xToValue(change.position.x))
                                 onInteraction()
                             }
+                            onInteractionEnd()
                         }
                     }
                 },

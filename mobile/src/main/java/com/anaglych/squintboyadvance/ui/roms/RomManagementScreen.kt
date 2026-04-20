@@ -780,6 +780,55 @@ private fun SettingsTabContent(
         item { SectionHeader("Controls") }
         item {
             SettingsCard {
+                ControlSchemeSetting(
+                    currentScheme = s.controllerLayout.layoutType,
+                    onSchemeSelected = { scheme ->
+                        viewModel.updateSettings(
+                            globalTransform = {
+                                it.copy(controllerLayout = it.controllerLayout.copy(layoutType = scheme))
+                            },
+                        )
+                    },
+                    gamepadEnabled = s.controllerLayout.gamepadEnabled,
+                    onToggleGamepad = {
+                        viewModel.updateSettings(
+                            globalTransform = {
+                                it.copy(controllerLayout = it.controllerLayout.copy(
+                                    gamepadEnabled = !it.controllerLayout.gamepadEnabled
+                                ))
+                            },
+                        )
+                    },
+                    gamepadMapping = s.controllerLayout.gamepadMapping,
+                    onUpdateMapping = { newMapping ->
+                        viewModel.updateSettings(
+                            globalTransform = {
+                                it.copy(controllerLayout = it.controllerLayout.copy(gamepadMapping = newMapping))
+                            },
+                        )
+                    },
+                )
+                if (s.controllerLayout.layoutType >= 1) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 4.dp),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                    )
+                    SliderSetting(
+                        "Drag Sensitivity",
+                        "${(s.controllerLayout.vdpadThresholdFactor * 100).toInt()}%",
+                        s.controllerLayout.vdpadThresholdFactor, 0.333f..2f, steps = 20,
+                    ) { v ->
+                        viewModel.updateSettings(
+                            globalTransform = {
+                                it.copy(controllerLayout = it.controllerLayout.copy(vdpadThresholdFactor = v))
+                            },
+                        )
+                    }
+                }
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                )
                 SwitchSetting("Overlay Visible", s.controllerLayout.visible) {
                     viewModel.updateSettings(
                         globalTransform = {
@@ -1488,5 +1537,75 @@ private fun UploadConfirmOverlay(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ControlSchemeSetting(
+    currentScheme: Int,
+    onSchemeSelected: (Int) -> Unit,
+    gamepadEnabled: Boolean,
+    onToggleGamepad: () -> Unit,
+    gamepadMapping: com.anaglych.squintboyadvance.shared.model.GamepadMapping,
+    onUpdateMapping: (com.anaglych.squintboyadvance.shared.model.GamepadMapping) -> Unit,
+) {
+    data class SchemeInfo(val label: String, val name: String, val description: String)
+    val schemes = listOf(
+        SchemeInfo(
+            "1", "Grid",
+            "Classic 3×3 overlay. D-pad fills the left column, face buttons fill the right. " +
+            "Tap the center to lock any currently held buttons in place — handy for turbo or " +
+            "auto-walk. Long-press the center to open the pause menu.",
+        ),
+        SchemeInfo(
+            "2", "Drag",
+            "Tap any zone to anchor a floating D-pad. D-pad buttons start pre-pressed — " +
+            "slide inward toward the watch center to go neutral, or sideways to change " +
+            "direction. Face buttons occupy the four corner zones. Long-press the center " +
+            "circle to pause. Adjust Drag Sensitivity to control how far you need to slide.",
+        ),
+        SchemeInfo(
+            "3", "Hemi",
+            "Full-screen halves: left is B, right is A. D-pad triangles point inward from " +
+            "each edge. Start/Select arcs the bottom; L/R arcs the top (GBA only). Tap " +
+            "either drag zone beside the center to anchor the D-pad. Long-press center to pause.",
+        ),
+    )
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Control Scheme", style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.weight(1f))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                schemes.forEachIndexed { idx, _ ->
+                    FilterChip(
+                        selected = currentScheme == idx,
+                        onClick = { onSchemeSelected(idx) },
+                        label = { Text("${idx + 1}") },
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+        Spacer(Modifier.height(6.dp))
+        BtControllerExpand(
+            gamepadEnabled = gamepadEnabled,
+            onToggleGamepad = onToggleGamepad,
+            gamepadMapping = gamepadMapping,
+            onUpdateMapping = onUpdateMapping,
+        )
+        Spacer(Modifier.height(8.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+        Spacer(Modifier.height(6.dp))
+        val scheme = schemes[currentScheme.coerceIn(0, schemes.lastIndex)]
+        Text(
+            text = "${scheme.name} — ${scheme.description}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

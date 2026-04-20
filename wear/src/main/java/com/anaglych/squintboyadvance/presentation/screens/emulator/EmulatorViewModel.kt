@@ -13,6 +13,7 @@ import com.anaglych.squintboyadvance.presentation.RomMetadataStore
 import com.anaglych.squintboyadvance.presentation.SettingsRepository
 import com.anaglych.squintboyadvance.shared.emulator.EmulatorState
 import com.anaglych.squintboyadvance.shared.model.ButtonId
+import com.anaglych.squintboyadvance.shared.model.GamepadMapping
 import com.anaglych.squintboyadvance.shared.model.GbColorPalette
 import com.anaglych.squintboyadvance.shared.model.RomOverrides
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
@@ -393,6 +394,87 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         emulator?.reset()
         resume()
     }
+
+    // ── Gamepad recording ──────────────────────────────────────────────────
+
+    sealed class RecordingState {
+        object Idle : RecordingState()
+        data class Recording(
+            val targetButton: ButtonId,
+            val stepIndex: Int,
+            val totalSteps: Int,
+        ) : RecordingState()
+    }
+
+    private val _gamepadRecording = MutableStateFlow<RecordingState>(RecordingState.Idle)
+    val gamepadRecording: StateFlow<RecordingState> = _gamepadRecording.asStateFlow()
+
+    private val _liveGamepadButtons = MutableStateFlow<Set<ButtonId>>(emptySet())
+    val liveGamepadButtons: StateFlow<Set<ButtonId>> = _liveGamepadButtons.asStateFlow()
+
+    val controllerLayout get() = settingsRepo.settings.value.controllerLayout
+
+    fun startRecordAll() {
+        val buttons = ButtonId.values()
+        _gamepadRecording.value = RecordingState.Recording(buttons[0], 0, buttons.size)
+    }
+
+    fun recordKeycode(keyCode: Int) {
+        val st = _gamepadRecording.value as? RecordingState.Recording ?: return
+        settingsRepo.update { s ->
+            s.copy(controllerLayout = s.controllerLayout.copy(
+                gamepadMapping = s.controllerLayout.gamepadMapping.withButton(st.targetButton, keyCode)
+            ))
+        }
+        advanceRecording(st)
+    }
+
+    fun skipRecording() {
+        val st = _gamepadRecording.value as? RecordingState.Recording ?: return
+        advanceRecording(st)
+    }
+
+    fun stopRecording() {
+        _gamepadRecording.value = RecordingState.Idle
+    }
+
+    fun resetGamepadMapping() {
+        settingsRepo.update { s ->
+            s.copy(controllerLayout = s.controllerLayout.copy(gamepadMapping = GamepadMapping()))
+        }
+    }
+
+    private fun advanceRecording(st: RecordingState.Recording) {
+        val next = st.stepIndex + 1
+        val buttons = ButtonId.values()
+        _gamepadRecording.value = if (next >= buttons.size) RecordingState.Idle
+            else RecordingState.Recording(buttons[next], next, st.totalSteps)
+    }
+
+    // ── Gamepad input routing ───────────────────────────────────────────────
+
+    fun handleGamepadKeyDown(keyCode: Int): Boolean {
+        if (_gamepadRecording.value is RecordingState.Recording) {
+            recordKeycode(keyCode)
+            return true
+        }
+        val mapping = settingsRepo.settings.value.controllerLayout.gamepadMapping
+        val button = mapping.fromKeyCode(keyCode) ?: return false
+        _liveGamepadButtons.value = _liveGamepadButtons.value + button
+        pressButton(button)
+        return true
+    }
+
+    fun handleGamepadKeyUp(keyCode: Int): Boolean {
+        if (_gamepadRecording.value is RecordingState.Recording) return true
+        val mapping = settingsRepo.settings.value.controllerLayout.gamepadMapping
+        val button = mapping.fromKeyCode(keyCode) ?: return false
+        _liveGamepadButtons.value = _liveGamepadButtons.value - button
+        releaseButton(button)
+        return true
+    }
+
+    // ── Button press / release ──────────────────────────────────────────────
 
     fun pressButton(button: ButtonId) {
         emulator?.pressButton(button)

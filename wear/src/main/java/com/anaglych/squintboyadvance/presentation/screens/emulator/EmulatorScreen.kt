@@ -54,6 +54,8 @@ fun EmulatorScreen(
     val canUndoLoad by viewModel.canUndoLoad.collectAsState()
     val isRomMode by viewModel.isRomMode.collectAsState()
     val currentRomId by viewModel.currentRomId.collectAsState()
+    val gamepadRecording by viewModel.gamepadRecording.collectAsState()
+    val liveGamepadButtons by viewModel.liveGamepadButtons.collectAsState()
 
     val settingsRepo = SettingsRepository.getInstance(viewModel.getApplication())
     val settings by settingsRepo.settings.collectAsState()
@@ -100,6 +102,7 @@ fun EmulatorScreen(
     // Pause sub-screen state — resets to MENU whenever the emulator resumes
     var pauseUiState by rememberSaveable { mutableStateOf(PauseUiState.MENU) }
     var pauseGhostProgress by remember { mutableFloatStateOf(0f) }
+    var ghostDemoMode by remember { mutableStateOf(0) }
     LaunchedEffect(state) {
         if (state == EmulatorState.RUNNING) pauseUiState = PauseUiState.MENU
     }
@@ -137,6 +140,8 @@ fun EmulatorScreen(
                     labelOpacity = settings.controllerLayout.labelOpacity,
                     labelSize = settings.controllerLayout.labelSize,
                     hapticEnabled = settings.controllerLayout.hapticFeedback,
+                    layoutType = settings.controllerLayout.layoutType,
+                    vdpadThresholdFactor = settings.controllerLayout.vdpadThresholdFactor,
                 )
                 if (ffSpeed >= 2) {
                     Box(
@@ -179,6 +184,9 @@ fun EmulatorScreen(
                             labelOpacity = settings.controllerLayout.labelOpacity,
                             labelSize = settings.controllerLayout.labelSize,
                             hapticEnabled = false,
+                            layoutType = settings.controllerLayout.layoutType,
+                            vdpadThresholdFactor = settings.controllerLayout.vdpadThresholdFactor,
+                            ghostDemo = ghostDemoMode,
                         )
                     }
                 }
@@ -227,6 +235,14 @@ fun EmulatorScreen(
                         labelOpacity = settings.controllerLayout.labelOpacity,
                         labelSize = settings.controllerLayout.labelSize,
                         hapticEnabled = settings.controllerLayout.hapticFeedback,
+                        layoutType = settings.controllerLayout.layoutType,
+                        onSetLayoutType = { type ->
+                            settingsRepo.update { it.copy(controllerLayout = it.controllerLayout.copy(layoutType = type)) }
+                        },
+                        vdpadThresholdFactor = settings.controllerLayout.vdpadThresholdFactor,
+                        onSetVdpadThreshold = { v ->
+                            settingsRepo.update { it.copy(controllerLayout = it.controllerLayout.copy(vdpadThresholdFactor = v)) }
+                        },
                         onToggleOscVisible = {
                             settingsRepo.update {
                                 it.copy(controllerLayout = it.controllerLayout.copy(visible = !it.controllerLayout.visible))
@@ -262,6 +278,21 @@ fun EmulatorScreen(
                         onSaveRomToGlobal = viewModel::saveRomToGlobal,
                         onResetRomToGlobal = viewModel::resetRomToGlobal,
                         onReset = { pauseUiState = PauseUiState.CONFIRM_RESET },
+                        gamepadEnabled = settings.controllerLayout.gamepadEnabled,
+                        onToggleGamepad = {
+                            settingsRepo.update {
+                                it.copy(controllerLayout = it.controllerLayout.copy(
+                                    gamepadEnabled = !it.controllerLayout.gamepadEnabled
+                                ))
+                            }
+                        },
+                        gamepadMapping = settings.controllerLayout.gamepadMapping,
+                        liveGamepadButtons = liveGamepadButtons,
+                        recordingState = gamepadRecording,
+                        onStartRecordAll = viewModel::startRecordAll,
+                        onSkipRecording = viewModel::skipRecording,
+                        onStopRecording = viewModel::stopRecording,
+                        onResetGamepadMapping = viewModel::resetGamepadMapping,
                         selectedPaletteIndex = effectiveSettings.gbPaletteIndex,
                         onPaletteSelected = { idx ->
                             updateDisplaySetting(
@@ -278,6 +309,7 @@ fun EmulatorScreen(
                             onExit()
                         },
                         onGhostProgressChange = { pauseGhostProgress = it },
+                        onGhostDemoChange = { ghostDemoMode = it },
                     )
 
                     PauseUiState.CONFIRM_RESET -> WearSlideToConfirm(
@@ -287,6 +319,7 @@ fun EmulatorScreen(
                         onConfirmed = { viewModel.resetRom() },
                         onDismiss = { pauseUiState = PauseUiState.MENU },
                     )
+
                 }
             }
 
