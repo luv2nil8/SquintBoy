@@ -1589,21 +1589,23 @@ private fun ControlSchemeSetting(
                 }
             }
         }
-        Spacer(Modifier.height(4.dp))
-        val scheme = schemes[currentScheme.coerceIn(0, schemes.lastIndex)]
-        Text(
-            text = "${scheme.name} — ${scheme.description}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         BtControllerExpand(
             gamepadEnabled = gamepadEnabled,
             onToggleGamepad = onToggleGamepad,
             gamepadMapping = gamepadMapping,
             onUpdateMapping = onUpdateMapping,
+        )
+        Spacer(Modifier.height(8.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+        Spacer(Modifier.height(6.dp))
+        val scheme = schemes[currentScheme.coerceIn(0, schemes.lastIndex)]
+        Text(
+            text = "${scheme.name} — ${scheme.description}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

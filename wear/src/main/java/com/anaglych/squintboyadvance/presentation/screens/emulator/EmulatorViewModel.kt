@@ -409,6 +409,9 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
     private val _gamepadRecording = MutableStateFlow<RecordingState>(RecordingState.Idle)
     val gamepadRecording: StateFlow<RecordingState> = _gamepadRecording.asStateFlow()
 
+    private val _liveGamepadButtons = MutableStateFlow<Set<ButtonId>>(emptySet())
+    val liveGamepadButtons: StateFlow<Set<ButtonId>> = _liveGamepadButtons.asStateFlow()
+
     val controllerLayout get() = settingsRepo.settings.value.controllerLayout
 
     fun startRecordAll() {
@@ -457,6 +460,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         }
         val mapping = settingsRepo.settings.value.controllerLayout.gamepadMapping
         val button = mapping.fromKeyCode(keyCode) ?: return false
+        _liveGamepadButtons.value = _liveGamepadButtons.value + button
         pressButton(button)
         return true
     }
@@ -464,8 +468,8 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
     fun handleGamepadKeyUp(keyCode: Int): Boolean {
         if (_gamepadRecording.value is RecordingState.Recording) return true
         val mapping = settingsRepo.settings.value.controllerLayout.gamepadMapping
-        val button = mapping.fromKeyCode(keyCode)
-        if (button == null) return false
+        val button = mapping.fromKeyCode(keyCode) ?: return false
+        _liveGamepadButtons.value = _liveGamepadButtons.value - button
         releaseButton(button)
         return true
     }

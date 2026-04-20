@@ -34,7 +34,7 @@ import com.anaglych.squintboyadvance.shared.model.RomOverrides
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 import com.anaglych.squintboyadvance.shared.model.SystemType
 
-private enum class PauseUiState { MENU, CONFIRM_RESET, GAMEPAD_SETTINGS }
+private enum class PauseUiState { MENU, CONFIRM_RESET }
 
 @Composable
 fun EmulatorScreen(
@@ -55,6 +55,7 @@ fun EmulatorScreen(
     val isRomMode by viewModel.isRomMode.collectAsState()
     val currentRomId by viewModel.currentRomId.collectAsState()
     val gamepadRecording by viewModel.gamepadRecording.collectAsState()
+    val liveGamepadButtons by viewModel.liveGamepadButtons.collectAsState()
 
     val settingsRepo = SettingsRepository.getInstance(viewModel.getApplication())
     val settings by settingsRepo.settings.collectAsState()
@@ -278,7 +279,20 @@ fun EmulatorScreen(
                         onResetRomToGlobal = viewModel::resetRomToGlobal,
                         onReset = { pauseUiState = PauseUiState.CONFIRM_RESET },
                         gamepadEnabled = settings.controllerLayout.gamepadEnabled,
-                        onGamepadSettings = { pauseUiState = PauseUiState.GAMEPAD_SETTINGS },
+                        onToggleGamepad = {
+                            settingsRepo.update {
+                                it.copy(controllerLayout = it.controllerLayout.copy(
+                                    gamepadEnabled = !it.controllerLayout.gamepadEnabled
+                                ))
+                            }
+                        },
+                        gamepadMapping = settings.controllerLayout.gamepadMapping,
+                        liveGamepadButtons = liveGamepadButtons,
+                        recordingState = gamepadRecording,
+                        onStartRecordAll = viewModel::startRecordAll,
+                        onSkipRecording = viewModel::skipRecording,
+                        onStopRecording = viewModel::stopRecording,
+                        onResetGamepadMapping = viewModel::resetGamepadMapping,
                         selectedPaletteIndex = effectiveSettings.gbPaletteIndex,
                         onPaletteSelected = { idx ->
                             updateDisplaySetting(
@@ -306,17 +320,6 @@ fun EmulatorScreen(
                         onDismiss = { pauseUiState = PauseUiState.MENU },
                     )
 
-                    PauseUiState.GAMEPAD_SETTINGS -> GamepadSettingsScreen(
-                        gamepadMapping = settings.controllerLayout.gamepadMapping,
-                        recordingState = gamepadRecording,
-                        onStartRecordAll = viewModel::startRecordAll,
-                        onSkip = viewModel::skipRecording,
-                        onResetDefaults = viewModel::resetGamepadMapping,
-                        onDismiss = {
-                            viewModel.stopRecording()
-                            pauseUiState = PauseUiState.MENU
-                        },
-                    )
                 }
             }
 

@@ -95,36 +95,38 @@ class EmulatorActivity : ComponentActivity() {
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {
         if (event.source and InputDevice.SOURCE_JOYSTICK == 0 &&
             event.source and InputDevice.SOURCE_GAMEPAD == 0) return super.onGenericMotionEvent(event)
-        if (!viewModel.controllerLayout.gamepadEnabled) return super.onGenericMotionEvent(event)
 
         val hatX = event.getAxisValue(MotionEvent.AXIS_HAT_X)
         val hatY = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
 
         if (hatX != prevHatX) {
-            if (prevHatX < -0.5f) viewModel.releaseButton(ButtonId.DPAD_LEFT)
-            if (prevHatX > 0.5f)  viewModel.releaseButton(ButtonId.DPAD_RIGHT)
-            if (hatX < -0.5f)      viewModel.pressButton(ButtonId.DPAD_LEFT)
-            else if (hatX > 0.5f)  viewModel.pressButton(ButtonId.DPAD_RIGHT)
+            if (prevHatX < -0.5f) viewModel.handleGamepadKeyUp(KeyEvent.KEYCODE_DPAD_LEFT)
+            if (prevHatX > 0.5f)  viewModel.handleGamepadKeyUp(KeyEvent.KEYCODE_DPAD_RIGHT)
+            if (hatX < -0.5f)      viewModel.handleGamepadKeyDown(KeyEvent.KEYCODE_DPAD_LEFT)
+            else if (hatX > 0.5f)  viewModel.handleGamepadKeyDown(KeyEvent.KEYCODE_DPAD_RIGHT)
             prevHatX = hatX
         }
         if (hatY != prevHatY) {
-            if (prevHatY < -0.5f) viewModel.releaseButton(ButtonId.DPAD_UP)
-            if (prevHatY > 0.5f)  viewModel.releaseButton(ButtonId.DPAD_DOWN)
-            if (hatY < -0.5f)      viewModel.pressButton(ButtonId.DPAD_UP)
-            else if (hatY > 0.5f)  viewModel.pressButton(ButtonId.DPAD_DOWN)
+            if (prevHatY < -0.5f) viewModel.handleGamepadKeyUp(KeyEvent.KEYCODE_DPAD_UP)
+            if (prevHatY > 0.5f)  viewModel.handleGamepadKeyUp(KeyEvent.KEYCODE_DPAD_DOWN)
+            if (hatY < -0.5f)      viewModel.handleGamepadKeyDown(KeyEvent.KEYCODE_DPAD_UP)
+            else if (hatY > 0.5f)  viewModel.handleGamepadKeyDown(KeyEvent.KEYCODE_DPAD_DOWN)
             prevHatY = hatY
         }
         return true
     }
 
+    private var wasRunningOnPause = false
+
     override fun onPause() {
         super.onPause()
+        wasRunningOnPause = viewModel.state.value == EmulatorState.RUNNING
         viewModel.pause()
     }
 
     override fun onResume() {
         super.onResume()
-        viewModel.resume()
+        if (wasRunningOnPause) viewModel.resume()
     }
 
     override fun onDestroy() {

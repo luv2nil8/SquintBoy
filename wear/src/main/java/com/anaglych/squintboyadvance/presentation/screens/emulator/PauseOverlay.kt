@@ -58,7 +58,9 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Tune
+import android.hardware.input.InputManager
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -91,6 +93,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -118,6 +121,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.gestures.detectTapGestures
+import com.anaglych.squintboyadvance.shared.model.ButtonId
+import com.anaglych.squintboyadvance.shared.model.GamepadMapping
 import com.anaglych.squintboyadvance.shared.model.GbColorPalette
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 
@@ -206,9 +211,16 @@ fun PauseOverlay(
     onSaveRomToGlobal: () -> Unit,
     onResetRomToGlobal: () -> Unit,
     onReset: () -> Unit,
-    // Gamepad
+    // Gamepad / BT controller
     gamepadEnabled: Boolean = false,
-    onGamepadSettings: () -> Unit = {},
+    onToggleGamepad: () -> Unit = {},
+    gamepadMapping: GamepadMapping = GamepadMapping(),
+    liveGamepadButtons: Set<ButtonId> = emptySet(),
+    recordingState: EmulatorViewModel.RecordingState = EmulatorViewModel.RecordingState.Idle,
+    onStartRecordAll: () -> Unit = {},
+    onSkipRecording: () -> Unit = {},
+    onStopRecording: () -> Unit = {},
+    onResetGamepadMapping: () -> Unit = {},
     selectedPaletteIndex: Int,
     onPaletteSelected: (Int) -> Unit,
     onExit: () -> Unit,
@@ -273,6 +285,20 @@ fun PauseOverlay(
     LaunchedEffect(ghostProgress) { onGhostProgressChange(ghostProgress) }
     val onInteraction: () -> Unit = { ghostActive = true }
     val onInteractionEnd: () -> Unit = { ghostActive = false; onGhostDemoChange(0) }
+
+    val context = LocalContext.current
+    val inputManager = remember { context.getSystemService(InputManager::class.java) }
+    val btAdapter = remember { context.getSystemService(android.bluetooth.BluetoothManager::class.java)?.adapter }
+    var btConnected by remember { mutableStateOf(findConnectedGamepadName(inputManager, btAdapter) != null) }
+    DisposableEffect(Unit) {
+        val listener = object : InputManager.InputDeviceListener {
+            override fun onInputDeviceAdded(id: Int)   { btConnected = findConnectedGamepadName(inputManager, btAdapter) != null }
+            override fun onInputDeviceRemoved(id: Int) { btConnected = findConnectedGamepadName(inputManager, btAdapter) != null }
+            override fun onInputDeviceChanged(id: Int) { btConnected = findConnectedGamepadName(inputManager, btAdapter) != null }
+        }
+        inputManager.registerInputDeviceListener(listener, null)
+        onDispose { inputManager.unregisterInputDeviceListener(listener) }
+    }
 
     val actions = buildList {
         // 0: Audio (long-press to expand slider, tap toggles mute)
@@ -399,20 +425,29 @@ fun PauseOverlay(
                 )
             },
         ))
-        // 7: Bluetooth gamepad settings
+        // 7: Reset
+        add(PauseAction(Icons.Default.Refresh, "Reset", onReset, iconColor = RED))
+        // 8: BT gamepad — tap toggles expand; green when controller connected, muted white when not
         add(PauseAction(
             Icons.Default.Bluetooth, "BT Pad",
-            onClick = onGamepadSettings,
-            backgroundColor = if (gamepadEnabled) green.copy(alpha = 0.85f)
-                else Color.White.copy(alpha = 0.08f),
-            iconColor = if (gamepadEnabled) Color.White else Color.White.copy(alpha = 0.5f),
-            enabled = gamepadEnabled,
+            onClick = {},
+            backgroundColor = if (btConnected) green.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.12f),
+            iconColor = Color.White,
+            enabled = btConnected,
+            expandContent = {
+                BtPadExpandContent(
+                    liveGamepadButtons = liveGamepadButtons,
+                    recordingState = recordingState,
+                    onStartRecordAll = onStartRecordAll,
+                    onSkipRecording = onSkipRecording,
+                    onStopRecording = onStopRecording,
+                    onResetDefaults = onResetGamepadMapping,
+                )
+            },
         ))
-        // 8: Reset
-        add(PauseAction(Icons.Default.Refresh, "Reset", onReset, iconColor = RED))
-        // 8: Exit
+        // 9: Exit
         add(PauseAction(Icons.Default.Close, "Exit", onExit, backgroundColor = RED.copy(alpha = 0.85f)))
-        // 9: Palette (GB only)
+        // 10: Palette (GB only)
         if (isGb) {
             add(PauseAction(
                 Icons.Default.Brush, "Palette",
@@ -1192,7 +1227,7 @@ private fun ControlsExpandContent(
                 color = Color.White.copy(alpha = 0.7f),
                 modifier = Modifier.width(36.dp),
             )
-            (0..3).forEach { idx ->
+            (0..2).forEach { idx ->
                 val isActive = idx == layoutType
                 Box(
                     modifier = Modifier
@@ -1203,15 +1238,13 @@ private fun ControlsExpandContent(
                             if (isActive) green.copy(alpha = 0.85f)
                             else Color.White.copy(alpha = 0.12f)
                         )
-                        .clickable {
-                            if (idx <= 2) { onSetLayoutType(idx) }
-                        },
+                        .clickable { onSetLayoutType(idx) },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         "${idx + 1}",
                         style = MaterialTheme.typography.caption2,
-                        color = if (idx <= 2) Color.White else Color.White.copy(alpha = 0.3f),
+                        color = Color.White,
                         fontSize = 11.sp,
                     )
                 }
