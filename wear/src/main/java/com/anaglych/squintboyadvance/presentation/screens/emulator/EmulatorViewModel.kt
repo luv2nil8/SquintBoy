@@ -455,18 +455,17 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             recordKeycode(keyCode)
             return true
         }
-        val layout = settingsRepo.settings.value.controllerLayout
-        if (!layout.gamepadEnabled) return false
-        val button = layout.gamepadMapping.fromKeyCode(keyCode) ?: return false
+        val mapping = settingsRepo.settings.value.controllerLayout.gamepadMapping
+        val button = mapping.fromKeyCode(keyCode) ?: return false
         pressButton(button)
         return true
     }
 
     fun handleGamepadKeyUp(keyCode: Int): Boolean {
         if (_gamepadRecording.value is RecordingState.Recording) return true
-        val layout = settingsRepo.settings.value.controllerLayout
-        if (!layout.gamepadEnabled) return false
-        val button = layout.gamepadMapping.fromKeyCode(keyCode) ?: return false
+        val mapping = settingsRepo.settings.value.controllerLayout.gamepadMapping
+        val button = mapping.fromKeyCode(keyCode)
+        if (button == null) return false
         releaseButton(button)
         return true
     }
