@@ -403,34 +403,25 @@ fun PauseOverlay(
         }
         // 3: Resume
         add(PauseAction(Icons.Default.PlayArrow, "Resume", onResume, iconColor = green))
-        // 4: Scale (tap to expand panel; locked in demo — controls visible but disabled)
+        // 4: Scale (tap to expand panel)
         add(PauseAction(
             Icons.Default.AspectRatio, "Scale",
             onClick = {},
             backgroundColor = green.copy(alpha = 0.85f),
-            locked = isDemo,
             expandContent = {
-                Column {
-                    ScaleExpandContent(
-                        customScale = customScale,
-                        isGba = isGba,
-                        filterEnabled = filterEnabled,
-                        onSetCustomScale = onSetCustomScale,
-                        onToggleFilter = onToggleFilter,
-                        gbaFrameskip = gbaFrameskip,
-                        gbFrameskip = gbFrameskip,
-                        onSetFrameskip = onSetFrameskip,
-                        onInteraction = onInteraction,
-                        onInteractionEnd = onInteractionEnd,
-                        ghostProgress = ghostProgress,
-                        isDemo = isDemo,
-                        enabled = !isDemo,
-                    )
-                    if (isDemo) {
-                        Spacer(Modifier.height(4.dp))
-                        UnlockChip("Unlock Scaling", onUpgrade)
-                    }
-                }
+                ScaleExpandContent(
+                    customScale = customScale,
+                    isGba = isGba,
+                    filterEnabled = filterEnabled,
+                    onSetCustomScale = onSetCustomScale,
+                    onToggleFilter = onToggleFilter,
+                    gbaFrameskip = gbaFrameskip,
+                    gbFrameskip = gbFrameskip,
+                    onSetFrameskip = onSetFrameskip,
+                    onInteraction = onInteraction,
+                    onInteractionEnd = onInteractionEnd,
+                    ghostProgress = ghostProgress,
+                )
             },
         ))
         // 5: Controls (tap toggles OSC visibility, long-press expands panel)
@@ -1147,12 +1138,10 @@ private fun ScaleExpandContent(
     onInteraction: () -> Unit,
     onInteractionEnd: () -> Unit = {},
     ghostProgress: Float = 0f,
-    isDemo: Boolean = false,
-    enabled: Boolean = true,
 ) {
     val green = MaterialTheme.colors.primary
     val frameW = if (isGba) GBA_FRAME_W else GB_FRAME_W
-    val contentAlpha = (1f - ghostProgress) * if (!enabled) 0.4f else 1f
+    val contentAlpha = 1f - ghostProgress
     var integerLock by remember { mutableStateOf(false) }
 
     val screenWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
@@ -1175,10 +1164,10 @@ private fun ScaleExpandContent(
         ) {
             CompactTrackSlider(
                 value = customScale,
-                onValueChange = { if (enabled) { onSetCustomScale(snap(it)); onInteraction() } },
+                onValueChange = { onSetCustomScale(snap(it)); onInteraction() },
                 valueRange = 1.0f..maxScale,
                 tickerStep = tickerStep,
-                onInteraction = if (enabled) onInteraction else ({}),
+                onInteraction = onInteraction,
                 onInteractionEnd = onInteractionEnd,
             )
             // Integer | scale label | Filter
@@ -1195,10 +1184,10 @@ private fun ScaleExpandContent(
                             if (integerLock) green.copy(alpha = 0.85f)
                             else Color.White.copy(alpha = 0.12f)
                         )
-                        .then(if (enabled) Modifier.clickable {
+                        .clickable {
                             integerLock = !integerLock
                             if (integerLock) onSetCustomScale(snap(customScale))
-                        } else Modifier)
+                        }
                         .padding(horizontal = 10.dp),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -1218,7 +1207,7 @@ private fun ScaleExpandContent(
                             if (filterEnabled) green.copy(alpha = 0.85f)
                             else Color.White.copy(alpha = 0.12f)
                         )
-                        .then(if (enabled) Modifier.clickable { onToggleFilter() } else Modifier)
+                        .clickable { onToggleFilter() }
                         .padding(horizontal = 10.dp),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -1249,7 +1238,7 @@ private fun ScaleExpandContent(
                                 if (currentFrameskip == skip) green.copy(alpha = 0.85f)
                                 else Color.White.copy(alpha = 0.12f)
                             )
-                            .then(if (enabled) Modifier.clickable { onSetFrameskip(skip) } else Modifier),
+                            .clickable { onSetFrameskip(skip) },
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(skipLabels[skip], style = MaterialTheme.typography.caption2, color = Color.White, fontSize = 11.sp)
