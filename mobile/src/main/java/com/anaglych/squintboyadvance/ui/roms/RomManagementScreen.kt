@@ -789,24 +789,6 @@ private fun SettingsTabContent(
                             },
                         )
                     },
-                    gamepadEnabled = s.controllerLayout.gamepadEnabled,
-                    onToggleGamepad = {
-                        viewModel.updateSettings(
-                            globalTransform = {
-                                it.copy(controllerLayout = it.controllerLayout.copy(
-                                    gamepadEnabled = !it.controllerLayout.gamepadEnabled
-                                ))
-                            },
-                        )
-                    },
-                    gamepadMapping = s.controllerLayout.gamepadMapping,
-                    onUpdateMapping = { newMapping ->
-                        viewModel.updateSettings(
-                            globalTransform = {
-                                it.copy(controllerLayout = it.controllerLayout.copy(gamepadMapping = newMapping))
-                            },
-                        )
-                    },
                 )
                 if (s.controllerLayout.layoutType >= 1) {
                     HorizontalDivider(
@@ -1544,10 +1526,6 @@ private fun UploadConfirmOverlay(
 private fun ControlSchemeSetting(
     currentScheme: Int,
     onSchemeSelected: (Int) -> Unit,
-    gamepadEnabled: Boolean,
-    onToggleGamepad: () -> Unit,
-    gamepadMapping: com.anaglych.squintboyadvance.shared.model.GamepadMapping,
-    onUpdateMapping: (com.anaglych.squintboyadvance.shared.model.GamepadMapping) -> Unit,
 ) {
     data class SchemeInfo(val label: String, val name: String, val description: String)
     val schemes = listOf(
@@ -1589,17 +1567,6 @@ private fun ControlSchemeSetting(
                 }
             }
         }
-        Spacer(Modifier.height(6.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-        Spacer(Modifier.height(6.dp))
-        BtControllerExpand(
-            gamepadEnabled = gamepadEnabled,
-            onToggleGamepad = onToggleGamepad,
-            gamepadMapping = gamepadMapping,
-            onUpdateMapping = onUpdateMapping,
-        )
-        Spacer(Modifier.height(8.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
         Spacer(Modifier.height(6.dp))
         val scheme = schemes[currentScheme.coerceIn(0, schemes.lastIndex)]
         Text(

@@ -2,19 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- BT HID scanning — API 31+ (neverForLocation = no location permission needed) -->
-    <uses-permission
-        android:name="android.permission.BLUETOOTH_SCAN"
-        android:usesPermissionFlags="neverForLocation"
-        tools:targetApi="s" />
-    <uses-permission
-        android:name="android.permission.BLUETOOTH_CONNECT"
-        tools:targetApi="s" />
-    <!-- Legacy BT — API 30 (BLUETOOTH/BLUETOOTH_ADMIN are normal perms, auto-granted) -->
-    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
-    <!-- Location required for classic BT discovery on API 30 -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
 
     <application
         android:allowBackup="true"

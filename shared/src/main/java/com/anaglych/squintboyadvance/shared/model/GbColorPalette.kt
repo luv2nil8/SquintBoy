@@ -39,7 +39,7 @@ data class GbColorPalette(
             // Pinks
             GbColorPalette("Cherry Blossom",      0xFF1A0818.toInt(), 0xFF5A2040.toInt(), 0xFFC06080.toInt(), 0xFFF5C0D0.toInt()),
             GbColorPalette("Rustic GB",           0xFF2C2137.toInt(), 0xFF764462.toInt(), 0xFFEDB4A1.toInt(), 0xFFA96868.toInt()),
-            GbColorPalette("Bubblegum",           0xFFFF85A1.toInt(), 0xFFFFA5C8.toInt(), 0xFFFFE0EC.toInt(), 0xFFC7F2FF.toInt()),
+            GbColorPalette("Bubblegum",           0xFF9E4F67.toInt(), 0xFFE8708A.toInt(), 0xFFFFA5C8.toInt(), 0xFFFFE0EC.toInt()),
             GbColorPalette("Blushing Summit",     0xFF1D2B53.toInt(), 0xFF29ADFF.toInt(), 0xFFFF77A8.toInt(), 0xFFFFF1E8.toInt()),
             // Purples
             GbColorPalette("Dream Candy",         0xFF442D6E.toInt(), 0xFFD075B7.toInt(), 0xFFF0D063.toInt(), 0xFFFFFFFF.toInt()),
