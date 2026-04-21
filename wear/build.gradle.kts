@@ -21,8 +21,8 @@ android {
         applicationId = "com.anaglych.squintboyadvance"
         minSdk = 30
         targetSdk = 36
-        versionCode = 222
-        versionName = "1.2.5"
+        versionCode = 223000
+        versionName = "1.2.6"
     }
 
     signingConfigs {
