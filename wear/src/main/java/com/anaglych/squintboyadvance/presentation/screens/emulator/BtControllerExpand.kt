@@ -18,9 +18,17 @@ import android.hardware.input.InputManager
 import android.os.Build
 import android.os.ParcelUuid
 import android.view.InputDevice
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.horizontalDrag
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -28,6 +36,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -38,18 +47,28 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
-import androidx.compose.material.icons.filled.Refresh // used in BindingsTabContent
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import com.anaglych.squintboyadvance.shared.model.GamepadMapping
+import com.anaglych.squintboyadvance.shared.model.SpinnerPhysics
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -61,6 +80,7 @@ import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import com.anaglych.squintboyadvance.shared.model.ButtonId
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 private val BT_GREEN   = Color(0xFF9BBC0F)
@@ -133,11 +153,12 @@ internal fun findConnectedGamepadName(im: InputManager, adapter: BluetoothAdapte
 @Composable
 fun BtPadExpandContent(
     liveGamepadButtons: Set<ButtonId>,
-    recordingState: EmulatorViewModel.RecordingState,
-    onStartRecordAll: () -> Unit,
-    onSkipRecording: () -> Unit,
-    onStopRecording: () -> Unit,
-    onResetDefaults: () -> Unit,
+    gamepadMapping: GamepadMapping,
+    spinnerPhysics: SpinnerPhysics,
+    heldKeysForBinding: Set<Int>,
+    onOpenBindingFlow: () -> Unit,
+    onCloseBindingFlow: () -> Unit,
+    onCommitBinding: (GamepadMapping) -> Unit,
 ) {
     val context = LocalContext.current
     val im      = remember { context.getSystemService(InputManager::class.java) }
@@ -310,10 +331,6 @@ fun BtPadExpandContent(
         if (isScanning) { delay(30_000L); stopScan() }
     }
 
-    LaunchedEffect(activeTab) {
-        if (activeTab != 1) onStopRecording()
-    }
-
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -370,11 +387,12 @@ fun BtPadExpandContent(
             BindingsTabContent(
                 connectedName = connectedName,
                 liveGamepadButtons = liveGamepadButtons,
-                recordingState = recordingState,
-                onStartRecordAll = onStartRecordAll,
-                onSkipRecording = onSkipRecording,
-                onStopRecording = onStopRecording,
-                onResetDefaults = onResetDefaults,
+                gamepadMapping = gamepadMapping,
+                spinnerPhysics = spinnerPhysics,
+                heldKeysForBinding = heldKeysForBinding,
+                onOpenBindingFlow = onOpenBindingFlow,
+                onCloseBindingFlow = onCloseBindingFlow,
+                onCommitBinding = onCommitBinding,
             )
         }
     }
@@ -518,70 +536,188 @@ private fun BondedDeviceRow(
 private fun BindingsTabContent(
     connectedName: String?,
     liveGamepadButtons: Set<ButtonId>,
-    recordingState: EmulatorViewModel.RecordingState,
-    onStartRecordAll: () -> Unit,
-    onSkipRecording: () -> Unit,
-    onStopRecording: () -> Unit,
-    onResetDefaults: () -> Unit,
+    gamepadMapping: GamepadMapping,
+    spinnerPhysics: SpinnerPhysics,
+    heldKeysForBinding: Set<Int>,
+    onOpenBindingFlow: () -> Unit,
+    onCloseBindingFlow: () -> Unit,
+    onCommitBinding: (GamepadMapping) -> Unit,
 ) {
-    val isRecording = recordingState is EmulatorViewModel.RecordingState.Recording
+    var showResetConfirm by remember { mutableStateOf(false) }
+    var showBindingFlow  by remember { mutableStateOf(false) }
+    var bindingInitialMapping by remember { mutableStateOf(gamepadMapping) }
+
+    if (showBindingFlow) {
+        DisposableEffect(Unit) {
+            onOpenBindingFlow()
+            onDispose { onCloseBindingFlow() }
+        }
+        BindingFlowContent(
+            initialMapping = bindingInitialMapping,
+            spinnerPhysics = spinnerPhysics,
+            heldKeys = heldKeysForBinding,
+            onConfirm = { newMapping ->
+                onCommitBinding(newMapping)
+                showBindingFlow = false
+            },
+            onCancel = { showBindingFlow = false },
+        )
+        return
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        if (isRecording) {
-            val st = recordingState as EmulatorViewModel.RecordingState.Recording
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text("${st.stepIndex + 1} / ${st.totalSteps}", style = MaterialTheme.typography.caption2, fontSize = 9.sp, color = Color.White.copy(alpha = 0.45f))
-                Text("Press for:", style = MaterialTheme.typography.caption2, fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
-                Text(btBtnLabel(st.targetButton), style = MaterialTheme.typography.title3, color = Color.White, fontSize = 20.sp)
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color.White.copy(alpha = 0.10f))
-                        .clickable { onSkipRecording() }
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                ) { Text("Skip", style = MaterialTheme.typography.caption2, fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f)) }
-            }
-        } else if (connectedName == null) {
-            Text("Pair a controller first.", style = MaterialTheme.typography.caption2, fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f))
+        if (connectedName == null) {
+            Text(
+                "Pair a controller first.",
+                style = MaterialTheme.typography.caption2,
+                fontSize = 10.sp,
+                color = Color.White.copy(alpha = 0.4f),
+            )
         } else {
             GbaButtonGrid(pressedButtons = liveGamepadButtons)
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (isRecording) {
+        if (showResetConfirm) {
+            ResetConfirmSlider(
+                onConfirmed = {
+                    showResetConfirm = false
+                    bindingInitialMapping = GamepadMapping(bindings = emptyMap())
+                    showBindingFlow = true
+                },
+                onCancel = { showResetConfirm = false },
+            )
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Box(
-                    modifier = Modifier.weight(1f).height(24.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(BT_CRIMSON.copy(alpha = 0.85f))
-                        .clickable { onStopRecording() },
-                    contentAlignment = Alignment.Center,
-                ) { Text("Cancel", style = MaterialTheme.typography.caption2, fontSize = 10.sp, color = Color.White) }
-            } else {
-                Box(
-                    modifier = Modifier.weight(1f).height(24.dp)
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(24.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .background(Color.White.copy(alpha = 0.10f))
-                        .clickable { onStartRecordAll() },
+                        .clickable {
+                            bindingInitialMapping = gamepadMapping
+                            showBindingFlow = true
+                        },
                     contentAlignment = Alignment.Center,
-                ) { Text("Rebind All", style = MaterialTheme.typography.caption2, fontSize = 10.sp, color = Color.White) }
+                ) {
+                    Text(
+                        "Edit Binds",
+                        style = MaterialTheme.typography.caption2,
+                        fontSize = 10.sp,
+                        color = Color.White,
+                    )
+                }
                 Box(
-                    modifier = Modifier.size(24.dp).clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.08f))
-                        .clickable { onResetDefaults() },
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(BT_CRIMSON.copy(alpha = 0.85f))
+                        .clickable { showResetConfirm = true },
                     contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Default.Refresh, null, Modifier.size(12.dp), tint = Color.White.copy(alpha = 0.5f)) }
+                ) {
+                    Icon(Icons.Default.Refresh, null, Modifier.size(12.dp), tint = Color.White)
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun ResetConfirmSlider(
+    onConfirmed: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var trackWidth by remember { mutableStateOf(1) }
+    var progress by remember { mutableFloatStateOf(0f) }
+
+    Row(
+        modifier = Modifier.fillMaxWidth().height(24.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            "Reset",
+            style = MaterialTheme.typography.caption2,
+            fontSize = 10.sp,
+            color = BT_CRIMSON.copy(alpha = 0.8f),
+            modifier = Modifier.width(34.dp),
+        )
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(4.dp))
+                .background(Color.White.copy(alpha = 0.08f))
+                .onSizeChanged { trackWidth = it.width }
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val drag = awaitTouchSlopOrCancellation(down.id) { c, delta ->
+                            if (kotlin.math.abs(delta.x) > kotlin.math.abs(delta.y)) c.consume()
+                        }
+                        if (drag != null) {
+                            progress = (drag.position.x / trackWidth.toFloat()).coerceIn(0f, 1f)
+                            var fired = false
+                            horizontalDrag(drag.id) { change ->
+                                change.consume()
+                                progress = (change.position.x / trackWidth.toFloat()).coerceIn(0f, 1f)
+                                if (!fired && progress >= 1f) {
+                                    fired = true
+                                    onConfirmed()
+                                }
+                            }
+                            if (!fired) {
+                                val from = progress
+                                scope.launch {
+                                    animate(
+                                        initialValue = from,
+                                        targetValue = 0f,
+                                        animationSpec = spring(
+                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                            stiffness = Spring.StiffnessMedium,
+                                        ),
+                                    ) { v, _ -> progress = v }
+                                }
+                            }
+                        }
+                    }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(Modifier.fillMaxSize()) {
+                if (progress > 0f) {
+                    drawRoundRect(
+                        color = BT_CRIMSON.copy(alpha = (0.3f + progress * 0.6f).coerceIn(0f, 0.9f)),
+                        topLeft = Offset.Zero,
+                        size = Size(size.width * progress, size.height),
+                        cornerRadius = CornerRadius(4.dp.toPx()),
+                    )
+                }
+            }
+            Text(
+                "→ Rebind",
+                style = MaterialTheme.typography.caption2,
+                fontSize = 9.sp,
+                color = Color.White.copy(alpha = (0.55f - progress * 1.1f).coerceIn(0f, 0.55f)),
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(24.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.08f))
+                .clickable { onCancel() },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Default.Close, null, Modifier.size(10.dp), tint = Color.White.copy(alpha = 0.5f))
         }
     }
 }

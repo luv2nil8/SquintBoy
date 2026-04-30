@@ -12,6 +12,7 @@ import com.anaglych.squintboyadvance.core.SaveStateManager
 import com.anaglych.squintboyadvance.presentation.RomMetadataStore
 import com.anaglych.squintboyadvance.presentation.SettingsRepository
 import com.anaglych.squintboyadvance.shared.emulator.EmulatorState
+import com.anaglych.squintboyadvance.shared.model.BindableAction
 import com.anaglych.squintboyadvance.shared.model.ButtonId
 import com.anaglych.squintboyadvance.shared.model.GamepadMapping
 import com.anaglych.squintboyadvance.shared.model.GbColorPalette
@@ -266,6 +267,8 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun saveState() {
+        val wasRunning = _state.value == EmulatorState.RUNNING
+        if (wasRunning) pause()
         if (_state.value != EmulatorState.PAUSED) return
         val success = saveStateManager?.saveExplicit() ?: false
         if (success) {
@@ -273,9 +276,12 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             _canUndoLoad.value = false
             refreshSaveStateAvailability()
         }
+        if (wasRunning) resume()
     }
 
     fun loadState() {
+        val wasRunning = _state.value == EmulatorState.RUNNING
+        if (wasRunning) pause()
         if (_state.value != EmulatorState.PAUSED) return
         val success = saveStateManager?.loadExplicit() ?: false
         if (success) {
@@ -283,6 +289,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             _canUndoSave.value = false
             onFrameReady()
         }
+        if (wasRunning) resume()
     }
 
     fun undoSave() {
@@ -312,6 +319,17 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         if (speed >= 2) _ffSelectedSpeed.value = speed
         _ffSpeed.value = speed
         emulatorThread?.ffSpeed = speed
+    }
+
+    /** Cycles through speed presets 2→3→4→2, turning FF on if it was off. */
+    fun cycleFfSpeed() {
+        val next = when (_ffSpeed.value) {
+            0    -> 2
+            2    -> 3
+            3    -> 4
+            else -> 2
+        }
+        setFfSpeed(next)
     }
 
     private val _ffSelectedSpeed = MutableStateFlow(2)
@@ -395,47 +413,39 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         resume()
     }
 
-    // ── Gamepad recording ──────────────────────────────────────────────────
+    // ── Binding flow ───────────────────────────────────────────────────────────
 
-    sealed class RecordingState {
-        object Idle : RecordingState()
-        data class Recording(
-            val targetButton: ButtonId,
-            val stepIndex: Int,
-            val totalSteps: Int,
-        ) : RecordingState()
-    }
+    private val _isBindingFlowActive = MutableStateFlow(false)
 
-    private val _gamepadRecording = MutableStateFlow<RecordingState>(RecordingState.Idle)
-    val gamepadRecording: StateFlow<RecordingState> = _gamepadRecording.asStateFlow()
+    /** Keycodes currently held on the physical controller during binding mode. */
+    private val _heldKeysForBinding = MutableStateFlow<Set<Int>>(emptySet())
+    val heldKeysForBinding: StateFlow<Set<Int>> = _heldKeysForBinding.asStateFlow()
 
     private val _liveGamepadButtons = MutableStateFlow<Set<ButtonId>>(emptySet())
     val liveGamepadButtons: StateFlow<Set<ButtonId>> = _liveGamepadButtons.asStateFlow()
 
     val controllerLayout get() = settingsRepo.settings.value.controllerLayout
 
-    fun startRecordAll() {
-        val buttons = ButtonId.values()
-        _gamepadRecording.value = RecordingState.Recording(buttons[0], 0, buttons.size)
+    /** Called by EmulatorActivity's dispatchKeyEvent to decide whether to intercept all keys. */
+    fun isRecording() = _isBindingFlowActive.value
+
+    fun openBindingFlow() {
+        _isBindingFlowActive.value = true
+        _heldKeysForBinding.value = emptySet()
     }
 
-    fun recordKeycode(keyCode: Int) {
-        val st = _gamepadRecording.value as? RecordingState.Recording ?: return
+    fun closeBindingFlow() {
+        _isBindingFlowActive.value = false
+        _heldKeysForBinding.value = emptySet()
+        _heldPhysicalKeys = emptySet()
+        _heldAxisKeys.clear()
+        _activeActions.clear()
+    }
+
+    fun commitBinding(newMapping: GamepadMapping) {
         settingsRepo.update { s ->
-            s.copy(controllerLayout = s.controllerLayout.copy(
-                gamepadMapping = s.controllerLayout.gamepadMapping.withButton(st.targetButton, keyCode)
-            ))
+            s.copy(controllerLayout = s.controllerLayout.copy(gamepadMapping = newMapping))
         }
-        advanceRecording(st)
-    }
-
-    fun skipRecording() {
-        val st = _gamepadRecording.value as? RecordingState.Recording ?: return
-        advanceRecording(st)
-    }
-
-    fun stopRecording() {
-        _gamepadRecording.value = RecordingState.Idle
     }
 
     fun resetGamepadMapping() {
@@ -444,34 +454,117 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    private fun advanceRecording(st: RecordingState.Recording) {
-        val next = st.stepIndex + 1
-        val buttons = ButtonId.values()
-        _gamepadRecording.value = if (next >= buttons.size) RecordingState.Idle
-            else RecordingState.Recording(buttons[next], next, st.totalSteps)
-    }
-
     // ── Gamepad input routing ───────────────────────────────────────────────
 
+    // Physical keys currently held during normal play (not binding mode).
+    private var _heldPhysicalKeys: Set<Int> = emptySet()
+    // Axis synthetic keycodes currently active — tracked separately so they don't
+    // enter _heldPhysicalKeys and poison the button combo exact-match lookup.
+    private val _heldAxisKeys: MutableSet<Int> = mutableSetOf()
+    // Actions currently active (pressed but not yet released).
+    private val _activeActions: MutableSet<BindableAction> = mutableSetOf()
+
+    fun handleAxisKeyDown(axisCode: Int) {
+        if (_isBindingFlowActive.value) { _heldKeysForBinding.value = _heldKeysForBinding.value + axisCode; return }
+        _heldAxisKeys.add(axisCode)
+        updateActions()
+    }
+
+    fun handleAxisKeyUp(axisCode: Int) {
+        if (_isBindingFlowActive.value) { _heldKeysForBinding.value = _heldKeysForBinding.value - axisCode; return }
+        _heldAxisKeys.remove(axisCode)
+        updateActions()
+    }
+
     fun handleGamepadKeyDown(keyCode: Int): Boolean {
-        if (_gamepadRecording.value is RecordingState.Recording) {
-            recordKeycode(keyCode)
-            return true
-        }
-        val mapping = settingsRepo.settings.value.controllerLayout.gamepadMapping
-        val button = mapping.fromKeyCode(keyCode) ?: return false
-        _liveGamepadButtons.value = _liveGamepadButtons.value + button
-        pressButton(button)
+        if (_isBindingFlowActive.value) { _heldKeysForBinding.value = _heldKeysForBinding.value + keyCode; return true }
+        _heldPhysicalKeys = _heldPhysicalKeys + keyCode
+        updateActions()
         return true
     }
 
     fun handleGamepadKeyUp(keyCode: Int): Boolean {
-        if (_gamepadRecording.value is RecordingState.Recording) return true
-        val mapping = settingsRepo.settings.value.controllerLayout.gamepadMapping
-        val button = mapping.fromKeyCode(keyCode) ?: return false
-        _liveGamepadButtons.value = _liveGamepadButtons.value - button
-        releaseButton(button)
+        if (_isBindingFlowActive.value) { _heldKeysForBinding.value = _heldKeysForBinding.value - keyCode; return true }
+        _heldPhysicalKeys = _heldPhysicalKeys - keyCode
+        updateActions()
         return true
+    }
+
+    /**
+     * Recomputes which actions should be active given the current held keys and
+     * presses/releases the delta.  Called on every key-down and key-up.
+     *
+     * Algorithm: collect all combos that are subsets of allHeld, sort longest first.
+     * Greedily assign combos — a combo is accepted only if none of its keys is already
+     * claimed by a longer combo.  This lets diagonals (UP+RIGHT simultaneously) fire
+     * both independent actions, while intentional multi-key combos (START+UP=SAVE)
+     * suppress their constituent single-key actions.
+     */
+    private fun updateActions() {
+        val mapping = settingsRepo.settings.value.controllerLayout.gamepadMapping
+        val allHeld = _heldPhysicalKeys + _heldAxisKeys
+        val target = computeTargetActions(mapping, allHeld)
+
+        val toPress   = target - _activeActions
+        val toRelease = _activeActions - target
+
+        toRelease.forEach { action -> _activeActions.remove(action); dispatchActionRelease(action) }
+        toPress.forEach   { action -> _activeActions.add(action);    dispatchActionPress(action)   }
+    }
+
+    private fun computeTargetActions(mapping: GamepadMapping, allHeld: Set<Int>): Set<BindableAction> {
+        if (allHeld.isEmpty()) return emptySet()
+
+        data class Match(val action: BindableAction, val combo: Set<Int>)
+
+        val matches = BindableAction.values().flatMap { action ->
+            mapping.forAction(action)
+                .filter { combo -> combo.isNotEmpty() && combo.all { it in allHeld } }
+                .map { combo -> Match(action, combo) }
+        }.sortedByDescending { it.combo.size }
+
+        val result      = mutableSetOf<BindableAction>()
+        val coveredKeys = mutableSetOf<Int>()
+
+        for ((action, combo) in matches) {
+            if (combo.none { it in coveredKeys }) {
+                result.add(action)
+                coveredKeys.addAll(combo)
+            }
+        }
+
+        // Single-key fallbacks for keys not covered by any registered combo
+        for (key in allHeld) {
+            if (key !in coveredKeys) {
+                val name = GamepadMapping.SYSTEM_REMAP_EXTRAS[key] ?: continue
+                val action = runCatching { BindableAction.valueOf(name) }.getOrNull() ?: continue
+                result.add(action)
+                coveredKeys.add(key)
+            }
+        }
+
+        return result
+    }
+
+    private fun dispatchActionPress(action: BindableAction) {
+        action.buttonId?.let { btn ->
+            _liveGamepadButtons.value = _liveGamepadButtons.value + btn
+            pressButton(btn)
+        }
+        when (action) {
+            BindableAction.FF_TOGGLE  -> toggleFastForward()
+            BindableAction.FF_SPEED   -> cycleFfSpeed()
+            BindableAction.SAVE_STATE -> saveState()
+            BindableAction.LOAD_STATE -> loadState()
+            else -> {}
+        }
+    }
+
+    private fun dispatchActionRelease(action: BindableAction) {
+        action.buttonId?.let { btn ->
+            _liveGamepadButtons.value = _liveGamepadButtons.value - btn
+            releaseButton(btn)
+        }
     }
 
     // ── Button press / release ──────────────────────────────────────────────

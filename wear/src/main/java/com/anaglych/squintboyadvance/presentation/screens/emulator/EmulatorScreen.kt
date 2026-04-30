@@ -1,5 +1,6 @@
 package com.anaglych.squintboyadvance.presentation.screens.emulator
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,8 +55,8 @@ fun EmulatorScreen(
     val canUndoLoad by viewModel.canUndoLoad.collectAsState()
     val isRomMode by viewModel.isRomMode.collectAsState()
     val currentRomId by viewModel.currentRomId.collectAsState()
-    val gamepadRecording by viewModel.gamepadRecording.collectAsState()
     val liveGamepadButtons by viewModel.liveGamepadButtons.collectAsState()
+    val heldKeysForBinding by viewModel.heldKeysForBinding.collectAsState()
 
     val settingsRepo = SettingsRepository.getInstance(viewModel.getApplication())
     val settings by settingsRepo.settings.collectAsState()
@@ -110,6 +111,9 @@ fun EmulatorScreen(
     LaunchedEffect(romId) {
         viewModel.loadRom(romId, romTitle)
     }
+
+    // Swallow swipe-to-dismiss while paused — the pause menu has its own exit path
+    BackHandler(enabled = state == EmulatorState.PAUSED) {}
 
     Box(
         modifier = Modifier
@@ -288,11 +292,11 @@ fun EmulatorScreen(
                         },
                         gamepadMapping = settings.controllerLayout.gamepadMapping,
                         liveGamepadButtons = liveGamepadButtons,
-                        recordingState = gamepadRecording,
-                        onStartRecordAll = viewModel::startRecordAll,
-                        onSkipRecording = viewModel::skipRecording,
-                        onStopRecording = viewModel::stopRecording,
-                        onResetGamepadMapping = viewModel::resetGamepadMapping,
+                        heldKeysForBinding = heldKeysForBinding,
+                        spinnerPhysics = settings.controllerLayout.spinnerPhysics,
+                        onOpenBindingFlow = viewModel::openBindingFlow,
+                        onCloseBindingFlow = viewModel::closeBindingFlow,
+                        onCommitBinding = viewModel::commitBinding,
                         selectedPaletteIndex = effectiveSettings.gbPaletteIndex,
                         onPaletteSelected = { idx ->
                             updateDisplaySetting(
@@ -319,6 +323,7 @@ fun EmulatorScreen(
                         onConfirmed = { viewModel.resetRom() },
                         onDismiss = { pauseUiState = PauseUiState.MENU },
                     )
+
 
                 }
             }
