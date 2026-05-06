@@ -25,7 +25,6 @@ data class ControllerLayout(
     val vdpadThresholdFactor: Float = 0.667f,
     val gamepadEnabled: Boolean = false,
     val gamepadMapping: GamepadMapping = GamepadMapping(),
-    val spinnerPhysics: SpinnerPhysics = SpinnerPhysics(),
 ) {
     companion object {
         fun defaultButtons(): List<ButtonPosition> = listOf(

@@ -371,6 +371,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
                 gbaFrameskip     = ov.gbaFrameskip     ?: base.gbaFrameskip,
                 gbFrameskip      = ov.gbFrameskip      ?: base.gbFrameskip,
                 gbPaletteIndex   = ov.gbPaletteIndex   ?: base.gbPaletteIndex,
+                controllerLayout = ov.controllerLayout ?: base.controllerLayout,
             )
         }
     }

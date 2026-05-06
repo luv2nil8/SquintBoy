@@ -21,6 +21,7 @@ import android.view.InputDevice
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -47,13 +48,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import com.anaglych.squintboyadvance.shared.model.GamepadMapping
-import com.anaglych.squintboyadvance.shared.model.SpinnerPhysics
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -70,14 +71,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.wear.compose.material.Chip
+import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.CircularProgressIndicator
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
+import com.anaglych.squintboyadvance.presentation.components.CompactSwipeBar
 import com.anaglych.squintboyadvance.shared.model.ButtonId
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -152,9 +157,10 @@ internal fun findConnectedGamepadName(im: InputManager, adapter: BluetoothAdapte
  */
 @Composable
 fun BtPadExpandContent(
+    activeTab: Int,
+    onTabChange: (Int) -> Unit,
     liveGamepadButtons: Set<ButtonId>,
     gamepadMapping: GamepadMapping,
-    spinnerPhysics: SpinnerPhysics,
     heldKeysForBinding: Set<Int>,
     onOpenBindingFlow: () -> Unit,
     onCloseBindingFlow: () -> Unit,
@@ -164,8 +170,6 @@ fun BtPadExpandContent(
     val im      = remember { context.getSystemService(InputManager::class.java) }
     val adapter = remember { context.getSystemService(BluetoothManager::class.java)?.adapter }
     val permsOk = remember { hasBtPerms(context) }
-
-    var activeTab        by remember { mutableStateOf(0) }
     var connectedName    by remember { mutableStateOf(findConnectedGamepadName(im, adapter)) }
     var connectedAddress by remember { mutableStateOf<String?>(null) }
     var isScanning       by remember { mutableStateOf(false) }
@@ -339,29 +343,30 @@ fun BtPadExpandContent(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(26.dp)
-                .clip(RoundedCornerShape(4.dp))
+                .height(34.dp)
+                .clip(RoundedCornerShape(17.dp))
                 .background(Color.White.copy(alpha = 0.06f)),
         ) {
-            val pillX by animateDpAsState(
-                if (activeTab == 0) 0.dp else maxWidth / 2,
-                label = "btPill",
-            )
+            val tabAnim = remember { Animatable(activeTab.toFloat()) }
+            LaunchedEffect(activeTab) {
+                tabAnim.animateTo(activeTab.toFloat(), spring(stiffness = Spring.StiffnessMedium))
+            }
+            val pillX = (maxWidth / 2) * tabAnim.value
             Box(
                 modifier = Modifier
                     .width(maxWidth / 2)
                     .fillMaxHeight()
                     .offset(x = pillX)
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(17.dp))
                     .background(BT_GREEN.copy(alpha = 0.85f)),
             )
             Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
                 listOf("Controller", "Bindings").forEachIndexed { i, label ->
                     Box(
-                        modifier = Modifier.weight(1f).fillMaxHeight().clickable { activeTab = i },
+                        modifier = Modifier.weight(1f).fillMaxHeight().clickable { onTabChange(i) },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(label, style = MaterialTheme.typography.caption2, fontSize = 10.sp, color = Color.White)
+                        Text(label, style = MaterialTheme.typography.caption2, fontSize = 11.sp, color = Color.White)
                     }
                 }
             }
@@ -388,7 +393,6 @@ fun BtPadExpandContent(
                 connectedName = connectedName,
                 liveGamepadButtons = liveGamepadButtons,
                 gamepadMapping = gamepadMapping,
-                spinnerPhysics = spinnerPhysics,
                 heldKeysForBinding = heldKeysForBinding,
                 onOpenBindingFlow = onOpenBindingFlow,
                 onCloseBindingFlow = onCloseBindingFlow,
@@ -453,15 +457,13 @@ private fun ControllerTabContent(
                     Text("Searching…", style = MaterialTheme.typography.caption2, fontSize = 10.sp, color = Color.White)
                 }
             } else {
-                Box(
-                    modifier = Modifier.fillMaxWidth().height(26.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(BT_GREEN.copy(alpha = 0.85f))
-                        .clickable { onStartScan() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("Search", style = MaterialTheme.typography.caption2, fontSize = 10.sp, color = Color.White)
-                }
+                Chip(
+                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                    onClick  = onStartScan,
+                    colors   = ChipDefaults.chipColors(backgroundColor = BT_GREEN.copy(alpha = 0.85f)),
+                    label    = { Text("Search", style = MaterialTheme.typography.caption2, fontSize = 10.sp) },
+                    icon     = { Icon(Icons.Default.Search, null, Modifier.size(14.dp)) },
+                )
             }
 
             discovered.forEach { device ->
@@ -537,7 +539,6 @@ private fun BindingsTabContent(
     connectedName: String?,
     liveGamepadButtons: Set<ButtonId>,
     gamepadMapping: GamepadMapping,
-    spinnerPhysics: SpinnerPhysics,
     heldKeysForBinding: Set<Int>,
     onOpenBindingFlow: () -> Unit,
     onCloseBindingFlow: () -> Unit,
@@ -554,7 +555,6 @@ private fun BindingsTabContent(
         }
         BindingFlowContent(
             initialMapping = bindingInitialMapping,
-            spinnerPhysics = spinnerPhysics,
             heldKeys = heldKeysForBinding,
             onConfirm = { newMapping ->
                 onCommitBinding(newMapping)
@@ -575,13 +575,17 @@ private fun BindingsTabContent(
                 style = MaterialTheme.typography.caption2,
                 fontSize = 10.sp,
                 color = Color.White.copy(alpha = 0.4f),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
             )
         } else {
             GbaButtonGrid(pressedButtons = liveGamepadButtons)
         }
 
         if (showResetConfirm) {
-            ResetConfirmSlider(
+            CompactSwipeBar(
+                slideText   = "Rebind All",
+                color       = BT_CRIMSON,
                 onConfirmed = {
                     showResetConfirm = false
                     bindingInitialMapping = GamepadMapping(bindings = emptyMap())
@@ -595,132 +599,30 @@ private fun BindingsTabContent(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Chip(
+                    modifier = Modifier.weight(1f).height(36.dp),
+                    onClick  = { bindingInitialMapping = gamepadMapping; showBindingFlow = true },
+                    colors   = ChipDefaults.chipColors(
+                        backgroundColor = Color.White.copy(alpha = 0.10f),
+                    ),
+                    label = { Text("Edit Binds", style = MaterialTheme.typography.caption2, fontSize = 10.sp) },
+                    icon  = { Icon(Icons.Default.Edit, null, Modifier.size(14.dp)) },
+                )
                 Box(
                     modifier = Modifier
-                        .weight(1f)
-                        .height(24.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color.White.copy(alpha = 0.10f))
-                        .clickable {
-                            bindingInitialMapping = gamepadMapping
-                            showBindingFlow = true
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        "Edit Binds",
-                        style = MaterialTheme.typography.caption2,
-                        fontSize = 10.sp,
-                        color = Color.White,
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
+                        .size(36.dp)
                         .clip(CircleShape)
                         .background(BT_CRIMSON.copy(alpha = 0.85f))
                         .clickable { showResetConfirm = true },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Default.Refresh, null, Modifier.size(12.dp), tint = Color.White)
+                    Icon(Icons.Default.Refresh, null, Modifier.size(14.dp), tint = Color.White)
                 }
             }
         }
     }
 }
 
-@Composable
-private fun ResetConfirmSlider(
-    onConfirmed: () -> Unit,
-    onCancel: () -> Unit,
-) {
-    val scope = rememberCoroutineScope()
-    var trackWidth by remember { mutableStateOf(1) }
-    var progress by remember { mutableFloatStateOf(0f) }
-
-    Row(
-        modifier = Modifier.fillMaxWidth().height(24.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Text(
-            "Reset",
-            style = MaterialTheme.typography.caption2,
-            fontSize = 10.sp,
-            color = BT_CRIMSON.copy(alpha = 0.8f),
-            modifier = Modifier.width(34.dp),
-        )
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(4.dp))
-                .background(Color.White.copy(alpha = 0.08f))
-                .onSizeChanged { trackWidth = it.width }
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        val drag = awaitTouchSlopOrCancellation(down.id) { c, delta ->
-                            if (kotlin.math.abs(delta.x) > kotlin.math.abs(delta.y)) c.consume()
-                        }
-                        if (drag != null) {
-                            progress = (drag.position.x / trackWidth.toFloat()).coerceIn(0f, 1f)
-                            var fired = false
-                            horizontalDrag(drag.id) { change ->
-                                change.consume()
-                                progress = (change.position.x / trackWidth.toFloat()).coerceIn(0f, 1f)
-                                if (!fired && progress >= 1f) {
-                                    fired = true
-                                    onConfirmed()
-                                }
-                            }
-                            if (!fired) {
-                                val from = progress
-                                scope.launch {
-                                    animate(
-                                        initialValue = from,
-                                        targetValue = 0f,
-                                        animationSpec = spring(
-                                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                                            stiffness = Spring.StiffnessMedium,
-                                        ),
-                                    ) { v, _ -> progress = v }
-                                }
-                            }
-                        }
-                    }
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Canvas(Modifier.fillMaxSize()) {
-                if (progress > 0f) {
-                    drawRoundRect(
-                        color = BT_CRIMSON.copy(alpha = (0.3f + progress * 0.6f).coerceIn(0f, 0.9f)),
-                        topLeft = Offset.Zero,
-                        size = Size(size.width * progress, size.height),
-                        cornerRadius = CornerRadius(4.dp.toPx()),
-                    )
-                }
-            }
-            Text(
-                "→ Rebind",
-                style = MaterialTheme.typography.caption2,
-                fontSize = 9.sp,
-                color = Color.White.copy(alpha = (0.55f - progress * 1.1f).coerceIn(0f, 0.55f)),
-            )
-        }
-        Box(
-            modifier = Modifier
-                .size(24.dp)
-                .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.08f))
-                .clickable { onCancel() },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Default.Close, null, Modifier.size(10.dp), tint = Color.White.copy(alpha = 0.5f))
-        }
-    }
-}
 
 @Composable
 private fun GbaButtonGrid(pressedButtons: Set<ButtonId>) {

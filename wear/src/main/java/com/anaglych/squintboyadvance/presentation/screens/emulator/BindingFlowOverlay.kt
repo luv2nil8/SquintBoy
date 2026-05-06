@@ -8,7 +8,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -25,6 +29,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -43,16 +49,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.wear.compose.material.Chip
+import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import com.anaglych.squintboyadvance.presentation.theme.SurfaceMedium
 import com.anaglych.squintboyadvance.shared.model.BindableAction
 import com.anaglych.squintboyadvance.shared.model.GamepadMapping
-import com.anaglych.squintboyadvance.shared.model.SpinnerPhysics
 import kotlinx.coroutines.delay
 import kotlin.math.cos
 import kotlin.math.pow
@@ -76,10 +84,15 @@ private fun actionIcon(action: BindableAction): ImageVector? = when (action) {
     else                      -> null
 }
 
+private const val SPINNER_INERTIA       = 0.88f
+private const val SPINNER_SNAP_STRENGTH = 0.22f
+private const val SPINNER_VIRTUAL_RADIUS = 4.0f
+private const val SPINNER_FADE_OPACITY  = 0.30f
+private const val SPINNER_VISIBLE_ENTRIES = 3
+
 @Composable
 internal fun BindingFlowContent(
     initialMapping: GamepadMapping,
-    spinnerPhysics: SpinnerPhysics,
     heldKeys: Set<Int>,
     onConfirm: (GamepadMapping) -> Unit,
     onCancel: () -> Unit,
@@ -91,7 +104,7 @@ internal fun BindingFlowContent(
     var isDragging by remember { mutableStateOf(false) }
     var isSnapped  by remember { mutableStateOf(true) }
 
-    val selectedIndex  = rawOffset.roundToInt().coerceIn(0, ACTIONS.lastIndex)
+    val selectedIndex  = rawOffset.roundToInt().mod(ACTIONS.size)
     val selectedAction = ACTIONS[selectedIndex]
 
     var isListening  by remember { mutableStateOf(false) }
@@ -111,10 +124,10 @@ internal fun BindingFlowContent(
             delay(frameMs)
             if (isDragging) continue
 
-            velocity *= spinnerPhysics.inertia.pow(dt * 60f)
+            velocity *= SPINNER_INERTIA.pow(dt * 60f)
             val target = rawOffset.roundToInt().toFloat()
-            velocity += spinnerPhysics.snapStrength * (target - rawOffset) * 60f * dt
-            rawOffset = (rawOffset + velocity * dt).coerceIn(0f, ACTIONS.lastIndex.toFloat())
+            velocity += SPINNER_SNAP_STRENGTH * (target - rawOffset) * 60f * dt
+            rawOffset += velocity * dt
 
             val settled = kotlin.math.abs(rawOffset - target) < 0.005f &&
                           kotlin.math.abs(velocity) < 0.02f
@@ -124,6 +137,14 @@ internal fun BindingFlowContent(
             } else {
                 isSnapped = false
             }
+        }
+    }
+
+    // Cancel listening when the user navigates to a different action
+    LaunchedEffect(selectedIndex) {
+        if (isListening) {
+            pendingCombo = null
+            isListening = false
         }
     }
 
@@ -152,8 +173,8 @@ internal fun BindingFlowContent(
             val wasEmpty = draft.forAction(selectedAction).isEmpty()
             draft = draft.withCombo(selectedAction, combo)
             isListening = false
-            if (wasEmpty && selectedIndex < ACTIONS.lastIndex) {
-                rawOffset = (selectedIndex + 1).toFloat()
+            if (wasEmpty) {
+                rawOffset += 1f
                 velocity = 0f; isSnapped = false
             }
         }
@@ -167,15 +188,14 @@ internal fun BindingFlowContent(
             RadialSpinner(
                 actions         = ACTIONS,
                 rawOffset       = rawOffset,
-                physics         = spinnerPhysics,
                 selectedIndex   = selectedIndex,
                 onDragStart     = { isDragging = true; isSnapped = false },
-                onDragDelta     = { delta ->
-                    rawOffset = (rawOffset + delta).coerceIn(0f, ACTIONS.lastIndex.toFloat())
-                },
+                onDragDelta     = { delta -> rawOffset += delta },
                 onDragEnd       = { v -> velocity = v; isDragging = false },
-                onTap           = { idx ->
-                    rawOffset = idx.toFloat(); velocity = 0f; isSnapped = true
+                onTap           = { delta ->
+                    rawOffset = rawOffset.roundToInt().toFloat() + delta
+                    velocity = 0f; isSnapped = true
+                    val idx = rawOffset.roundToInt().mod(ACTIONS.size)
                     if (!isListening && draft.forAction(ACTIONS[idx]).isEmpty()) isListening = true
                 },
             )
@@ -188,30 +208,85 @@ internal fun BindingFlowContent(
                 dupFor      = { combo ->
                     ACTIONS.firstOrNull { a -> a != selectedAction && draft.forAction(a).any { it == combo } }
                 },
-                onRemove        = { idx -> draft = draft.withoutComboAt(selectedAction, idx) },
+                onRemove         = { idx -> draft = draft.withoutComboAt(selectedAction, idx) },
                 onStartListening = { isListening = true; pendingCombo = null },
+                onAddCombo       = {
+                    val combo = if (heldKeys.isNotEmpty()) heldKeys else pendingCombo
+                    if (!combo.isNullOrEmpty()) {
+                        val wasEmpty = draft.forAction(selectedAction).isEmpty()
+                        draft = draft.withCombo(selectedAction, combo)
+                        pendingCombo = null
+                        isListening = false
+                        if (wasEmpty) { rawOffset += 1f; velocity = 0f; isSnapped = false }
+                    }
+                },
+                onRedoListening  = { pendingCombo = null; isListening = false },
             )
 
             Spacer(Modifier.height(2.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Box(
-                    modifier = Modifier.weight(1f).height(28.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color.White.copy(alpha = 0.10f))
-                        .clickable { onCancel() },
-                    contentAlignment = Alignment.Center,
-                ) { Text("Cancel", style = MaterialTheme.typography.caption2, fontSize = 11.sp, color = Color.White) }
-                Box(
-                    modifier = Modifier.weight(1f).height(28.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(FLOW_GREEN.copy(alpha = 0.80f))
-                        .clickable { onConfirm(draft) },
-                    contentAlignment = Alignment.Center,
-                ) { Text("Confirm", style = MaterialTheme.typography.caption2, fontSize = 11.sp, color = Color.White) }
+            var iconsOnly by remember { mutableStateOf(false) }
+            if (iconsOnly) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.10f))
+                            .clickable { onCancel() },
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Default.Close, null, Modifier.size(18.dp)) }
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(FLOW_GREEN.copy(alpha = 0.80f))
+                            .clickable { onConfirm(draft) },
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Default.Check, null, Modifier.size(18.dp)) }
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Chip(
+                        modifier = Modifier.weight(1f).height(36.dp),
+                        onClick  = onCancel,
+                        colors   = ChipDefaults.chipColors(backgroundColor = Color.White.copy(alpha = 0.10f)),
+                        label    = {
+                            Text(
+                                "Cancel",
+                                style = MaterialTheme.typography.caption2,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Clip,
+                                onTextLayout = { if (it.hasVisualOverflow) iconsOnly = true },
+                            )
+                        },
+                        icon = { Icon(Icons.Default.Close, null, Modifier.size(14.dp)) },
+                    )
+                    Chip(
+                        modifier = Modifier.weight(1f).height(36.dp),
+                        onClick  = { onConfirm(draft) },
+                        colors   = ChipDefaults.chipColors(backgroundColor = FLOW_GREEN.copy(alpha = 0.80f)),
+                        label    = {
+                            Text(
+                                "Confirm",
+                                style = MaterialTheme.typography.caption2,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Clip,
+                                onTextLayout = { if (it.hasVisualOverflow) iconsOnly = true },
+                            )
+                        },
+                        icon = { Icon(Icons.Default.Check, null, Modifier.size(14.dp)) },
+                    )
+                }
             }
         }
 }
@@ -220,12 +295,11 @@ internal fun BindingFlowContent(
 private fun RadialSpinner(
     actions: List<BindableAction>,
     rawOffset: Float,
-    physics: SpinnerPhysics,
     selectedIndex: Int,
     onDragStart: () -> Unit,
     onDragDelta: (Float) -> Unit,
     onDragEnd: (velocity: Float) -> Unit,
-    onTap: (Int) -> Unit,
+    onTap: (delta: Int) -> Unit,
 ) {
     val density = LocalDensity.current
     val itemWidthDp = 36.dp
@@ -244,14 +318,12 @@ private fun RadialSpinner(
                     }
                     if (drag == null) {
                         val halfWPx = size.width / 2f
-                        val tappedIdx = when {
-                            down.position.x < halfWPx * 0.6f ->
-                                (latestOffset.roundToInt() - 1).coerceAtLeast(0)
-                            down.position.x > halfWPx * 1.4f ->
-                                (latestOffset.roundToInt() + 1).coerceAtMost(actions.lastIndex)
-                            else -> latestOffset.roundToInt()
+                        val delta = when {
+                            down.position.x < halfWPx * 0.6f -> -1
+                            down.position.x > halfWPx * 1.4f ->  1
+                            else                              ->  0
                         }
-                        onTap(tappedIdx)
+                        onTap(delta)
                     } else {
                         onDragStart()
                         var lastX = drag.position.x
@@ -276,15 +348,22 @@ private fun RadialSpinner(
     ) {
         val halfW = maxWidth.value / 2f  // dp
 
+        val n = actions.size.toFloat()
+        // Shortest circular distance from rawOffset to item i, in (-n/2, n/2]
+        fun wrapDist(i: Int): Float {
+            val raw = i.toFloat() - rawOffset
+            return ((raw + n / 2f).mod(n)) - n / 2f
+        }
+
         actions.indices
-            .sortedByDescending { kotlin.math.abs(it - rawOffset) }
+            .sortedByDescending { kotlin.math.abs(wrapDist(it)) }
             .forEach { i ->
-                val d = i.toFloat() - rawOffset
-                if (kotlin.math.abs(d) > physics.visibleEntries + 0.5f) return@forEach
-                val angle = (d / physics.virtualRadius) * (Math.PI.toFloat() / 2f)
+                val d = wrapDist(i)
+                if (kotlin.math.abs(d) > SPINNER_VISIBLE_ENTRIES + 0.5f) return@forEach
+                val angle = (d / SPINNER_VIRTUAL_RADIUS) * (Math.PI.toFloat() / 2f)
                 val sc = cos(angle).coerceIn(0f, 1f)
                 val xOffsetDp = sin(angle) * halfW * 0.88f
-                val opacity = (physics.fadeOpacity + (1f - physics.fadeOpacity) * sc).coerceIn(0f, 1f)
+                val opacity = (SPINNER_FADE_OPACITY + (1f - SPINNER_FADE_OPACITY) * sc).coerceIn(0f, 1f)
                 val isSelected = i == selectedIndex
 
                 Box(
@@ -330,6 +409,8 @@ private fun BindingLabelColumn(
     dupFor: (Set<Int>) -> BindableAction?,
     onRemove: (Int) -> Unit,
     onStartListening: () -> Unit,
+    onAddCombo: () -> Unit,
+    onRedoListening: () -> Unit,
 ) {
     var dotCount by remember { mutableIntStateOf(1) }
     LaunchedEffect(isListening) {
@@ -346,13 +427,57 @@ private fun BindingLabelColumn(
         combos.forEachIndexed { idx, combo ->
             val isLast = idx == combos.lastIndex && !isListening
             val dup = dupFor(combo)
+            BoundComboChipRow(
+                combo        = combo,
+                dup          = dup,
+                altToggle    = altToggle,
+                isLast       = isLast,
+                onRebind     = { onRemove(idx); onStartListening() },
+                onAddAnother = onStartListening,
+            )
+        }
+
+        if (isListening || combos.isEmpty()) {
+            ListeningChipRow(
+                isListening       = isListening,
+                livePending       = livePending,
+                dotCount          = dotCount,
+                onStartListening  = onStartListening,
+                onAddCombo        = onAddCombo,
+                onCancelListening = onRedoListening,
+            )
+        }
+    }
+}
+
+@Composable
+private fun BoundComboChipRow(
+    combo: Set<Int>,
+    dup: BindableAction?,
+    altToggle: Boolean,
+    isLast: Boolean,
+    onRebind: () -> Unit,
+    onAddAnother: () -> Unit,
+) {
+    val btnSize = 26.dp
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(26.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        // Combo chip
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(26.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .background(Color.White.copy(alpha = if (dup != null) 0.08f else 0.12f)),
+            contentAlignment = Alignment.Center,
+        ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(22.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color.White.copy(alpha = 0.07f))
-                    .padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
@@ -363,65 +488,130 @@ private fun BindingLabelColumn(
                     style = MaterialTheme.typography.caption2,
                     fontSize = 10.sp,
                     color = if (dup != null) FLOW_YELLOW else Color.White,
-                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
                 )
-                Box(
-                    modifier = Modifier
-                        .size(16.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (isLast) FLOW_GREEN.copy(alpha = 0.80f)
-                            else FLOW_CRIMSON.copy(alpha = 0.75f),
-                        )
-                        .clickable { if (isLast) onStartListening() else onRemove(idx) },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text  = if (isLast) "+" else "×",
-                        style = MaterialTheme.typography.caption2,
-                        fontSize = 10.sp,
-                        color = Color.White,
-                    )
-                }
             }
         }
 
-        if (isListening) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(22.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color.White.copy(alpha = 0.10f))
-                    .padding(horizontal = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = if (livePending.isNotEmpty()) GamepadMapping.comboLabel(livePending)
-                           else "Listening" + ".".repeat(dotCount),
-                    style = MaterialTheme.typography.caption2,
-                    fontSize = 10.sp,
-                    color = if (livePending.isNotEmpty()) FLOW_GREEN else Color.White.copy(alpha = 0.6f),
-                )
-            }
-        } else if (combos.isEmpty()) {
+        // Rebind — removes this combo and starts listening for a replacement
+        Box(
+            modifier = Modifier
+                .size(btnSize)
+                .clip(CircleShape)
+                .background(FLOW_CRIMSON.copy(alpha = 0.75f))
+                .clickable { onRebind() },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Default.Refresh,
+                contentDescription = "Rebind",
+                tint = Color.White,
+                modifier = Modifier.size(14.dp),
+            )
+        }
+
+        // + only on last combo when not listening
+        if (isLast) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(22.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color.White.copy(alpha = 0.07f))
-                    .clickable { onStartListening() }
-                    .padding(horizontal = 6.dp),
-                contentAlignment = Alignment.CenterStart,
+                    .size(btnSize)
+                    .clip(CircleShape)
+                    .background(FLOW_GREEN.copy(alpha = 0.80f))
+                    .clickable { onAddAnother() },
+                contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    "Tap to bind",
-                    style = MaterialTheme.typography.caption2,
-                    fontSize = 10.sp,
-                    color = Color.White.copy(alpha = 0.35f),
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Add another",
+                    tint = Color.White,
+                    modifier = Modifier.size(14.dp),
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun ListeningChipRow(
+    isListening: Boolean,
+    livePending: Set<Int>,
+    dotCount: Int,
+    onStartListening: () -> Unit,
+    onAddCombo: () -> Unit,
+    onCancelListening: () -> Unit,
+) {
+    val hasCapture = livePending.isNotEmpty()
+    val chipText = when {
+        hasCapture  -> GamepadMapping.comboLabel(livePending)
+        isListening -> "Listening" + ".".repeat(dotCount)
+        else        -> "Tap to bind"
+    }
+    val chipColor = when {
+        hasCapture  -> FLOW_GREEN
+        isListening -> Color.White.copy(alpha = 0.6f)
+        else        -> Color.White.copy(alpha = 0.35f)
+    }
+
+    val btnSize = 26.dp
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(26.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        // Input chip — fills all space not taken by buttons
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(26.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .background(Color.White.copy(alpha = if (hasCapture) 0.15f else 0.10f))
+                .then(if (!isListening) Modifier.clickable { onStartListening() } else Modifier),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = chipText,
+                style = MaterialTheme.typography.caption2,
+                fontSize = 10.sp,
+                color = chipColor,
+                maxLines = 1,
+            )
+        }
+
+        // Cancel — dims when not listening; becomes X to stop listening when active
+        Box(
+            modifier = Modifier
+                .size(btnSize)
+                .clip(CircleShape)
+                .background(FLOW_CRIMSON.copy(alpha = if (isListening) 0.75f else 0.30f))
+                .then(if (isListening) Modifier.clickable { onCancelListening() } else Modifier),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = if (isListening) Icons.Default.Close else Icons.Default.Refresh,
+                contentDescription = "Cancel",
+                tint = Color.White.copy(alpha = if (isListening) 1f else 0.4f),
+                modifier = Modifier.size(14.dp),
+            )
+        }
+
+        // Add (green) — commits the captured combo
+        Box(
+            modifier = Modifier
+                .size(btnSize)
+                .clip(CircleShape)
+                .background(FLOW_GREEN.copy(alpha = if (hasCapture) 0.80f else 0.30f))
+                .then(if (hasCapture) Modifier.clickable { onAddCombo() } else Modifier),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "Add",
+                tint = Color.White.copy(alpha = if (hasCapture) 1f else 0.4f),
+                modifier = Modifier.size(14.dp),
+            )
         }
     }
 }
