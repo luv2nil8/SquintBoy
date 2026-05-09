@@ -63,7 +63,6 @@ fun EmulatorScreen(
     val sessionExpired by viewModel.sessionExpired.collectAsState()
     val sessionRemainingMs by viewModel.sessionRemainingMs.collectAsState()
     val isPro by viewModel.isPro.collectAsState()
-    val gamepadRecording by viewModel.gamepadRecording.collectAsState()
     val liveGamepadButtons by viewModel.liveGamepadButtons.collectAsState()
     val heldKeysForBinding by viewModel.heldKeysForBinding.collectAsState()
 
