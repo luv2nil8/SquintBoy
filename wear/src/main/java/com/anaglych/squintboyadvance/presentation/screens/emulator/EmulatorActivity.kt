@@ -6,6 +6,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
 import com.anaglych.squintboyadvance.shared.model.ButtonId
+import com.anaglych.squintboyadvance.shared.model.GamepadMapping
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -63,23 +64,35 @@ class EmulatorActivity : ComponentActivity() {
         }
     }
 
-    private var prevHatX = 0f
-    private var prevHatY = 0f
+    private var prevHatX  = 0f
+    private var prevHatY  = 0f
+    private var prevAxisX = 0f
+    private var prevAxisY = 0f
+    // Separate recording latches for HAT and AXIS so each clears independently.
+    private var hatRecordingLocked  = false
+    private var axisRecordingLocked = false
+    // Which synthetic keycodes were pressed when the latch engaged — used to emit keyUp on release.
+    private var lockedHatKeys:  Set<Int> = emptySet()
+    private var lockedAxisKeys: Set<Int> = emptySet()
 
     private fun isGamepadSource(event: KeyEvent) =
         event.source and InputDevice.SOURCE_GAMEPAD != 0 ||
-        event.source and InputDevice.SOURCE_JOYSTICK != 0
+        event.source and InputDevice.SOURCE_JOYSTICK != 0 ||
+        event.source and InputDevice.SOURCE_DPAD != 0
 
     // Intercept at the earliest point so the OS never acts on gamepad buttons.
     // PS Circle → KEYCODE_BACK, Cross → KEYCODE_BUTTON_A, etc. would otherwise
     // trigger system back/select before reaching onKeyDown.
+    // During recording we accept any key from any source so exotic controllers
+    // (microcontrollers, SOURCE_DPAD-only devices) can still be mapped.
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (isGamepadSource(event)) {
+        val isRecording = viewModel.isRecording()
+        if (isGamepadSource(event) || isRecording) {
             when (event.action) {
                 KeyEvent.ACTION_DOWN -> viewModel.handleGamepadKeyDown(event.keyCode)
                 KeyEvent.ACTION_UP   -> viewModel.handleGamepadKeyUp(event.keyCode)
             }
-            return true  // always consume — never let the OS touch gamepad events
+            return true
         }
         return super.dispatchKeyEvent(event)
     }
@@ -93,25 +106,91 @@ class EmulatorActivity : ComponentActivity() {
     }
 
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {
-        if (event.source and InputDevice.SOURCE_JOYSTICK == 0 &&
-            event.source and InputDevice.SOURCE_GAMEPAD == 0) return super.onGenericMotionEvent(event)
+        if (!viewModel.isRecording() &&
+            event.source and InputDevice.SOURCE_JOYSTICK == 0 &&
+            event.source and InputDevice.SOURCE_GAMEPAD == 0 &&
+            event.source and InputDevice.SOURCE_DPAD == 0) return super.onGenericMotionEvent(event)
+
+        val recording = viewModel.isRecording()
+        if (!recording) { hatRecordingLocked = false; axisRecordingLocked = false }
 
         val hatX = event.getAxisValue(MotionEvent.AXIS_HAT_X)
         val hatY = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
 
-        if (hatX != prevHatX) {
-            if (prevHatX < -0.5f) viewModel.handleGamepadKeyUp(KeyEvent.KEYCODE_DPAD_LEFT)
-            if (prevHatX > 0.5f)  viewModel.handleGamepadKeyUp(KeyEvent.KEYCODE_DPAD_RIGHT)
-            if (hatX < -0.5f)      viewModel.handleGamepadKeyDown(KeyEvent.KEYCODE_DPAD_LEFT)
-            else if (hatX > 0.5f)  viewModel.handleGamepadKeyDown(KeyEvent.KEYCODE_DPAD_RIGHT)
-            prevHatX = hatX
+        // ── HAT D-pad → KEYCODE_DPAD_* (play + recording) ───────────────────
+        if (recording && hatRecordingLocked) {
+            if (kotlin.math.abs(hatX) < 0.3f && kotlin.math.abs(hatY) < 0.3f) {
+                hatRecordingLocked = false
+                lockedHatKeys.forEach { viewModel.handleGamepadKeyUp(it) }
+                lockedHatKeys = emptySet()
+                prevHatX = hatX; prevHatY = hatY
+            }
+        } else {
+            if (hatX != prevHatX) {
+                if (prevHatX < -0.5f) viewModel.handleGamepadKeyUp(KeyEvent.KEYCODE_DPAD_LEFT)
+                if (prevHatX >  0.5f) viewModel.handleGamepadKeyUp(KeyEvent.KEYCODE_DPAD_RIGHT)
+                if (hatX < -0.5f) {
+                    viewModel.handleGamepadKeyDown(KeyEvent.KEYCODE_DPAD_LEFT)
+                    if (recording) { hatRecordingLocked = true; lockedHatKeys = lockedHatKeys + KeyEvent.KEYCODE_DPAD_LEFT }
+                } else if (hatX > 0.5f) {
+                    viewModel.handleGamepadKeyDown(KeyEvent.KEYCODE_DPAD_RIGHT)
+                    if (recording) { hatRecordingLocked = true; lockedHatKeys = lockedHatKeys + KeyEvent.KEYCODE_DPAD_RIGHT }
+                }
+                prevHatX = hatX
+            }
+            if (hatY != prevHatY) {
+                if (prevHatY < -0.5f) viewModel.handleGamepadKeyUp(KeyEvent.KEYCODE_DPAD_UP)
+                if (prevHatY >  0.5f) viewModel.handleGamepadKeyUp(KeyEvent.KEYCODE_DPAD_DOWN)
+                if (hatY < -0.5f) {
+                    viewModel.handleGamepadKeyDown(KeyEvent.KEYCODE_DPAD_UP)
+                    if (recording) { hatRecordingLocked = true; lockedHatKeys = lockedHatKeys + KeyEvent.KEYCODE_DPAD_UP }
+                } else if (hatY > 0.5f) {
+                    viewModel.handleGamepadKeyDown(KeyEvent.KEYCODE_DPAD_DOWN)
+                    if (recording) { hatRecordingLocked = true; lockedHatKeys = lockedHatKeys + KeyEvent.KEYCODE_DPAD_DOWN }
+                }
+                prevHatY = hatY
+            }
         }
-        if (hatY != prevHatY) {
-            if (prevHatY < -0.5f) viewModel.handleGamepadKeyUp(KeyEvent.KEYCODE_DPAD_UP)
-            if (prevHatY > 0.5f)  viewModel.handleGamepadKeyUp(KeyEvent.KEYCODE_DPAD_DOWN)
-            if (hatY < -0.5f)      viewModel.handleGamepadKeyDown(KeyEvent.KEYCODE_DPAD_UP)
-            else if (hatY > 0.5f)  viewModel.handleGamepadKeyDown(KeyEvent.KEYCODE_DPAD_DOWN)
-            prevHatY = hatY
+
+        // ── Analog stick AXIS_X/Y ────────────────────────────────────────────
+        // During recording: latch prevents re-triggering until stick returns to
+        // neutral, then emits key-up so the combo commits cleanly.
+        // During play: routes through handleAxisKeyDown/Up which bypasses
+        // _heldPhysicalKeys so stick events never poison the button combo matcher.
+        val axisX = event.getAxisValue(MotionEvent.AXIS_X)
+        val axisY = event.getAxisValue(MotionEvent.AXIS_Y)
+        if (recording && axisRecordingLocked) {
+            if (kotlin.math.abs(axisX) < 0.3f && kotlin.math.abs(axisY) < 0.3f) {
+                axisRecordingLocked = false
+                lockedAxisKeys.forEach { viewModel.handleAxisKeyUp(it) }
+                lockedAxisKeys = emptySet()
+                prevAxisX = axisX; prevAxisY = axisY
+            }
+        } else {
+            if (axisX != prevAxisX) {
+                if (prevAxisX < -0.5f) viewModel.handleAxisKeyUp(GamepadMapping.AXIS_LEFT)
+                if (prevAxisX >  0.5f) viewModel.handleAxisKeyUp(GamepadMapping.AXIS_RIGHT)
+                if (axisX < -0.5f) {
+                    viewModel.handleAxisKeyDown(GamepadMapping.AXIS_LEFT)
+                    if (recording) { axisRecordingLocked = true; lockedAxisKeys = lockedAxisKeys + GamepadMapping.AXIS_LEFT }
+                } else if (axisX > 0.5f) {
+                    viewModel.handleAxisKeyDown(GamepadMapping.AXIS_RIGHT)
+                    if (recording) { axisRecordingLocked = true; lockedAxisKeys = lockedAxisKeys + GamepadMapping.AXIS_RIGHT }
+                }
+                prevAxisX = axisX
+            }
+            if (axisY != prevAxisY) {
+                if (prevAxisY < -0.5f) viewModel.handleAxisKeyUp(GamepadMapping.AXIS_UP)
+                if (prevAxisY >  0.5f) viewModel.handleAxisKeyUp(GamepadMapping.AXIS_DOWN)
+                if (axisY < -0.5f) {
+                    viewModel.handleAxisKeyDown(GamepadMapping.AXIS_UP)
+                    if (recording) { axisRecordingLocked = true; lockedAxisKeys = lockedAxisKeys + GamepadMapping.AXIS_UP }
+                } else if (axisY > 0.5f) {
+                    viewModel.handleAxisKeyDown(GamepadMapping.AXIS_DOWN)
+                    if (recording) { axisRecordingLocked = true; lockedAxisKeys = lockedAxisKeys + GamepadMapping.AXIS_DOWN }
+                }
+                prevAxisY = axisY
+            }
         }
         return true
     }

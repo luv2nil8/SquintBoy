@@ -105,7 +105,7 @@ fun TouchOverlay(
 
         // Track which pointers are pressing which buttons
         val activeButtons = remember { mutableStateMapOf<PointerId, ButtonId>() }
-        // Buttons locked by tapping pause while held (Layout 1 only)
+        // Buttons locked by tapping pause while held (Layout 1 only); always DOWN when untouched
         val lockedButtons = remember { mutableStateMapOf<ButtonId, Unit>() }
         // Virtual d-pad directions active via drag (Layouts 2 & 3)
         val vdpadDirs = remember { mutableStateMapOf<ButtonId, Unit>() }
@@ -138,7 +138,12 @@ fun TouchOverlay(
         }
 
         // Derive the set of currently pressed button IDs for visual feedback
-        val pressedButtons = activeButtons.values.toSet() + lockedButtons.keys + vdpadDirs.keys + setOfNotNull(simPressedBtn.value)
+        // Locked buttons currently being touched are temporarily UP — exclude from both sides
+        val touchedLocked = activeButtons.values.filter { it in lockedButtons }.toSet()
+        val pressedButtons = (activeButtons.values.toSet() - touchedLocked) +
+            (lockedButtons.keys - touchedLocked) +
+            vdpadDirs.keys +
+            setOfNotNull(simPressedBtn.value)
 
         // When visible: steady display with configured settings
         // When hidden: brief flash with default values
@@ -223,14 +228,14 @@ fun TouchOverlay(
                                                 val btn = hitTestGrid(pos, cellSize, grid)
                                                 if (btn != null && btn in lockedButtons) {
                                                     if (event.type == PointerEventType.Press) {
-                                                        lockedButtons.remove(btn)
+                                                        // Inverted: finger down temporarily releases the button
                                                         onButtonRelease(btn)
+                                                        val prev = activeButtons.put(change.id, btn)
+                                                        if (prev != null && prev !in lockedButtons) onButtonRelease(prev)
                                                         if (hapticEnabled) haptic.performHapticFeedback(
                                                             HapticFeedbackType.TextHandleMove
                                                         )
                                                     }
-                                                    val prev = activeButtons.remove(change.id)
-                                                    if (prev != null && prev !in lockedButtons) onButtonRelease(prev)
                                                     change.consume()
                                                     continue
                                                 }
@@ -434,22 +439,25 @@ fun TouchOverlay(
                                             val wasCenterTap = job != null && job.isActive
                                             job?.cancel()
                                             if (wasCenterTap && layoutType == 0) {
-                                                val toToggle = activeButtons.values
-                                                    .filter { it != ButtonId.START && it != ButtonId.SELECT }
-                                                    .toSet()
-                                                for (btn in toToggle) {
-                                                    if (btn in lockedButtons) {
-                                                        lockedButtons.remove(btn)
-                                                        onButtonRelease(btn)
-                                                    } else {
-                                                        lockedButtons[btn] = Unit
+                                                val heldLocked = activeButtons.values
+                                                    .filter { it in lockedButtons }.toSet()
+                                                if (heldLocked.isNotEmpty()) {
+                                                    // Unlock only the locked buttons currently being held
+                                                    for (btn in heldLocked) lockedButtons.remove(btn)
+                                                } else if (lockedButtons.isNotEmpty()) {
+                                                    // Nothing locked is held — unlock everything
+                                                    for (btn in lockedButtons.keys) onButtonRelease(btn)
+                                                    lockedButtons.clear()
+                                                } else {
+                                                    // No locks exist — lock currently active non-START/SELECT buttons
+                                                    for (btn in activeButtons.values) {
+                                                        if (btn != ButtonId.START && btn != ButtonId.SELECT)
+                                                            lockedButtons[btn] = Unit
                                                     }
                                                 }
-                                                if (toToggle.isNotEmpty() && hapticEnabled) {
-                                                    haptic.performHapticFeedback(
-                                                        HapticFeedbackType.TextHandleMove
-                                                    )
-                                                }
+                                                if (hapticEnabled) haptic.performHapticFeedback(
+                                                    HapticFeedbackType.TextHandleMove
+                                                )
                                             }
                                         }
                                         // Second pass: release buttons + vdpad cleanup
@@ -462,7 +470,10 @@ fun TouchOverlay(
                                                 vdpadIsAnchored.value = false
                                             }
                                             val prevBtn = activeButtons.remove(change.id)
-                                            if (prevBtn != null && prevBtn !in lockedButtons) onButtonRelease(prevBtn)
+                                            if (prevBtn != null) {
+                                                if (prevBtn in lockedButtons) onButtonPress(prevBtn)
+                                                else onButtonRelease(prevBtn)
+                                            }
                                             change.consume()
                                         }
                                     }
