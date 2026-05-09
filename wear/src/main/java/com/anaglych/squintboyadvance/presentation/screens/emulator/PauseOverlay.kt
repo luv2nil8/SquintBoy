@@ -216,11 +216,10 @@ fun PauseOverlay(
     onToggleGamepad: () -> Unit = {},
     gamepadMapping: GamepadMapping = GamepadMapping(),
     liveGamepadButtons: Set<ButtonId> = emptySet(),
-    recordingState: EmulatorViewModel.RecordingState = EmulatorViewModel.RecordingState.Idle,
-    onStartRecordAll: () -> Unit = {},
-    onSkipRecording: () -> Unit = {},
-    onStopRecording: () -> Unit = {},
-    onResetGamepadMapping: () -> Unit = {},
+    heldKeysForBinding: Set<Int> = emptySet(),
+    onOpenBindingFlow: () -> Unit = {},
+    onCloseBindingFlow: () -> Unit = {},
+    onCommitBinding: (GamepadMapping) -> Unit = {},
     selectedPaletteIndex: Int,
     onPaletteSelected: (Int) -> Unit,
     onExit: () -> Unit,
@@ -299,6 +298,9 @@ fun PauseOverlay(
         inputManager.registerInputDeviceListener(listener, null)
         onDispose { inputManager.unregisterInputDeviceListener(listener) }
     }
+
+    val btPadTabState = remember { mutableStateOf(if (btConnected) 1 else 0) }
+    LaunchedEffect(btConnected) { if (!btConnected) btPadTabState.value = 0 }
 
     val actions = buildList {
         // 0: Audio (long-press to expand slider, tap toggles mute)
@@ -436,12 +438,14 @@ fun PauseOverlay(
             enabled = btConnected,
             expandContent = {
                 BtPadExpandContent(
+                    activeTab = btPadTabState.value,
+                    onTabChange = { btPadTabState.value = it },
                     liveGamepadButtons = liveGamepadButtons,
-                    recordingState = recordingState,
-                    onStartRecordAll = onStartRecordAll,
-                    onSkipRecording = onSkipRecording,
-                    onStopRecording = onStopRecording,
-                    onResetDefaults = onResetGamepadMapping,
+                    gamepadMapping = gamepadMapping,
+                    heldKeysForBinding = heldKeysForBinding,
+                    onOpenBindingFlow = onOpenBindingFlow,
+                    onCloseBindingFlow = onCloseBindingFlow,
+                    onCommitBinding = onCommitBinding,
                 )
             },
         ))
@@ -712,126 +716,18 @@ private fun CompactSaveLoadRow(
 
 // ── Per-ROM settings expand content ────────────────────────────────
 
-private const val COMPACT_SLIDE_INITIAL     = 0.12f
-private const val COMPACT_SLIDE_PULSE_AMP   = 0.07f
-private const val COMPACT_SLIDE_PULSE_DELAY = 500L
-private const val COMPACT_SLIDE_THRESHOLD   = 1.0f
-
-/**
- * Compact swipe-to-confirm bar. Absolute position tracking — the end is always
- * reachable regardless of where the drag begins. Single-breath idle pulse after a
- * short delay. Fires at [COMPACT_SLIDE_THRESHOLD] with haptic feedback.
- * Cancel X on the right end, tappable only when not dragging.
- */
 @Composable
 private fun CompactSwipeBar(
     slideText: String,
     color: Color,
     onConfirmed: () -> Unit,
     onCancel: () -> Unit,
-) {
-    val haptic = LocalHapticFeedback.current
-    val scope  = rememberCoroutineScope()
-
-    var progress   by remember { mutableFloatStateOf(0f) }
-    var isDragging by remember { mutableStateOf(false) }
-    var confirmed  by remember { mutableStateOf(false) }
-
-    // Single-breath pulse after idle delay
-    val pulseAnim = remember { Animatable(0f) }
-    LaunchedEffect(isDragging, confirmed) {
-        if (!isDragging && !confirmed) {
-            delay(COMPACT_SLIDE_PULSE_DELAY)
-            pulseAnim.animateTo(COMPACT_SLIDE_PULSE_AMP, tween(850, easing = FastOutSlowInEasing))
-            pulseAnim.animateTo(0f,                      tween(850, easing = FastOutSlowInEasing))
-        } else {
-            pulseAnim.stop()
-            pulseAnim.snapTo(0f)
-        }
-    }
-
-    val displayProgress = if (isDragging) progress else COMPACT_SLIDE_INITIAL + pulseAnim.value
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(36.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(color.copy(alpha = 0.18f))
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    val drag = awaitTouchSlopOrCancellation(down.id) { c, _ -> c.consume() }
-                    if (drag != null) {
-                        isDragging = true
-                        progress   = (drag.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                        var fired  = false
-                        horizontalDrag(drag.id) { change ->
-                            change.consume()
-                            progress = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                            if (!fired && progress >= COMPACT_SLIDE_THRESHOLD) {
-                                fired     = true
-                                confirmed = true
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onConfirmed()
-                            }
-                        }
-                        isDragging = false
-                        if (!fired) {
-                            val from = progress
-                            scope.launch {
-                                animate(
-                                    initialValue  = from,
-                                    targetValue   = 0f,
-                                    animationSpec = spring(
-                                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                                        stiffness    = Spring.StiffnessMedium,
-                                    ),
-                                ) { v, _ -> progress = v }
-                            }
-                        }
-                    }
-                }
-            },
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        // Fill bar — brightens as it approaches the end
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(displayProgress.coerceIn(0f, 1f))
-                .background(
-                    color.copy(alpha = (0.45f + displayProgress * 0.55f).coerceIn(0f, 1f)),
-                    RoundedCornerShape(18.dp),
-                ),
-        )
-        // Slide label — centered, fades as bar fills
-        Text(
-            text      = slideText,
-            style     = MaterialTheme.typography.caption2,
-            color     = Color.White.copy(alpha = (0.80f - displayProgress * 1.6f).coerceIn(0f, 0.80f)),
-            textAlign = TextAlign.Center,
-            modifier  = Modifier
-                .fillMaxWidth()
-                .padding(end = 36.dp),
-        )
-        // Cancel icon — tappable only when not dragging
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .size(36.dp)
-                .then(if (!isDragging) Modifier.clickable(onClick = onCancel) else Modifier),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector        = Icons.Default.Close,
-                contentDescription = "Cancel",
-                tint               = Color.White.copy(alpha = if (isDragging) 0.20f else 0.60f),
-                modifier           = Modifier.size(13.dp),
-            )
-        }
-    }
-}
+) = com.anaglych.squintboyadvance.presentation.components.CompactSwipeBar(
+    slideText   = slideText,
+    color       = color,
+    onConfirmed = onConfirmed,
+    onCancel    = onCancel,
+)
 
 @Composable
 private fun SettingsExpandContent(
@@ -1272,7 +1168,6 @@ private fun ControlsExpandContent(
                 steps = 10,
                 onInteraction = onInteraction,
                 onInteractionEnd = onInteractionEnd,
-                formatValue = { "${(it * 100).roundToInt()}%" },
             )
             LabeledSliderRow(
                 label = "Labels",
@@ -1293,7 +1188,6 @@ private fun ControlsExpandContent(
                     steps = 20,
                     onInteraction = onInteraction,
                     onInteractionEnd = onInteractionEnd,
-                    formatValue = { "${(it * 100).roundToInt()}%" },
                 )
             }
         }
@@ -1535,17 +1429,10 @@ private fun LabeledSliderRow(
     steps: Int,
     onInteraction: () -> Unit,
     onInteractionEnd: () -> Unit = {},
-    formatValue: ((Float) -> String)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val primaryColor = MaterialTheme.colors.primary
     val trackColor = Color.White.copy(alpha = 0.12f)
-    val displayText = if (formatValue != null) {
-        formatValue(value)
-    } else {
-        "${((value - valueRange.start) /
-            (valueRange.endInclusive - valueRange.start) * 100).roundToInt()}%"
-    }
 
     Row(
         modifier = Modifier
@@ -1558,7 +1445,6 @@ private fun LabeledSliderRow(
             text = label,
             style = MaterialTheme.typography.caption2,
             color = Color.White.copy(alpha = 0.6f),
-            modifier = Modifier.width(48.dp),
         )
 
         Canvas(
@@ -1631,12 +1517,6 @@ private fun LabeledSliderRow(
 
         if (trailing != null) {
             trailing()
-        } else {
-            Text(
-                text = displayText,
-                style = MaterialTheme.typography.caption2,
-                color = Color.White.copy(alpha = 0.5f),
-            )
         }
     }
 }

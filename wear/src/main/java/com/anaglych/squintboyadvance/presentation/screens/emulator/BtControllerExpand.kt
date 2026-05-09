@@ -18,9 +18,18 @@ import android.hardware.input.InputManager
 import android.os.Build
 import android.os.ParcelUuid
 import android.view.InputDevice
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.horizontalDrag
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -28,6 +37,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -38,29 +48,44 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
-import androidx.compose.material.icons.filled.Refresh // used in BindingsTabContent
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import com.anaglych.squintboyadvance.shared.model.GamepadMapping
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.wear.compose.material.Chip
+import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.CircularProgressIndicator
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
+import com.anaglych.squintboyadvance.presentation.components.CompactSwipeBar
 import com.anaglych.squintboyadvance.shared.model.ButtonId
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 private val BT_GREEN   = Color(0xFF9BBC0F)
@@ -132,19 +157,19 @@ internal fun findConnectedGamepadName(im: InputManager, adapter: BluetoothAdapte
  */
 @Composable
 fun BtPadExpandContent(
+    activeTab: Int,
+    onTabChange: (Int) -> Unit,
     liveGamepadButtons: Set<ButtonId>,
-    recordingState: EmulatorViewModel.RecordingState,
-    onStartRecordAll: () -> Unit,
-    onSkipRecording: () -> Unit,
-    onStopRecording: () -> Unit,
-    onResetDefaults: () -> Unit,
+    gamepadMapping: GamepadMapping,
+    heldKeysForBinding: Set<Int>,
+    onOpenBindingFlow: () -> Unit,
+    onCloseBindingFlow: () -> Unit,
+    onCommitBinding: (GamepadMapping) -> Unit,
 ) {
     val context = LocalContext.current
     val im      = remember { context.getSystemService(InputManager::class.java) }
     val adapter = remember { context.getSystemService(BluetoothManager::class.java)?.adapter }
     val permsOk = remember { hasBtPerms(context) }
-
-    var activeTab        by remember { mutableStateOf(0) }
     var connectedName    by remember { mutableStateOf(findConnectedGamepadName(im, adapter)) }
     var connectedAddress by remember { mutableStateOf<String?>(null) }
     var isScanning       by remember { mutableStateOf(false) }
@@ -310,10 +335,6 @@ fun BtPadExpandContent(
         if (isScanning) { delay(30_000L); stopScan() }
     }
 
-    LaunchedEffect(activeTab) {
-        if (activeTab != 1) onStopRecording()
-    }
-
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -322,29 +343,30 @@ fun BtPadExpandContent(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(26.dp)
-                .clip(RoundedCornerShape(4.dp))
+                .height(34.dp)
+                .clip(RoundedCornerShape(17.dp))
                 .background(Color.White.copy(alpha = 0.06f)),
         ) {
-            val pillX by animateDpAsState(
-                if (activeTab == 0) 0.dp else maxWidth / 2,
-                label = "btPill",
-            )
+            val tabAnim = remember { Animatable(activeTab.toFloat()) }
+            LaunchedEffect(activeTab) {
+                tabAnim.animateTo(activeTab.toFloat(), spring(stiffness = Spring.StiffnessMedium))
+            }
+            val pillX = (maxWidth / 2) * tabAnim.value
             Box(
                 modifier = Modifier
                     .width(maxWidth / 2)
                     .fillMaxHeight()
                     .offset(x = pillX)
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(17.dp))
                     .background(BT_GREEN.copy(alpha = 0.85f)),
             )
             Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
                 listOf("Controller", "Bindings").forEachIndexed { i, label ->
                     Box(
-                        modifier = Modifier.weight(1f).fillMaxHeight().clickable { activeTab = i },
+                        modifier = Modifier.weight(1f).fillMaxHeight().clickable { onTabChange(i) },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(label, style = MaterialTheme.typography.caption2, fontSize = 10.sp, color = Color.White)
+                        Text(label, style = MaterialTheme.typography.caption2, fontSize = 11.sp, color = Color.White)
                     }
                 }
             }
@@ -370,11 +392,11 @@ fun BtPadExpandContent(
             BindingsTabContent(
                 connectedName = connectedName,
                 liveGamepadButtons = liveGamepadButtons,
-                recordingState = recordingState,
-                onStartRecordAll = onStartRecordAll,
-                onSkipRecording = onSkipRecording,
-                onStopRecording = onStopRecording,
-                onResetDefaults = onResetDefaults,
+                gamepadMapping = gamepadMapping,
+                heldKeysForBinding = heldKeysForBinding,
+                onOpenBindingFlow = onOpenBindingFlow,
+                onCloseBindingFlow = onCloseBindingFlow,
+                onCommitBinding = onCommitBinding,
             )
         }
     }
@@ -435,15 +457,13 @@ private fun ControllerTabContent(
                     Text("Searching…", style = MaterialTheme.typography.caption2, fontSize = 10.sp, color = Color.White)
                 }
             } else {
-                Box(
-                    modifier = Modifier.fillMaxWidth().height(26.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(BT_GREEN.copy(alpha = 0.85f))
-                        .clickable { onStartScan() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("Search", style = MaterialTheme.typography.caption2, fontSize = 10.sp, color = Color.White)
-                }
+                Chip(
+                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                    onClick  = onStartScan,
+                    colors   = ChipDefaults.chipColors(backgroundColor = BT_GREEN.copy(alpha = 0.85f)),
+                    label    = { Text("Search", style = MaterialTheme.typography.caption2, fontSize = 10.sp) },
+                    icon     = { Icon(Icons.Default.Search, null, Modifier.size(14.dp)) },
+                )
             }
 
             discovered.forEach { device ->
@@ -518,73 +538,91 @@ private fun BondedDeviceRow(
 private fun BindingsTabContent(
     connectedName: String?,
     liveGamepadButtons: Set<ButtonId>,
-    recordingState: EmulatorViewModel.RecordingState,
-    onStartRecordAll: () -> Unit,
-    onSkipRecording: () -> Unit,
-    onStopRecording: () -> Unit,
-    onResetDefaults: () -> Unit,
+    gamepadMapping: GamepadMapping,
+    heldKeysForBinding: Set<Int>,
+    onOpenBindingFlow: () -> Unit,
+    onCloseBindingFlow: () -> Unit,
+    onCommitBinding: (GamepadMapping) -> Unit,
 ) {
-    val isRecording = recordingState is EmulatorViewModel.RecordingState.Recording
+    var showResetConfirm by remember { mutableStateOf(false) }
+    var showBindingFlow  by remember { mutableStateOf(false) }
+    var bindingInitialMapping by remember { mutableStateOf(gamepadMapping) }
+
+    if (showBindingFlow) {
+        DisposableEffect(Unit) {
+            onOpenBindingFlow()
+            onDispose { onCloseBindingFlow() }
+        }
+        BindingFlowContent(
+            initialMapping = bindingInitialMapping,
+            heldKeys = heldKeysForBinding,
+            onConfirm = { newMapping ->
+                onCommitBinding(newMapping)
+                showBindingFlow = false
+            },
+            onCancel = { showBindingFlow = false },
+        )
+        return
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        if (isRecording) {
-            val st = recordingState as EmulatorViewModel.RecordingState.Recording
-            Column(
+        if (connectedName == null) {
+            Text(
+                "Pair a controller first.",
+                style = MaterialTheme.typography.caption2,
+                fontSize = 10.sp,
+                color = Color.White.copy(alpha = 0.4f),
+                textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text("${st.stepIndex + 1} / ${st.totalSteps}", style = MaterialTheme.typography.caption2, fontSize = 9.sp, color = Color.White.copy(alpha = 0.45f))
-                Text("Press for:", style = MaterialTheme.typography.caption2, fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
-                Text(btBtnLabel(st.targetButton), style = MaterialTheme.typography.title3, color = Color.White, fontSize = 20.sp)
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color.White.copy(alpha = 0.10f))
-                        .clickable { onSkipRecording() }
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                ) { Text("Skip", style = MaterialTheme.typography.caption2, fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f)) }
-            }
-        } else if (connectedName == null) {
-            Text("Pair a controller first.", style = MaterialTheme.typography.caption2, fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f))
+            )
         } else {
             GbaButtonGrid(pressedButtons = liveGamepadButtons)
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (isRecording) {
+        if (showResetConfirm) {
+            CompactSwipeBar(
+                slideText   = "Rebind All",
+                color       = BT_CRIMSON,
+                onConfirmed = {
+                    showResetConfirm = false
+                    bindingInitialMapping = GamepadMapping(bindings = emptyMap())
+                    showBindingFlow = true
+                },
+                onCancel = { showResetConfirm = false },
+            )
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Chip(
+                    modifier = Modifier.weight(1f).height(36.dp),
+                    onClick  = { bindingInitialMapping = gamepadMapping; showBindingFlow = true },
+                    colors   = ChipDefaults.chipColors(
+                        backgroundColor = Color.White.copy(alpha = 0.10f),
+                    ),
+                    label = { Text("Edit Binds", style = MaterialTheme.typography.caption2, fontSize = 10.sp) },
+                    icon  = { Icon(Icons.Default.Edit, null, Modifier.size(14.dp)) },
+                )
                 Box(
-                    modifier = Modifier.weight(1f).height(24.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
                         .background(BT_CRIMSON.copy(alpha = 0.85f))
-                        .clickable { onStopRecording() },
+                        .clickable { showResetConfirm = true },
                     contentAlignment = Alignment.Center,
-                ) { Text("Cancel", style = MaterialTheme.typography.caption2, fontSize = 10.sp, color = Color.White) }
-            } else {
-                Box(
-                    modifier = Modifier.weight(1f).height(24.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color.White.copy(alpha = 0.10f))
-                        .clickable { onStartRecordAll() },
-                    contentAlignment = Alignment.Center,
-                ) { Text("Rebind All", style = MaterialTheme.typography.caption2, fontSize = 10.sp, color = Color.White) }
-                Box(
-                    modifier = Modifier.size(24.dp).clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.08f))
-                        .clickable { onResetDefaults() },
-                    contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Default.Refresh, null, Modifier.size(12.dp), tint = Color.White.copy(alpha = 0.5f)) }
+                ) {
+                    Icon(Icons.Default.Refresh, null, Modifier.size(14.dp), tint = Color.White)
+                }
             }
         }
     }
 }
+
 
 @Composable
 private fun GbaButtonGrid(pressedButtons: Set<ButtonId>) {

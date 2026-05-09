@@ -1,5 +1,6 @@
 package com.anaglych.squintboyadvance.presentation.screens.emulator
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,6 +30,7 @@ import androidx.wear.compose.material.Text
 import com.anaglych.squintboyadvance.presentation.SettingsRepository
 import com.anaglych.squintboyadvance.presentation.components.WearSlideToConfirm
 import com.anaglych.squintboyadvance.shared.emulator.EmulatorState
+import com.anaglych.squintboyadvance.shared.model.ControllerLayout
 import com.anaglych.squintboyadvance.shared.model.EmulatorSettings
 import com.anaglych.squintboyadvance.shared.model.RomOverrides
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
@@ -54,8 +56,8 @@ fun EmulatorScreen(
     val canUndoLoad by viewModel.canUndoLoad.collectAsState()
     val isRomMode by viewModel.isRomMode.collectAsState()
     val currentRomId by viewModel.currentRomId.collectAsState()
-    val gamepadRecording by viewModel.gamepadRecording.collectAsState()
     val liveGamepadButtons by viewModel.liveGamepadButtons.collectAsState()
+    val heldKeysForBinding by viewModel.heldKeysForBinding.collectAsState()
 
     val settingsRepo = SettingsRepository.getInstance(viewModel.getApplication())
     val settings by settingsRepo.settings.collectAsState()
@@ -99,6 +101,27 @@ fun EmulatorScreen(
         }
     }
 
+    // Effective controller layout: ROM override (if active and set) else global.
+    // gamepadEnabled is always global — only bindings (gamepadMapping) travel with the ROM.
+    val effectiveLayout = if (isRomMode && currentRomId != null) {
+        val ov = settings.romOverrides[currentRomId]?.controllerLayout
+        if (ov != null) ov.copy(gamepadEnabled = settings.controllerLayout.gamepadEnabled)
+        else settings.controllerLayout
+    } else settings.controllerLayout
+
+    // Helper: write a controller layout change to ROM override or global depending on mode
+    fun updateLayoutSetting(transform: (ControllerLayout) -> ControllerLayout) {
+        if (isRomMode && currentRomId != null) {
+            settingsRepo.update { s ->
+                val ov = s.romOverrides[currentRomId!!] ?: RomOverrides()
+                val base = ov.controllerLayout ?: s.controllerLayout
+                s.copy(romOverrides = s.romOverrides + (currentRomId!! to ov.copy(controllerLayout = transform(base))))
+            }
+        } else {
+            settingsRepo.update { s -> s.copy(controllerLayout = transform(s.controllerLayout)) }
+        }
+    }
+
     // Pause sub-screen state — resets to MENU whenever the emulator resumes
     var pauseUiState by rememberSaveable { mutableStateOf(PauseUiState.MENU) }
     var pauseGhostProgress by remember { mutableFloatStateOf(0f) }
@@ -110,6 +133,9 @@ fun EmulatorScreen(
     LaunchedEffect(romId) {
         viewModel.loadRom(romId, romTitle)
     }
+
+    // Swallow swipe-to-dismiss while paused — the pause menu has its own exit path
+    BackHandler(enabled = state == EmulatorState.PAUSED) {}
 
     Box(
         modifier = Modifier
@@ -134,14 +160,14 @@ fun EmulatorScreen(
                     onButtonPress = viewModel::pressButton,
                     onButtonRelease = viewModel::releaseButton,
                     onPause = viewModel::pause,
-                    visible = settings.controllerLayout.visible,
-                    buttonOpacity = settings.controllerLayout.buttonOpacity,
-                    pressedOpacity = settings.controllerLayout.pressedOpacity,
-                    labelOpacity = settings.controllerLayout.labelOpacity,
-                    labelSize = settings.controllerLayout.labelSize,
-                    hapticEnabled = settings.controllerLayout.hapticFeedback,
-                    layoutType = settings.controllerLayout.layoutType,
-                    vdpadThresholdFactor = settings.controllerLayout.vdpadThresholdFactor,
+                    visible = effectiveLayout.visible,
+                    buttonOpacity = effectiveLayout.buttonOpacity,
+                    pressedOpacity = effectiveLayout.pressedOpacity,
+                    labelOpacity = effectiveLayout.labelOpacity,
+                    labelSize = effectiveLayout.labelSize,
+                    hapticEnabled = effectiveLayout.hapticFeedback,
+                    layoutType = effectiveLayout.layoutType,
+                    vdpadThresholdFactor = effectiveLayout.vdpadThresholdFactor,
                 )
                 if (ffSpeed >= 2) {
                     Box(
@@ -179,13 +205,13 @@ fun EmulatorScreen(
                             onButtonRelease = {},
                             onPause = {},
                             visible = true,
-                            buttonOpacity = settings.controllerLayout.buttonOpacity,
-                            pressedOpacity = settings.controllerLayout.pressedOpacity,
-                            labelOpacity = settings.controllerLayout.labelOpacity,
-                            labelSize = settings.controllerLayout.labelSize,
+                            buttonOpacity = effectiveLayout.buttonOpacity,
+                            pressedOpacity = effectiveLayout.pressedOpacity,
+                            labelOpacity = effectiveLayout.labelOpacity,
+                            labelSize = effectiveLayout.labelSize,
                             hapticEnabled = false,
-                            layoutType = settings.controllerLayout.layoutType,
-                            vdpadThresholdFactor = settings.controllerLayout.vdpadThresholdFactor,
+                            layoutType = effectiveLayout.layoutType,
+                            vdpadThresholdFactor = effectiveLayout.vdpadThresholdFactor,
                             ghostDemo = ghostDemoMode,
                         )
                     }
@@ -228,43 +254,23 @@ fun EmulatorScreen(
                                 { it -> if (isGba) it.copy(gbaFrameskip = skip) else it.copy(gbFrameskip = skip) },
                             )
                         },
-                        // Controls (OSC) — always global
-                        oscVisible = settings.controllerLayout.visible,
-                        buttonOpacity = settings.controllerLayout.buttonOpacity,
-                        pressedOpacity = settings.controllerLayout.pressedOpacity,
-                        labelOpacity = settings.controllerLayout.labelOpacity,
-                        labelSize = settings.controllerLayout.labelSize,
-                        hapticEnabled = settings.controllerLayout.hapticFeedback,
-                        layoutType = settings.controllerLayout.layoutType,
-                        onSetLayoutType = { type ->
-                            settingsRepo.update { it.copy(controllerLayout = it.controllerLayout.copy(layoutType = type)) }
-                        },
-                        vdpadThresholdFactor = settings.controllerLayout.vdpadThresholdFactor,
-                        onSetVdpadThreshold = { v ->
-                            settingsRepo.update { it.copy(controllerLayout = it.controllerLayout.copy(vdpadThresholdFactor = v)) }
-                        },
-                        onToggleOscVisible = {
-                            settingsRepo.update {
-                                it.copy(controllerLayout = it.controllerLayout.copy(visible = !it.controllerLayout.visible))
-                            }
-                        },
-                        onSetButtonOpacity = { v ->
-                            settingsRepo.update { it.copy(controllerLayout = it.controllerLayout.copy(buttonOpacity = v)) }
-                        },
-                        onSetPressedOpacity = { v ->
-                            settingsRepo.update { it.copy(controllerLayout = it.controllerLayout.copy(pressedOpacity = v)) }
-                        },
-                        onSetLabelOpacity = { v ->
-                            settingsRepo.update { it.copy(controllerLayout = it.controllerLayout.copy(labelOpacity = v)) }
-                        },
-                        onSetLabelSize = { v ->
-                            settingsRepo.update { it.copy(controllerLayout = it.controllerLayout.copy(labelSize = v)) }
-                        },
-                        onToggleHaptic = {
-                            settingsRepo.update {
-                                it.copy(controllerLayout = it.controllerLayout.copy(hapticFeedback = !it.controllerLayout.hapticFeedback))
-                            }
-                        },
+                        // Controls (OSC) — routed through ROM override or global
+                        oscVisible = effectiveLayout.visible,
+                        buttonOpacity = effectiveLayout.buttonOpacity,
+                        pressedOpacity = effectiveLayout.pressedOpacity,
+                        labelOpacity = effectiveLayout.labelOpacity,
+                        labelSize = effectiveLayout.labelSize,
+                        hapticEnabled = effectiveLayout.hapticFeedback,
+                        layoutType = effectiveLayout.layoutType,
+                        onSetLayoutType = { type -> updateLayoutSetting { it.copy(layoutType = type) } },
+                        vdpadThresholdFactor = effectiveLayout.vdpadThresholdFactor,
+                        onSetVdpadThreshold = { v -> updateLayoutSetting { it.copy(vdpadThresholdFactor = v) } },
+                        onToggleOscVisible = { updateLayoutSetting { it.copy(visible = !it.visible) } },
+                        onSetButtonOpacity = { v -> updateLayoutSetting { it.copy(buttonOpacity = v) } },
+                        onSetPressedOpacity = { v -> updateLayoutSetting { it.copy(pressedOpacity = v) } },
+                        onSetLabelOpacity = { v -> updateLayoutSetting { it.copy(labelOpacity = v) } },
+                        onSetLabelSize = { v -> updateLayoutSetting { it.copy(labelSize = v) } },
+                        onToggleHaptic = { updateLayoutSetting { it.copy(hapticFeedback = !it.hapticFeedback) } },
                         onSave = { viewModel.saveState(); viewModel.resume() },
                         onLoad = { viewModel.loadState(); viewModel.resume() },
                         onUndoSave = { viewModel.undoSave(); viewModel.resume() },
@@ -279,20 +285,13 @@ fun EmulatorScreen(
                         onResetRomToGlobal = viewModel::resetRomToGlobal,
                         onReset = { pauseUiState = PauseUiState.CONFIRM_RESET },
                         gamepadEnabled = settings.controllerLayout.gamepadEnabled,
-                        onToggleGamepad = {
-                            settingsRepo.update {
-                                it.copy(controllerLayout = it.controllerLayout.copy(
-                                    gamepadEnabled = !it.controllerLayout.gamepadEnabled
-                                ))
-                            }
-                        },
-                        gamepadMapping = settings.controllerLayout.gamepadMapping,
+                        onToggleGamepad = { settingsRepo.update { s -> s.copy(controllerLayout = s.controllerLayout.copy(gamepadEnabled = !s.controllerLayout.gamepadEnabled)) } },
+                        gamepadMapping = effectiveLayout.gamepadMapping,
                         liveGamepadButtons = liveGamepadButtons,
-                        recordingState = gamepadRecording,
-                        onStartRecordAll = viewModel::startRecordAll,
-                        onSkipRecording = viewModel::skipRecording,
-                        onStopRecording = viewModel::stopRecording,
-                        onResetGamepadMapping = viewModel::resetGamepadMapping,
+                        heldKeysForBinding = heldKeysForBinding,
+                        onOpenBindingFlow = viewModel::openBindingFlow,
+                        onCloseBindingFlow = viewModel::closeBindingFlow,
+                        onCommitBinding = { newMapping -> updateLayoutSetting { it.copy(gamepadMapping = newMapping) } },
                         selectedPaletteIndex = effectiveSettings.gbPaletteIndex,
                         onPaletteSelected = { idx ->
                             updateDisplaySetting(
@@ -319,6 +318,7 @@ fun EmulatorScreen(
                         onConfirmed = { viewModel.resetRom() },
                         onDismiss = { pauseUiState = PauseUiState.MENU },
                     )
+
 
                 }
             }
