@@ -51,6 +51,8 @@ import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -169,7 +171,10 @@ fun BtPadExpandContent(
     val context = LocalContext.current
     val im      = remember { context.getSystemService(InputManager::class.java) }
     val adapter = remember { context.getSystemService(BluetoothManager::class.java)?.adapter }
-    val permsOk = remember { hasBtPerms(context) }
+    var permsOk by remember { mutableStateOf(hasBtPerms(context)) }
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+        permsOk = results.values.all { it }
+    }
     var connectedName    by remember { mutableStateOf(findConnectedGamepadName(im, adapter)) }
     var connectedAddress by remember { mutableStateOf<String?>(null) }
     var isScanning       by remember { mutableStateOf(false) }
@@ -383,6 +388,9 @@ fun BtPadExpandContent(
                 permsOk = permsOk,
                 onStartScan = ::startScan,
                 onStopScan = ::stopScan,
+                onRequestPerms = {
+                    permLauncher.launch(arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT))
+                },
                 onPair = ::pairDevice,
                 onDisconnect = ::forgetController,
                 onForgetDevice = ::forgetDevice,
@@ -413,6 +421,7 @@ private fun ControllerTabContent(
     permsOk: Boolean,
     onStartScan: () -> Unit,
     onStopScan: () -> Unit,
+    onRequestPerms: () -> Unit,
     onPair: (BluetoothDevice) -> Unit,
     onDisconnect: () -> Unit,
     onForgetDevice: (String) -> Unit,
@@ -438,35 +447,32 @@ private fun ControllerTabContent(
             )
         }
 
-        if (!permsOk) {
-            Text("Bluetooth permission required", style = MaterialTheme.typography.caption2, fontSize = 10.sp, color = Color.White.copy(alpha = 0.55f))
-        } else {
-            if (isScanning) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(26.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color.White.copy(alpha = 0.10f))
-                        .clickable { onStopScan() },
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp)
-                    Spacer(Modifier.width(4.dp))
-                    Text("Searching…", style = MaterialTheme.typography.caption2, fontSize = 10.sp, color = Color.White)
-                }
-            } else {
-                Chip(
-                    modifier = Modifier.fillMaxWidth().height(36.dp),
-                    onClick  = onStartScan,
-                    colors   = ChipDefaults.chipColors(backgroundColor = BT_GREEN.copy(alpha = 0.85f)),
-                    label    = { Text("Search", style = MaterialTheme.typography.caption2, fontSize = 10.sp) },
-                    icon     = { Icon(Icons.Default.Search, null, Modifier.size(14.dp)) },
-                )
+        if (isScanning) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(26.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color.White.copy(alpha = 0.10f))
+                    .clickable { onStopScan() },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp)
+                Spacer(Modifier.width(4.dp))
+                Text("Searching…", style = MaterialTheme.typography.caption2, fontSize = 10.sp, color = Color.White)
             }
+        } else {
+            Chip(
+                modifier = Modifier.fillMaxWidth().height(36.dp),
+                onClick  = if (permsOk) onStartScan else onRequestPerms,
+                colors   = ChipDefaults.chipColors(backgroundColor = BT_GREEN.copy(alpha = 0.85f)),
+                label    = { Text("Search", style = MaterialTheme.typography.caption2, fontSize = 10.sp) },
+                icon     = { Icon(Icons.Default.Search, null, Modifier.size(14.dp)) },
+            )
+        }
 
-            discovered.forEach { device ->
+        discovered.forEach { device ->
                 val isPairing = device.address == pairingAddr
                 Row(
                     modifier = Modifier
@@ -487,9 +493,9 @@ private fun ControllerTabContent(
                     if (isPairing) Text("Pairing…", style = MaterialTheme.typography.caption2, fontSize = 9.sp, color = Color.White.copy(alpha = 0.45f))
                 }
             }
-        }
     }
 }
+
 
 @Composable
 private fun BondedDeviceRow(
