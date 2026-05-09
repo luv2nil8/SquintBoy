@@ -23,14 +23,14 @@ data class RomOverrides(
     val gbaFrameskip: Int? = null,
     val gbFrameskip: Int? = null,
     val gbPaletteIndex: Int? = null,
+    val controllerLayout: ControllerLayout? = null,
 ) {
     /**
-     * Returns `true` if any override field relevant to [isGba] differs from the
-     * corresponding global value. The [active] flag is ignored — this purely
-     * compares stored values.
+     * Returns `true` if any override field differs from the corresponding global value.
+     * The [active] flag is ignored — this purely compares stored values.
      */
     fun differsFrom(global: EmulatorSettings, isGba: Boolean): Boolean {
-        return if (isGba) {
+        val displayDiffers = if (isGba) {
             (gbaScaleMode != null && gbaScaleMode != global.gbaScaleMode) ||
             (gbaCustomScale != null && gbaCustomScale != global.gbaCustomScale) ||
             (gbaFilterEnabled != null && gbaFilterEnabled != global.gbaFilterEnabled) ||
@@ -42,5 +42,7 @@ data class RomOverrides(
             (gbFrameskip != null && gbFrameskip != global.gbFrameskip) ||
             (gbPaletteIndex != null && gbPaletteIndex != global.gbPaletteIndex)
         }
+        val layoutDiffers = controllerLayout != null && controllerLayout != global.controllerLayout
+        return displayDiffers || layoutDiffers
     }
 }
