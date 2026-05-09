@@ -21,7 +21,7 @@ android {
         applicationId = "com.anaglych.squintboyadvance"
         minSdk = 30
         targetSdk = 36
-        versionCode = 232000
+        versionCode = 230
         versionName = "1.3.0"
     }
 
