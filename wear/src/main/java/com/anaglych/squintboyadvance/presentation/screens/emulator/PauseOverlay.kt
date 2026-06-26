@@ -282,8 +282,17 @@ fun PauseOverlay(
     )
     // Report ghost progress to parent for OSC rendering
     LaunchedEffect(ghostProgress) { onGhostProgressChange(ghostProgress) }
-    val onInteraction: () -> Unit = { ghostActive = true }
-    val onInteractionEnd: () -> Unit = { ghostActive = false; onGhostDemoChange(0) }
+    val ghostScope = rememberCoroutineScope()
+    var ghostEndJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val onInteraction: () -> Unit = { ghostActive = true; ghostEndJob?.cancel() }
+    val onInteractionEnd: () -> Unit = {
+        ghostEndJob?.cancel()
+        ghostEndJob = ghostScope.launch {
+            delay(1250)
+            ghostActive = false
+            onGhostDemoChange(0)
+        }
+    }
 
     val context = LocalContext.current
     val inputManager = remember { context.getSystemService(InputManager::class.java) }
