@@ -1003,6 +1003,7 @@ private fun ScaleExpandContent(
                                 }
                                 tryAwaitRelease()
                                 job.cancel()
+                                onInteractionEnd()
                             }
                         )
                     },
@@ -1044,6 +1045,7 @@ private fun ScaleExpandContent(
                                 }
                                 tryAwaitRelease()
                                 job.cancel()
+                                onInteractionEnd()
                             }
                         )
                     },
