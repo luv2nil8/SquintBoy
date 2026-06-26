@@ -687,6 +687,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         audioPlayer = null
         emulator?.destroy()
         emulator = null
+        _frame.value = null
         renderBitmap?.recycle()
         renderBitmap = null
         pixelBuffer = null
