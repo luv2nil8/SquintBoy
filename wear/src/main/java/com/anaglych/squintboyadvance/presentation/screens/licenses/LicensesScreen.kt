@@ -3,6 +3,7 @@ package com.anaglych.squintboyadvance.presentation.screens.licenses
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.clickable
+import androidx.wear.remote.interactions.RemoteActivityHelper
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Spacer
@@ -124,9 +125,12 @@ fun WearLicensesScreen() {
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 4.dp)
                         .clickable {
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse(entry.source))
-                            )
+                            coroutineScope.launch {
+                                RemoteActivityHelper(context).startRemoteActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(entry.source))
+                                        .addCategory(Intent.CATEGORY_BROWSABLE)
+                                )
+                            }
                         },
                 )
             }
