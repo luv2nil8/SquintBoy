@@ -511,7 +511,6 @@ fun CompanionApp(
                 UpgradeFeatureRow("Unlimited session time")
                 UpgradeFeatureRow("Save states")
                 UpgradeFeatureRow("Fast forward")
-                UpgradeFeatureRow("Custom scaling")
                 UpgradeFeatureRow("All 24 color palettes")
                 UpgradeFeatureRow("Save backups & exports")
             }

@@ -87,7 +87,7 @@ fun EmulatorScreen(
     } else settings
 
     val isGba = systemType == SystemType.GBA
-    val scaleMode = if (!isPro) ScaleMode.INTEGER else if (isGba) effectiveSettings.gbaScaleMode else effectiveSettings.gbScaleMode
+    val scaleMode = if (isGba) effectiveSettings.gbaScaleMode else effectiveSettings.gbScaleMode
     val customScale = if (isGba) effectiveSettings.gbaCustomScale else effectiveSettings.gbCustomScale
     val filterEnabled = if (isGba) effectiveSettings.gbaFilterEnabled else effectiveSettings.gbFilterEnabled
 

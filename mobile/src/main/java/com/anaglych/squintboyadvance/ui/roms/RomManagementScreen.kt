@@ -688,7 +688,6 @@ private fun SettingsTabContent(
                 SwitchSetting(
                     "Integer Scale",
                     isIntegerScale,
-                    enabled = isPro || !isIntegerScale,
                 ) {
                     val newMode = if (isIntegerScale) ScaleMode.CUSTOM else ScaleMode.INTEGER
                     viewModel.updateSettings(
@@ -726,28 +725,24 @@ private fun SettingsTabContent(
                         Text(
                             "Scale",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = if (isPro) MaterialTheme.colorScheme.onSurface
-                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                         Spacer(Modifier.weight(1f))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             (1..maxInt).forEach { v ->
                                 FilterChip(
                                     selected = effectiveCustomScale.roundToInt() == v,
-                                    enabled = isPro,
                                     onClick = {
-                                        if (isPro) {
-                                            viewModel.updateSettings(
-                                                romTransform = { ro ->
-                                                    if (isGba) ro.copy(gbaCustomScale = v.toFloat())
-                                                    else ro.copy(gbCustomScale = v.toFloat())
-                                                },
-                                                globalTransform = {
-                                                    if (isGba) it.copy(gbaCustomScale = v.toFloat())
-                                                    else it.copy(gbCustomScale = v.toFloat())
-                                                },
-                                            )
-                                        }
+                                        viewModel.updateSettings(
+                                            romTransform = { ro ->
+                                                if (isGba) ro.copy(gbaCustomScale = v.toFloat())
+                                                else ro.copy(gbCustomScale = v.toFloat())
+                                            },
+                                            globalTransform = {
+                                                if (isGba) it.copy(gbaCustomScale = v.toFloat())
+                                                else it.copy(gbCustomScale = v.toFloat())
+                                            },
+                                        )
                                     },
                                     label = { Text("${v}x") },
                                 )
@@ -760,18 +755,15 @@ private fun SettingsTabContent(
                         "%.2fx".format(effectiveCustomScale) +
                             if (hasScreenInfo) " (max %.1fx)".format(maxScale) else "",
                         effectiveCustomScale.coerceIn(1f, maxScale), 1f..maxScale,
-                        enabled = isPro,
                     ) { v ->
-                        if (isPro) {
-                            viewModel.updateSettings(
-                                romTransform = { ro ->
-                                    if (isGba) ro.copy(gbaCustomScale = v) else ro.copy(gbCustomScale = v)
-                                },
-                                globalTransform = {
-                                    if (isGba) it.copy(gbaCustomScale = v) else it.copy(gbCustomScale = v)
-                                },
-                            )
-                        }
+                        viewModel.updateSettings(
+                            romTransform = { ro ->
+                                if (isGba) ro.copy(gbaCustomScale = v) else ro.copy(gbCustomScale = v)
+                            },
+                            globalTransform = {
+                                if (isGba) it.copy(gbaCustomScale = v) else it.copy(gbCustomScale = v)
+                            },
+                        )
                     }
                     if (!hasScreenInfo && !watchConnected) {
                         Text(
@@ -785,19 +777,17 @@ private fun SettingsTabContent(
                     modifier = Modifier.padding(vertical = 4.dp),
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
                 )
-                SwitchSetting("Bilinear Filter", effectiveFilterEnabled, enabled = isPro) {
-                    if (isPro) {
-                        viewModel.updateSettings(
-                            romTransform = { ro ->
-                                if (isGba) ro.copy(gbaFilterEnabled = !(ro.gbaFilterEnabled ?: s.gbaFilterEnabled))
-                                else ro.copy(gbFilterEnabled = !(ro.gbFilterEnabled ?: s.gbFilterEnabled))
-                            },
-                            globalTransform = {
-                                if (isGba) it.copy(gbaFilterEnabled = !it.gbaFilterEnabled)
-                                else it.copy(gbFilterEnabled = !it.gbFilterEnabled)
-                            },
-                        )
-                    }
+                SwitchSetting("Bilinear Filter", effectiveFilterEnabled) {
+                    viewModel.updateSettings(
+                        romTransform = { ro ->
+                            if (isGba) ro.copy(gbaFilterEnabled = !(ro.gbaFilterEnabled ?: s.gbaFilterEnabled))
+                            else ro.copy(gbFilterEnabled = !(ro.gbFilterEnabled ?: s.gbFilterEnabled))
+                        },
+                        globalTransform = {
+                            if (isGba) it.copy(gbaFilterEnabled = !it.gbaFilterEnabled)
+                            else it.copy(gbFilterEnabled = !it.gbFilterEnabled)
+                        },
+                    )
                 }
                 HorizontalDivider(
                     modifier = Modifier.padding(vertical = 4.dp),
@@ -813,28 +803,6 @@ private fun SettingsTabContent(
                                 if (isGba) it.copy(gbaFrameskip = value) else it.copy(gbFrameskip = value)
                             },
                         )
-                    }
-                }
-                if (!isPro) {
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 4.dp),
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-                    )
-                    OutlinedButton(
-                        onClick = onUpgrade,
-                        modifier = Modifier.fillMaxWidth(),
-                        border = BorderStroke(1.dp, crimson),
-                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
-                            contentColor = crimson,
-                        ),
-                    ) {
-                        Icon(
-                            Icons.Default.Lock,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text("Unlock Display Settings")
                     }
                 }
             }
