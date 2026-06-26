@@ -502,7 +502,11 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
      * suppress their constituent single-key actions.
      */
     private fun updateActions() {
-        val mapping = settingsRepo.settings.value.controllerLayout.gamepadMapping
+        val s = settingsRepo.settings.value
+        val romId = _currentRomId.value
+        val mapping = s.romOverrides[romId]
+            ?.takeIf { it.active }?.controllerLayout?.gamepadMapping
+            ?: s.controllerLayout.gamepadMapping
         val allHeld = _heldPhysicalKeys + _heldAxisKeys
         val target = computeTargetActions(mapping, allHeld)
 
