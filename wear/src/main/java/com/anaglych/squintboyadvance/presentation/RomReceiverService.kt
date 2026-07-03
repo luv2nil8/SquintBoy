@@ -2,9 +2,12 @@ package com.anaglych.squintboyadvance.presentation
 
 import android.os.PowerManager
 import android.util.Log
+import com.anaglych.squintboyadvance.presentation.sync.OutboxDrainer
+import com.anaglych.squintboyadvance.presentation.sync.SaveSyncConfigRepository
 import com.anaglych.squintboyadvance.shared.model.*
 import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
 import com.anaglych.squintboyadvance.shared.util.readLine
+import com.google.android.gms.wearable.CapabilityInfo
 import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Wearable
@@ -243,6 +246,8 @@ class RomReceiverService : WearableListenerService() {
                 WearMessageConstants.PATH_SETTINGS_SYNC -> handleSettingsSync(event)
                 WearMessageConstants.PATH_SAVE_LIST_REQUEST -> handleSaveListRequest(event)
                 WearMessageConstants.PATH_SAVE_CLEAR_STACKS -> handleSaveClearStacks(event)
+                WearMessageConstants.PATH_SAVE_SYNC_CONFIG -> handleSaveSyncConfig(event)
+                WearMessageConstants.PATH_SAVE_ARCHIVE_DRAIN -> OutboxDrainer.requestDrain(this)
                 WearMessageConstants.PATH_ROM_RENAME -> handleRomRename(event)
                 WearMessageConstants.PATH_SCREEN_INFO_REQUEST -> handleScreenInfoRequest(event)
                 WearMessageConstants.PATH_WATCH_PING -> {
@@ -379,6 +384,20 @@ class RomReceiverService : WearableListenerService() {
             File(savesDir, "$romBaseName.sav.$i").delete()
         }
         Log.i(TAG, "Cleared save/state stacks for $romBaseName")
+    }
+
+    private fun handleSaveSyncConfig(event: MessageEvent) {
+        val config = json.decodeFromString(
+            SaveSyncConfig.serializer(), String(event.data, Charsets.UTF_8)
+        )
+        SaveSyncConfigRepository.getInstance(this).handleConfigPush(config)
+    }
+
+    /** Phone became reachable: opportunistically drain any queued snapshots. */
+    override fun onCapabilityChanged(info: CapabilityInfo) {
+        if (info.name == WearMessageConstants.CAPABILITY_PHONE_APP && info.nodes.isNotEmpty()) {
+            OutboxDrainer.requestDrain(this)
+        }
     }
 
     private fun handleRomRename(event: MessageEvent) {
