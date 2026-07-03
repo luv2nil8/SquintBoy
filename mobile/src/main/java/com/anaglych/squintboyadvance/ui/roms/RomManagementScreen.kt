@@ -91,6 +91,7 @@ import com.anaglych.squintboyadvance.shared.model.GbColorPalette
 import com.anaglych.squintboyadvance.shared.model.RomOverrides
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 import com.anaglych.squintboyadvance.shared.model.SystemType
+import com.anaglych.squintboyadvance.ui.archive.SaveArchiveSection
 import com.anaglych.squintboyadvance.ui.components.SlideToConfirm
 import com.anaglych.squintboyadvance.ui.theme.Crimson
 import com.anaglych.squintboyadvance.ui.theme.GbBadge
@@ -109,6 +110,7 @@ fun RomManagementScreen(
     onRenamed: (String) -> Unit = {},
     onOpenLicenses: () -> Unit = {},
     onUpgrade: () -> Unit = {},
+    onOpenArchiveSetup: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val application = context.applicationContext as Application
@@ -216,6 +218,8 @@ fun RomManagementScreen(
             when (selectedTab) {
                 0 -> SavesTabContent(
                     viewModel = viewModel,
+                    romId = romId,
+                    onOpenArchiveSetup = onOpenArchiveSetup,
                     watchConnected = watchConnected,
                     watchSave = watchSave,
                     isLoadingWatchSave = isLoadingWatchSave,
@@ -350,6 +354,8 @@ fun RomManagementScreen(
 @Composable
 private fun SavesTabContent(
     viewModel: RomManagementViewModel,
+    romId: String,
+    onOpenArchiveSetup: () -> Unit,
     watchConnected: Boolean,
     watchSave: com.anaglych.squintboyadvance.shared.model.SaveFileEntry?,
     isLoadingWatchSave: Boolean,
@@ -369,6 +375,15 @@ private fun SavesTabContent(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        // ── Save Archive (opt-in sync system) ───────────────────────
+        item {
+            SaveArchiveSection(
+                romId = romId,
+                watchConnected = watchConnected,
+                onOpenSetup = onOpenArchiveSetup,
+            )
+        }
+
         // ── Current Save on Watch ───────────────────────────────────
         item {
             SectionHeader(

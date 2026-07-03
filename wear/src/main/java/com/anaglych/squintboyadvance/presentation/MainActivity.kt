@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.anaglych.squintboyadvance.presentation.navigation.WearNavGraph
+import com.anaglych.squintboyadvance.presentation.sync.SaveSyncConfigRepository
 import com.anaglych.squintboyadvance.presentation.theme.SquintBoyAdvanceTheme
 import java.io.File
 
@@ -14,7 +15,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setTheme(android.R.style.Theme_DeviceDefault)
 
-        installDemoRom()
+installDemoRom()
+
+        // Warm the save-sync config so the phone refresh fires before any game session.
+        SaveSyncConfigRepository.getInstance(this)
 
         setContent {
             SquintBoyAdvanceTheme {

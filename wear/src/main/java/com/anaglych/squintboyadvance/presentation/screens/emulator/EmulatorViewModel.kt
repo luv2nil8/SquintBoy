@@ -12,6 +12,11 @@ import com.anaglych.squintboyadvance.core.SaveStateManager
 import com.anaglych.squintboyadvance.presentation.EntitlementRepository
 import com.anaglych.squintboyadvance.presentation.RomMetadataStore
 import com.anaglych.squintboyadvance.presentation.SettingsRepository
+import com.anaglych.squintboyadvance.presentation.sync.ArchiveHashStore
+import com.anaglych.squintboyadvance.presentation.sync.OutboxDrainer
+import com.anaglych.squintboyadvance.presentation.sync.SaveSyncConfigRepository
+import com.anaglych.squintboyadvance.presentation.sync.SaveSyncOutbox
+import com.anaglych.squintboyadvance.presentation.sync.SramArchiver
 import com.anaglych.squintboyadvance.shared.emulator.EmulatorState
 import com.anaglych.squintboyadvance.shared.model.BindableAction
 import com.anaglych.squintboyadvance.shared.model.DemoLimits
@@ -80,6 +85,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
     private var emulatorThread: EmulatorThread? = null
     private var audioPlayer: AudioPlayer? = null
     private var saveStateManager: SaveStateManager? = null
+    private var sramArchiver: SramArchiver? = null
     private var audioEnabled = false
     private val _currentRomId = MutableStateFlow<String?>(null)
     val currentRomId: StateFlow<String?> = _currentRomId.asStateFlow()
@@ -251,6 +257,20 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         // Restore SRAM backup (if live .sav missing) then load newest valid save state
         saveStateManager?.restoreAll()
         refreshSaveStateAvailability()
+
+        // Silent save archiver (opt-in, phone-managed; no watch UI)
+        sramArchiver?.stop() // defensive: never leak a poll job across loads
+        sramArchiver = null
+        if (SaveSyncConfigRepository.getInstance(context).enabled.value) {
+            sramArchiver = SramArchiver(
+                savFile = savFile,
+                romId = romId,
+                outbox = SaveSyncOutbox.getInstance(context),
+                hashStore = ArchiveHashStore.getInstance(context),
+                isRunning = { _state.value == EmulatorState.RUNNING },
+                onQueued = { OutboxDrainer.requestDrain(context) },
+            ).also { it.start(viewModelScope) }
+        }
 
         // Init resampler once so live audio toggle doesn't need to reinit mid-playback
         emu.initAudio(OUTPUT_SAMPLE_RATE)
@@ -633,6 +653,9 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             }
             playTimeTracker.flush()
             saveStateManager?.onFocusLost()
+            sramArchiver?.snapshotNow()
+            // Retry anything still queued (no-op when the outbox is empty).
+            if (sramArchiver != null) OutboxDrainer.requestDrain(getApplication())
         }
     }
 
@@ -676,6 +699,8 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             }
             playTimeTracker.stop()
             saveStateManager?.onFocusLost()
+            sramArchiver?.snapshotNow()
+            if (sramArchiver != null) OutboxDrainer.requestDrain(getApplication())
         }
         _ffSpeed.value = 0
         _hasSaveState.value = false
@@ -692,6 +717,8 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         renderBitmap = null
         pixelBuffer = null
         saveStateManager = null
+        sramArchiver?.stop()
+        sramArchiver = null
         _currentRomId.value = null
     }
 

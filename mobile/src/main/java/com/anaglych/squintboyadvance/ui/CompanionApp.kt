@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Watch
@@ -75,8 +76,10 @@ import com.anaglych.squintboyadvance.MobileBillingManager
 import com.anaglych.squintboyadvance.PurchaseRequestSignal
 import com.anaglych.squintboyadvance.ReviewRequestSignal
 import com.anaglych.squintboyadvance.WatchPongSignal
+import com.anaglych.squintboyadvance.data.sync.SaveSyncSettingsRepository
 import com.anaglych.squintboyadvance.shared.model.SystemType
 import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
+import com.anaglych.squintboyadvance.ui.archive.ArchiveSetupScreen
 import com.anaglych.squintboyadvance.ui.components.OverlayCard
 import com.anaglych.squintboyadvance.ui.theme.Crimson
 import com.anaglych.squintboyadvance.ui.roms.RomManagementScreen
@@ -102,6 +105,7 @@ import com.google.android.play.core.review.ReviewInfo
 
 private const val ROUTE_ROMS = "roms"
 private const val ROUTE_LICENSES = "licenses"
+private const val ROUTE_ARCHIVE_SETUP = "archive_setup"
 
 // ── State machine ────────────────────────────────────────────────────────────
 
@@ -370,6 +374,16 @@ fun CompanionApp(
         }
     }
 
+    // Watch (re)connected: mirror the sync config and heal any missed drain window.
+    val appContext = LocalContext.current.applicationContext
+    LaunchedEffect(watchConnected) {
+        if (watchConnected) {
+            val syncRepo = SaveSyncSettingsRepository.getInstance(appContext)
+            syncRepo.pushConfigToWatch()
+            syncRepo.requestWatchDrain()
+        }
+    }
+
     // Banner is shown for WATCH_NO_APP (always) or NO_WATCH (first-time users only)
     val showBanner = when (connectionState) {
         WatchConnectionState.WATCH_NO_APP -> true
@@ -398,6 +412,14 @@ fun CompanionApp(
                             Text(
                                 if (isPro) "PRO" else "FREE",
                                 color = if (isPro) Color(0xFF9BBC0F) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    if (isRootRoute) {
+                        IconButton(onClick = { navController.navigate(ROUTE_ARCHIVE_SETUP) }) {
+                            Icon(
+                                Icons.Default.CloudSync,
+                                contentDescription = "Save Sync settings",
                             )
                         }
                     }
@@ -459,6 +481,9 @@ fun CompanionApp(
                 composable(ROUTE_LICENSES) {
                     LicensesScreen()
                 }
+                composable(ROUTE_ARCHIVE_SETUP) {
+                    ArchiveSetupScreen()
+                }
                 composable(
                     route = "rom_management/{romId}/{systemType}",
                     arguments = listOf(
@@ -483,6 +508,7 @@ fun CompanionApp(
                         },
                         onOpenLicenses = { navController.navigate(ROUTE_LICENSES) },
                         onUpgrade = doUpgrade,
+                        onOpenArchiveSetup = { navController.navigate(ROUTE_ARCHIVE_SETUP) },
                     )
                 }
             }
