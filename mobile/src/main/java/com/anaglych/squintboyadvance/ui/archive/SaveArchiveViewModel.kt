@@ -70,6 +70,10 @@ class SaveArchiveViewModel(
         .map { counts -> counts.associate { dayKeyToDate(it.dayKey) to it.count } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
+    /** Distinct driveError values across the archive; drives the QUOTA/AUTH banner. */
+    val driveErrors: StateFlow<List<String>> = dao.distinctDriveErrors()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     val viewMode = MutableStateFlow(ArchiveViewMode.CALENDAR)
     val selectedDay = MutableStateFlow<LocalDate?>(null)
     val restoreState = MutableStateFlow(ArchiveRestoreState())

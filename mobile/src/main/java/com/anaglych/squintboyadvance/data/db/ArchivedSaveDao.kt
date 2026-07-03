@@ -50,6 +50,18 @@ interface ArchivedSaveDao {
     suspend fun allPresent(): List<ArchivedSaveEntity>
 
     @Query(
+        "SELECT DISTINCT driveError FROM archived_saves " +
+            "WHERE driveState = 'ERROR' AND driveError IS NOT NULL"
+    )
+    fun distinctDriveErrors(): Flow<List<String>>
+
+    @Query(
+        "UPDATE archived_saves SET driveState = :to, driveError = NULL " +
+            "WHERE driveState = :from AND localState = 'PRESENT'"
+    )
+    suspend fun resetDriveStates(from: String, to: String)
+
+    @Query(
         "SELECT * FROM archived_saves WHERE romId = :romId AND sha256 = :sha256 " +
             "AND timestampMs = :timestampMs LIMIT 1"
     )

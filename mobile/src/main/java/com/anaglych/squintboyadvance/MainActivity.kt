@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import com.anaglych.squintboyadvance.data.sync.SaveSyncSettingsRepository
 import com.anaglych.squintboyadvance.ui.CompanionApp
 import com.anaglych.squintboyadvance.ui.theme.SquintBoyTheme
+import com.anaglych.squintboyadvance.work.DriveSyncWorker
 import com.anaglych.squintboyadvance.work.RetentionWorker
 
 class MainActivity : ComponentActivity() {
@@ -14,8 +15,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        if (SaveSyncSettingsRepository.getInstance(this).settings.value.enabled) {
+        val syncSettings = SaveSyncSettingsRepository.getInstance(this).settings.value
+        if (syncSettings.enabled) {
             RetentionWorker.schedulePeriodic(this)
+            if (syncSettings.driveEnabled) DriveSyncWorker.enqueue(this)
         }
         setContent {
             SquintBoyTheme {

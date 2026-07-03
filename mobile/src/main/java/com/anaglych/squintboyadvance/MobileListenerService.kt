@@ -11,6 +11,7 @@ import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
 import com.anaglych.squintboyadvance.ui.ArchiveChangedSignal
 import com.anaglych.squintboyadvance.ui.RomPickerTrigger
 import com.anaglych.squintboyadvance.ui.TransferResultSignal
+import com.anaglych.squintboyadvance.work.DriveSyncWorker
 import com.anaglych.squintboyadvance.work.RetentionWorker
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.ChannelClient
@@ -135,6 +136,7 @@ class MobileListenerService : WearableListenerService() {
             ArchiveChangedSignal.emit()
             // Post-ack work: never delays the ack path above.
             RetentionWorker.runOnce(this)
+            DriveSyncWorker.enqueue(this)
         }
     }
 

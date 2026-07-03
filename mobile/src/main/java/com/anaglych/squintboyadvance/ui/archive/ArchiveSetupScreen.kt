@@ -1,6 +1,7 @@
 package com.anaglych.squintboyadvance.ui.archive
 
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -27,9 +28,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -50,6 +53,18 @@ fun ArchiveSetupScreen(viewModel: ArchiveSetupViewModel = viewModel()) {
     val folderPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri -> if (uri != null) viewModel.setFolder(uri) }
+
+    val driveBusy by viewModel.driveBusy.collectAsState()
+    val driveError by viewModel.driveError.collectAsState()
+    val driveConsentIntent by viewModel.driveConsentIntent.collectAsState()
+    val consentLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result -> viewModel.onConsentResult(result.data) }
+    LaunchedEffect(driveConsentIntent) {
+        driveConsentIntent?.let {
+            consentLauncher.launch(IntentSenderRequest.Builder(it.intentSender).build())
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -124,6 +139,41 @@ fun ArchiveSetupScreen(viewModel: ArchiveSetupViewModel = viewModel()) {
                     ) {
                         Text(if (rescanRunning) "Scanning…" else "Rescan")
                     }
+                }
+            }
+        }
+
+        // ── Google Drive ─────────────────────────────────────────────────
+        SetupCard {
+            Text("Google Drive", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Mirror the archive to your Drive (only its own folder is visible to the app)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            driveError?.let { WarningRow(it) }
+            when {
+                driveBusy -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.width(20.dp).height(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Text("Connecting…", style = MaterialTheme.typography.bodyMedium)
+                }
+                settings.driveEnabled -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Connected", style = MaterialTheme.typography.bodyMedium)
+                        settings.driveAccountEmail?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    TextButton(onClick = { viewModel.disconnectDrive() }) { Text("Disconnect") }
+                }
+                else -> OutlinedButton(onClick = { viewModel.connectDrive() }) {
+                    Text("Connect Google Drive")
                 }
             }
         }

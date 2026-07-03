@@ -125,24 +125,14 @@ fun SaveArchiveSection(
         }
 
         if (folderMissing) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(vertical = 4.dp),
-            ) {
-                Icon(
-                    Icons.Default.Warning,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error,
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "Archive folder unavailable — relink in settings",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = onOpenSetup) { Text("Fix") }
-            }
+            WarningBanner("Archive folder unavailable — relink in settings", onOpenSetup)
+        }
+        val driveErrors by vm.driveErrors.collectAsState()
+        if ("QUOTA" in driveErrors) {
+            WarningBanner("Google Drive is full — uploads paused", onOpenSetup)
+        }
+        if ("AUTH" in driveErrors) {
+            WarningBanner("Reconnect Google Drive to resume syncing", onOpenSetup)
         }
 
         when {
@@ -324,6 +314,28 @@ fun SaveArchiveSection(
                 TextButton(onClick = { pendingNote = null }) { Text("Cancel") }
             },
         )
+    }
+}
+
+@Composable
+private fun WarningBanner(text: String, onFix: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(vertical = 4.dp),
+    ) {
+        Icon(
+            Icons.Default.Warning,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.error,
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onFix) { Text("Fix") }
     }
 }
 

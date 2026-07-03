@@ -42,6 +42,11 @@ object RetentionRunner {
             deleteFromGameDir(store, dao, gameDirName, group)
         }
         Log.i(TAG, "Retention removed ${deletions.size} save(s)")
+
+        // Propagate tombstoned deletions to Drive.
+        if (deletions.any { it.driveFileId != null }) {
+            com.anaglych.squintboyadvance.work.DriveSyncWorker.enqueue(context)
+        }
     }
 
     private suspend fun deleteFromGameDir(
