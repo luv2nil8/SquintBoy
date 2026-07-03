@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -67,10 +68,14 @@ fun SaveArchiveSection(
     romId: String,
     watchConnected: Boolean,
     onOpenSetup: () -> Unit,
+    onUpgrade: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val available by SaveSyncGate.isAvailable(context).collectAsState()
-    if (!available) return
+    if (!available) {
+        ArchivePromoCard(onOpenSetup = onUpgrade, locked = true)
+        return
+    }
 
     val application = context.applicationContext as Application
     val vm: SaveArchiveViewModel = viewModel(
@@ -372,7 +377,7 @@ private fun DayPanel(
 }
 
 @Composable
-private fun ArchivePromoCard(onOpenSetup: () -> Unit) {
+private fun ArchivePromoCard(onOpenSetup: () -> Unit, locked: Boolean = false) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -387,7 +392,16 @@ private fun ArchivePromoCard(onOpenSetup: () -> Unit) {
                 )
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Automatic Save Archive", style = MaterialTheme.typography.titleSmall)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Automatic Save Archive", style = MaterialTheme.typography.titleSmall)
+                        if (locked) {
+                            Spacer(Modifier.width(8.dp))
+                            Badge(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                            ) { Text("PRO") }
+                        }
+                    }
                     Text(
                         "Every save on your watch, archived and synced automatically",
                         style = MaterialTheme.typography.bodySmall,
@@ -397,7 +411,7 @@ private fun ArchivePromoCard(onOpenSetup: () -> Unit) {
             }
             Spacer(Modifier.height(12.dp))
             Button(onClick = onOpenSetup, modifier = Modifier.align(Alignment.End)) {
-                Text("Set up")
+                Text(if (locked) "Upgrade" else "Set up")
             }
         }
     }

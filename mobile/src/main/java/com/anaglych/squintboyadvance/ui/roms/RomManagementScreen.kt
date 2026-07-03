@@ -381,6 +381,7 @@ private fun SavesTabContent(
                 romId = romId,
                 watchConnected = watchConnected,
                 onOpenSetup = onOpenArchiveSetup,
+                onUpgrade = onUpgrade,
             )
         }
 

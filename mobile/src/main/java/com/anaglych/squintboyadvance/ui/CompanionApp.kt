@@ -344,6 +344,14 @@ fun CompanionApp(
     // Auto-dismiss upgrade overlay when purchase completes
     LaunchedEffect(isPro) {
         if (isPro) showUpgradeOverlay = false
+        // Entitlement lapsed: switch save sync off (auto-pushes disable to the
+        // watch — the watch itself stays entitlement-unaware).
+        if (!isPro) {
+            val syncRepo = SaveSyncSettingsRepository.getInstance(context.applicationContext)
+            if (syncRepo.settings.value.enabled) {
+                syncRepo.update { it.copy(enabled = false) }
+            }
+        }
     }
 
     val shouldRequestReview by transferViewModel.shouldRequestReview.collectAsStateWithLifecycle()
@@ -415,7 +423,7 @@ fun CompanionApp(
                             )
                         }
                     }
-                    if (isRootRoute) {
+                    if (isRootRoute && isPro) {
                         IconButton(onClick = { navController.navigate(ROUTE_ARCHIVE_SETUP) }) {
                             Icon(
                                 Icons.Default.CloudSync,
