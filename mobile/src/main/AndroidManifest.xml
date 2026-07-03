@@ -53,6 +53,20 @@
                     android:pathPrefix="/watch/pong"
                     android:scheme="wear" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.CHANNEL_EVENT" />
+                <data
+                    android:host="*"
+                    android:pathPrefix="/save/archive/push"
+                    android:scheme="wear" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data
+                    android:host="*"
+                    android:pathPrefix="/save/sync/config/request"
+                    android:scheme="wear" />
+            </intent-filter>
         </service>
 
         <provider
