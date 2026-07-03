@@ -86,7 +86,8 @@ fun SaveArchiveSection(
 
     val saves by vm.saves.collectAsState()
     val dayCounts by vm.dayCounts.collectAsState()
-    val viewMode by vm.viewMode.collectAsState()
+    val pinnedDays by vm.pinnedDays.collectAsState()
+    val oldestMonth by vm.oldestMonth.collectAsState()
     val selectedDay by vm.selectedDay.collectAsState()
     val folderMissing by vm.folderMissing.collectAsState()
     val restoreState by vm.restoreState.collectAsState()
@@ -108,13 +109,6 @@ fun SaveArchiveSection(
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.weight(1f),
             )
-            ViewModePill("Calendar", viewMode == ArchiveViewMode.CALENDAR) {
-                vm.setViewMode(ArchiveViewMode.CALENDAR)
-            }
-            Spacer(Modifier.width(6.dp))
-            ViewModePill("List", viewMode == ArchiveViewMode.LIST) {
-                vm.setViewMode(ArchiveViewMode.LIST)
-            }
             IconButton(onClick = onOpenSetup) {
                 Icon(
                     Icons.Default.Settings,
@@ -135,48 +129,52 @@ fun SaveArchiveSection(
             WarningBanner("Reconnect Google Drive to resume syncing", onOpenSetup)
         }
 
-        when {
-            saves.isEmpty() -> EmptyArchiveCard()
-            viewMode == ArchiveViewMode.CALENDAR -> {
-                CalendarHeatmap(
-                    dayCounts = dayCounts,
-                    selectedDay = selectedDay,
-                    onDayClick = { vm.selectDay(it) },
-                )
-                // The day "opens": its saves expand out below the tapped cell's grid.
-                AnimatedContent(
-                    targetState = selectedDay,
-                    transitionSpec = {
-                        (expandVertically(expandFrom = Alignment.Top) + fadeIn())
-                            .togetherWith(shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut())
-                    },
-                    label = "day-expand",
-                ) { day ->
-                    if (day != null) {
-                        DayPanel(
-                            day = day,
-                            saves = saves.filter { sameLocalDay(it.timestampMs, day) },
-                            watchConnected = watchConnected,
-                            onTogglePin = { vm.togglePin(it) },
-                            onRestore = { pendingRestore = it },
-                            onEditNote = { pendingNote = it },
-                            onDelete = { pendingDelete = it },
+        if (saves.isEmpty()) {
+            EmptyArchiveCard()
+        } else {
+            MonthHeatmap(
+                dayCounts = dayCounts,
+                pinnedDays = pinnedDays,
+                selectedDay = selectedDay,
+                onDayClick = { vm.selectDay(it) },
+                oldestMonth = oldestMonth,
+            )
+            // Persistent list: newest-first across all saves, or the tapped day.
+            AnimatedContent(
+                targetState = selectedDay,
+                transitionSpec = {
+                    (expandVertically(expandFrom = Alignment.Top) + fadeIn())
+                        .togetherWith(shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut())
+                },
+                label = "day-filter",
+            ) { day ->
+                val shown = if (day == null) saves
+                else saves.filter { sameLocalDay(it.timestampMs, day) }
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            if (day == null) "All saves" else dayHeaderFormat.format(day),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
                         )
-                    } else {
-                        Spacer(Modifier.height(4.dp))
+                        if (day != null) {
+                            TextButton(onClick = { vm.selectDay(null) }) { Text("Show all") }
+                        }
                     }
-                }
-            }
-            else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (save in saves) {
-                    ArchivedSaveRow(
-                        save = save,
-                        watchConnected = watchConnected,
-                        onTogglePin = { vm.togglePin(save) },
-                        onRestore = { pendingRestore = save },
-                        onEditNote = { pendingNote = save },
-                        onDelete = { pendingDelete = save },
-                    )
+                    for (save in shown) {
+                        ArchivedSaveRow(
+                            save = save,
+                            watchConnected = watchConnected,
+                            onTogglePin = { vm.togglePin(save) },
+                            onRestore = { pendingRestore = save },
+                            onEditNote = { pendingNote = save },
+                            onDelete = { pendingDelete = save },
+                        )
+                    }
                 }
             }
         }
@@ -340,38 +338,6 @@ private fun WarningBanner(text: String, onFix: () -> Unit) {
 }
 
 @Composable
-private fun DayPanel(
-    day: LocalDate,
-    saves: List<ArchivedSaveEntity>,
-    watchConnected: Boolean,
-    onTogglePin: (ArchivedSaveEntity) -> Unit,
-    onRestore: (ArchivedSaveEntity) -> Unit,
-    onEditNote: (ArchivedSaveEntity) -> Unit,
-    onDelete: (ArchivedSaveEntity) -> Unit,
-) {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.padding(top = 8.dp),
-    ) {
-        Text(
-            dayHeaderFormat.format(day),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        for (save in saves) {
-            ArchivedSaveRow(
-                save = save,
-                watchConnected = watchConnected,
-                onTogglePin = { onTogglePin(save) },
-                onRestore = { onRestore(save) },
-                onEditNote = { onEditNote(save) },
-                onDelete = { onDelete(save) },
-            )
-        }
-    }
-}
-
-@Composable
 private fun ArchivePromoCard(onOpenSetup: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -417,19 +383,6 @@ private fun EmptyArchiveCard() {
             modifier = Modifier.padding(16.dp),
         )
     }
-}
-
-@Composable
-private fun ViewModePill(label: String, selected: Boolean, onClick: () -> Unit) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = { Text(label) },
-        shape = RoundedCornerShape(50),
-        colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-        ),
-    )
 }
 
 private val dayHeaderFormat = DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.getDefault())

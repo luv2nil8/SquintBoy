@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.anaglych.squintboyadvance.data.archive.GameDirNaming
 import com.anaglych.squintboyadvance.data.archive.SaveArchiveStore
 import com.anaglych.squintboyadvance.data.db.ArchivedSaveEntity
 import com.anaglych.squintboyadvance.data.db.DriveState
@@ -17,6 +18,7 @@ import com.anaglych.squintboyadvance.shared.util.readLine
 import com.google.android.gms.wearable.Wearable
 import java.io.BufferedInputStream
 import java.time.LocalDate
+import java.time.YearMonth
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -27,8 +29,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-
-enum class ArchiveViewMode { CALENDAR, LIST }
 
 data class ArchiveRestoreState(
     val inProgress: Boolean = false,
@@ -74,13 +74,18 @@ class SaveArchiveViewModel(
     val driveErrors: StateFlow<List<String>> = dao.distinctDriveErrors()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val viewMode = MutableStateFlow(ArchiveViewMode.CALENDAR)
+    /** Days containing at least one pinned save — the calendar's pin markers. */
+    val pinnedDays: StateFlow<Set<LocalDate>> = dao.savesForRom(romId)
+        .map { list -> list.filter { it.pinned }.map { dayKeyToDate(it.dayKey) }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    /** Month of the oldest archived save — the calendar's back-navigation bound. */
+    val oldestMonth: StateFlow<YearMonth?> = dao.savesForRom(romId)
+        .map { list -> list.minOfOrNull { it.timestampMs }?.let { YearMonth.from(dayKeyToDate(GameDirNaming.dayKey(it))) } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     val selectedDay = MutableStateFlow<LocalDate?>(null)
     val restoreState = MutableStateFlow(ArchiveRestoreState())
-
-    fun setViewMode(mode: ArchiveViewMode) {
-        viewMode.value = mode
-    }
 
     fun selectDay(day: LocalDate?) {
         selectedDay.value = if (selectedDay.value == day) null else day

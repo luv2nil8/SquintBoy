@@ -15,6 +15,8 @@ class IntensityLevelTest {
         assertEquals(3, intensityLevel(4))
         assertEquals(3, intensityLevel(6))
         assertEquals(4, intensityLevel(7))
-        assertEquals(4, intensityLevel(100))
+        assertEquals(4, intensityLevel(9))
+        assertEquals(5, intensityLevel(10))
+        assertEquals(5, intensityLevel(100))
     }
 }
