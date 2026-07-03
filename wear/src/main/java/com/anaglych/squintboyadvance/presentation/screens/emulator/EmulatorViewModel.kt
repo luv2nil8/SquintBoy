@@ -613,6 +613,8 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             playTimeTracker.flush()
             saveStateManager?.onFocusLost()
             sramArchiver?.snapshotNow()
+            // Retry anything still queued (no-op when the outbox is empty).
+            if (sramArchiver != null) OutboxDrainer.requestDrain(getApplication())
         }
     }
 
@@ -657,6 +659,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             playTimeTracker.stop()
             saveStateManager?.onFocusLost()
             sramArchiver?.snapshotNow()
+            if (sramArchiver != null) OutboxDrainer.requestDrain(getApplication())
         }
         _ffSpeed.value = 0
         _hasSaveState.value = false

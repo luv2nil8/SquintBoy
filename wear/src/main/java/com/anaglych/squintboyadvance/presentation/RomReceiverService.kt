@@ -452,6 +452,12 @@ class RomReceiverService : WearableListenerService() {
             SaveSyncConfig.serializer(), String(event.data, Charsets.UTF_8)
         )
         SaveSyncConfigRepository.getInstance(this).handleConfigPush(config)
+        // The phone pushes config on every connect, over the reliable message
+        // path, with its node id attached — piggyback outbox recovery on it
+        // rather than trusting capability-change events (flaky on some setups).
+        if (config.enabled) {
+            OutboxDrainer.requestDrain(this, event.sourceNodeId)
+        }
     }
 
     /** Phone became reachable: opportunistically drain any queued snapshots. */
