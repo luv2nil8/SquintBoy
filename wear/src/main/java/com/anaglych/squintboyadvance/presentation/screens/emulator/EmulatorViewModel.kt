@@ -218,6 +218,8 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         refreshSaveStateAvailability()
 
         // Silent save archiver (opt-in, phone-managed; no watch UI)
+        sramArchiver?.stop() // defensive: never leak a poll job across loads
+        sramArchiver = null
         if (SaveSyncConfigRepository.getInstance(context).enabled.value) {
             sramArchiver = SramArchiver(
                 savFile = savFile,

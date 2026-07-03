@@ -117,6 +117,11 @@
                     android:pathPrefix="/watch/ping" />
             </intent-filter>
             <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data android:scheme="wear" android:host="*"
+                    android:pathPrefix="/screen/info/request" />
+            </intent-filter>
+            <intent-filter>
                 <action android:name="com.google.android.gms.wearable.CHANNEL_EVENT" />
                 <data
                     android:scheme="wear"
