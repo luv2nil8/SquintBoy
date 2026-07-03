@@ -196,13 +196,12 @@ class RomReceiverService : WearableListenerService() {
     /**
      * Validated save restore (v2 of handleSavePush): 3-line header
      * (romId/fileName, sizeBytes, sha256) + exactly sizeBytes of payload.
-     * Verifies size + hash, installs atomically, acks "OK" / "ERR <msg>".
+     * Verifies size + hash in memory, installs in place, acks "OK" / "ERR <msg>".
      */
     private fun handleSavePushV2(channel: ChannelClient.Channel) {
         val channelClient = Wearable.getChannelClient(this)
         val input = BufferedInputStream(Tasks.await(channelClient.getInputStream(channel)))
         val output = Tasks.await(channelClient.getOutputStream(channel))
-        var tempFile: File? = null
         try {
             val header = readLine(input) ?: throw Exception("Missing header")
             val slashIdx = header.indexOf('/')
@@ -230,21 +229,22 @@ class RomReceiverService : WearableListenerService() {
 
             val savesDir = File(filesDir, "saves").apply { mkdirs() }
             val safeName = fileName.replace('/', '_').replace('\\', '_')
-            tempFile = File(savesDir, ".incoming_$safeName")
-            tempFile.writeBytes(bytes)
+            // Write IN PLACE, never rename-over: mGBA may hold this file mmap'd
+            // in a live session, and a rename would strand its writes on the old
+            // inode (losing the player's progress silently). The payload is
+            // already hash-verified in memory, and RandomAccessFile avoids a
+            // truncate-to-zero window that could SIGBUS an mmap'd reader.
             val outFile = File(savesDir, safeName)
-            if (!tempFile.renameTo(outFile)) {
-                tempFile.copyTo(outFile, overwrite = true)
-                tempFile.delete()
+            java.io.RandomAccessFile(outFile, "rw").use { raf ->
+                raf.write(bytes)
+                raf.setLength(bytes.size.toLong())
             }
-            tempFile = null
 
             output.write("OK\n".toByteArray(Charsets.UTF_8))
             output.flush()
             Log.i(TAG, "Received validated save: $safeName ($expectedSize bytes)")
         } catch (e: Exception) {
             Log.e(TAG, "Save push v2 failed: ${e.message}", e)
-            tempFile?.delete()
             try {
                 output.write("ERR ${e.message}\n".toByteArray(Charsets.UTF_8))
                 output.flush()
