@@ -33,12 +33,16 @@ object OutboxDrainer {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
 
-    fun requestDrain(context: Context) {
+    /**
+     * [knownNodeId] skips discovery entirely — used when the phone itself
+     * requested the drain, so its node id is already known.
+     */
+    fun requestDrain(context: Context, knownNodeId: String? = null) {
         val appContext = context.applicationContext
         scope.launch {
             if (!mutex.tryLock()) return@launch // a drain is already running
             try {
-                drain(appContext)
+                drain(appContext, knownNodeId)
             } catch (e: Exception) {
                 Log.w(TAG, "Drain failed: ${e.message}")
             } finally {
@@ -47,25 +51,20 @@ object OutboxDrainer {
         }
     }
 
-    private fun drain(context: Context) {
+    private fun drain(context: Context, knownNodeId: String?) {
         if (!SaveSyncConfigRepository.getInstance(context).enabled.value) return
         val outbox = SaveSyncOutbox.getInstance(context)
         val entries = outbox.list()
         if (entries.isEmpty()) return
 
-        val capability = Tasks.await(
-            Wearable.getCapabilityClient(context).getCapability(
-                WearMessageConstants.CAPABILITY_PHONE_APP,
-                CapabilityClient.FILTER_REACHABLE,
-            )
-        )
-        val node = capability.nodes.firstOrNull { it.isNearby }
-            ?: capability.nodes.firstOrNull()
-            ?: return // phone unreachable; keep the outbox
+        val nodeId = knownNodeId ?: findPhoneNodeId(context) ?: run {
+            Log.i(TAG, "No phone node reachable; ${entries.size} entries stay queued")
+            return
+        }
 
         val channelClient = Wearable.getChannelClient(context)
         val channel = Tasks.await(
-            channelClient.openChannel(node.id, WearMessageConstants.PATH_SAVE_ARCHIVE_PUSH)
+            channelClient.openChannel(nodeId, WearMessageConstants.PATH_SAVE_ARCHIVE_PUSH)
         )
         val watchdog = Executors.newSingleThreadScheduledExecutor { r ->
             Thread(r, "drain-watchdog").apply { isDaemon = true }
@@ -108,6 +107,35 @@ object OutboxDrainer {
                 Tasks.await(channelClient.close(channel))
             } catch (_: Exception) {}
             if (delivered > 0) Log.i(TAG, "Drained $delivered save(s) to phone")
+        }
+    }
+
+    /**
+     * Capability lookup first, but this environment has a history of capability
+     * queries coming up empty while the connection works (ReVanced interference —
+     * same reason ping/pong exists). A watch pairs with one phone, so falling
+     * back to any connected node is safe.
+     */
+    private fun findPhoneNodeId(context: Context): String? {
+        try {
+            val capability = Tasks.await(
+                Wearable.getCapabilityClient(context).getCapability(
+                    WearMessageConstants.CAPABILITY_PHONE_APP,
+                    CapabilityClient.FILTER_REACHABLE,
+                )
+            )
+            val capable = capability.nodes.firstOrNull { it.isNearby }
+                ?: capability.nodes.firstOrNull()
+            if (capable != null) return capable.id
+        } catch (e: Exception) {
+            Log.w(TAG, "Capability lookup failed: ${e.message}")
+        }
+        return try {
+            val nodes = Tasks.await(Wearable.getNodeClient(context).connectedNodes)
+            (nodes.firstOrNull { it.isNearby } ?: nodes.firstOrNull())?.id
+        } catch (e: Exception) {
+            Log.w(TAG, "Connected-nodes lookup failed: ${e.message}")
+            null
         }
     }
 

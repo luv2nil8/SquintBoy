@@ -307,7 +307,8 @@ class RomReceiverService : WearableListenerService() {
                 WearMessageConstants.PATH_SAVE_LIST_REQUEST -> handleSaveListRequest(event)
                 WearMessageConstants.PATH_SAVE_CLEAR_STACKS -> handleSaveClearStacks(event)
                 WearMessageConstants.PATH_SAVE_SYNC_CONFIG -> handleSaveSyncConfig(event)
-                WearMessageConstants.PATH_SAVE_ARCHIVE_DRAIN -> OutboxDrainer.requestDrain(this)
+                WearMessageConstants.PATH_SAVE_ARCHIVE_DRAIN ->
+                    OutboxDrainer.requestDrain(this, event.sourceNodeId)
                 WearMessageConstants.PATH_ROM_RENAME -> handleRomRename(event)
                 WearMessageConstants.PATH_SCREEN_INFO_REQUEST -> handleScreenInfoRequest(event)
                 WearMessageConstants.PATH_WATCH_PING -> {
