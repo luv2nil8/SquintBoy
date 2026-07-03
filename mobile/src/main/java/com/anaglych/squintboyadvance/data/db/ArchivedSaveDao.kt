@@ -46,6 +46,9 @@ interface ArchivedSaveDao {
     )
     suspend fun pendingDriveWork(): List<ArchivedSaveEntity>
 
+    @Query("SELECT * FROM archived_saves WHERE localState = 'PRESENT'")
+    suspend fun allPresent(): List<ArchivedSaveEntity>
+
     @Query(
         "SELECT * FROM archived_saves WHERE romId = :romId AND sha256 = :sha256 " +
             "AND timestampMs = :timestampMs LIMIT 1"

@@ -11,6 +11,7 @@ import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
 import com.anaglych.squintboyadvance.ui.ArchiveChangedSignal
 import com.anaglych.squintboyadvance.ui.RomPickerTrigger
 import com.anaglych.squintboyadvance.ui.TransferResultSignal
+import com.anaglych.squintboyadvance.work.RetentionWorker
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.MessageEvent
@@ -132,6 +133,8 @@ class MobileListenerService : WearableListenerService() {
         if (received > 0) {
             Log.i(TAG, "Archived $received save(s) from watch")
             ArchiveChangedSignal.emit()
+            // Post-ack work: never delays the ack path above.
+            RetentionWorker.runOnce(this)
         }
     }
 
