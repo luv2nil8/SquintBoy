@@ -38,6 +38,7 @@ class RomReceiverService : WearableListenerService() {
             when (channel.path) {
                 WearMessageConstants.PATH_ROM_TRANSFER -> handleRomTransfer(channel)
                 WearMessageConstants.PATH_SAVE_PUSH -> handleSavePush(channel)
+                WearMessageConstants.PATH_SAVE_PUSH_V2 -> handleSavePushV2(channel)
                 WearMessageConstants.PATH_SAVE_PULL -> handleSavePull(channel)
                 else -> Log.w(TAG, "Unknown channel path: ${channel.path}")
             }
@@ -190,6 +191,65 @@ class RomReceiverService : WearableListenerService() {
             inputStream.copyTo(out)
         }
         Log.i(TAG, "Received save: $romId/$fileName (${outFile.length()} bytes)")
+    }
+
+    /**
+     * Validated save restore (v2 of handleSavePush): 3-line header
+     * (romId/fileName, sizeBytes, sha256) + exactly sizeBytes of payload.
+     * Verifies size + hash, installs atomically, acks "OK" / "ERR <msg>".
+     */
+    private fun handleSavePushV2(channel: ChannelClient.Channel) {
+        val channelClient = Wearable.getChannelClient(this)
+        val input = BufferedInputStream(Tasks.await(channelClient.getInputStream(channel)))
+        val output = Tasks.await(channelClient.getOutputStream(channel))
+        var tempFile: File? = null
+        try {
+            val header = readLine(input) ?: throw Exception("Missing header")
+            val slashIdx = header.indexOf('/')
+            if (slashIdx < 0) throw Exception("Bad header: $header")
+            val fileName = header.substring(slashIdx + 1)
+            val expectedSize = readLine(input)?.toLongOrNull()
+                ?: throw Exception("Missing/invalid size header")
+            val expectedHash = readLine(input) ?: throw Exception("Missing hash header")
+            if (expectedSize <= 0 || expectedSize > 1024 * 1024) {
+                throw Exception("Implausible save size: $expectedSize")
+            }
+
+            val bytes = ByteArray(expectedSize.toInt())
+            var offset = 0
+            while (offset < bytes.size) {
+                val read = input.read(bytes, offset, bytes.size - offset)
+                if (read < 0) throw Exception("Stream ended at $offset/$expectedSize bytes")
+                offset += read
+            }
+
+            val actualHash = com.anaglych.squintboyadvance.shared.util.HashUtils.sha256Hex(bytes)
+            if (!actualHash.equals(expectedHash, ignoreCase = true)) {
+                throw Exception("Hash mismatch")
+            }
+
+            val savesDir = File(filesDir, "saves").apply { mkdirs() }
+            val safeName = fileName.replace('/', '_').replace('\\', '_')
+            tempFile = File(savesDir, ".incoming_$safeName")
+            tempFile.writeBytes(bytes)
+            val outFile = File(savesDir, safeName)
+            if (!tempFile.renameTo(outFile)) {
+                tempFile.copyTo(outFile, overwrite = true)
+                tempFile.delete()
+            }
+            tempFile = null
+
+            output.write("OK\n".toByteArray(Charsets.UTF_8))
+            output.flush()
+            Log.i(TAG, "Received validated save: $safeName ($expectedSize bytes)")
+        } catch (e: Exception) {
+            Log.e(TAG, "Save push v2 failed: ${e.message}", e)
+            tempFile?.delete()
+            try {
+                output.write("ERR ${e.message}\n".toByteArray(Charsets.UTF_8))
+                output.flush()
+            } catch (_: Exception) {}
+        }
     }
 
     private fun handleSavePull(channel: ChannelClient.Channel) {

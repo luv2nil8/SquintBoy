@@ -423,6 +423,7 @@ fun CompanionApp(
                             watchRomListViewModel.setDisplayName(romId, newName)
                         },
                         onOpenLicenses = { navController.navigate(ROUTE_LICENSES) },
+                        onOpenArchiveSetup = { navController.navigate(ROUTE_ARCHIVE_SETUP) },
                     )
                 }
             }
