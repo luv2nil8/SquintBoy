@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import androidx.core.content.FileProvider
+import com.anaglych.squintboyadvance.shared.util.SaveSizeCheck
+import com.anaglych.squintboyadvance.shared.util.SaveValidation
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -52,17 +54,12 @@ class SaveBackupManager(
         }
     }
 
-    fun validate(backup: SaveBackupEntry): SaveValidationResult {
-        val size = backup.file.length()
-        if (size == 0L) return SaveValidationResult.EMPTY
-        val ext = romId.substringAfterLast('.', "").lowercase()
-        val validSizes: Set<Long> = when (ext) {
-            "gba" -> setOf(512L, 8192L, 65536L, 131072L)
-            "gb", "gbc" -> setOf(8192L, 32768L, 131072L)
-            else -> return SaveValidationResult.VALID
+    fun validate(backup: SaveBackupEntry): SaveValidationResult =
+        when (SaveValidation.check(backup.file.length(), romId)) {
+            SaveSizeCheck.VALID -> SaveValidationResult.VALID
+            SaveSizeCheck.EMPTY -> SaveValidationResult.EMPTY
+            SaveSizeCheck.SIZE_MISMATCH -> SaveValidationResult.SIZE_MISMATCH
         }
-        return if (size in validSizes) SaveValidationResult.VALID else SaveValidationResult.SIZE_MISMATCH
-    }
 
     fun rename(backup: SaveBackupEntry, newName: String) {
         namePrefs.edit().putString("$romId/${backup.file.name}", newName.trim()).apply()
