@@ -6,6 +6,31 @@ object WearMessageConstants {
     const val PATH_SAVE_PULL = "/save/pull"
     const val PATH_SAVE_PUSH = "/save/push"
 
+    // Save archive sync (opt-in automatic SRAM archival, managed from phone).
+    //
+    // Channel, watch → phone: outbox drain. Lock-step per entry:
+    //   watch writes JSON line SaveArchiveEntryMeta + '\n', 8-byte big-endian length, blob,
+    //   then reads one ack line: "OK" | "REJECT <reason>" | "RETRY <reason>".
+    //   OK → entry durably archived, watch deletes it. REJECT → poison, watch deletes it.
+    //   RETRY → transient phone-side failure, watch keeps entry and aborts the drain.
+    //   After the last entry the watch writes the literal line "END".
+    const val PATH_SAVE_ARCHIVE_PUSH = "/save/archive/push"
+
+    // Channel, phone → watch: validated save restore (v2 of PATH_SAVE_PUSH).
+    // Phone writes lines: "romId/fileName", sizeBytes (decimal), sha256 (lowercase hex),
+    // then raw bytes. Watch verifies size + hash, atomically installs, replies
+    // "OK\n" or "ERR <msg>\n". Phones fall back to PATH_SAVE_PUSH on failure/timeout.
+    const val PATH_SAVE_PUSH_V2 = "/save/push_v2"
+
+    // Message, phone → watch: JSON-encoded SaveSyncConfig. Phone is authoritative.
+    const val PATH_SAVE_SYNC_CONFIG = "/save/sync/config"
+
+    // Message, watch → phone: empty payload; phone replies on PATH_SAVE_SYNC_CONFIG.
+    const val PATH_SAVE_SYNC_CONFIG_REQUEST = "/save/sync/config/request"
+
+    // Message, phone → watch: empty payload; watch starts an outbox drain if enabled.
+    const val PATH_SAVE_ARCHIVE_DRAIN = "/save/archive/drain"
+
     // Message paths (small data via MessageClient)
     const val PATH_ROM_LIST_REQUEST = "/rom/list/request"
     const val PATH_ROM_LIST_RESPONSE = "/rom/list/response"

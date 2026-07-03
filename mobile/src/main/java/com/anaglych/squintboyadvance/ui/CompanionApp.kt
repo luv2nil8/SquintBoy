@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material3.Button
@@ -43,7 +44,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,8 +68,10 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.wear.remote.interactions.RemoteActivityHelper
 import com.anaglych.squintboyadvance.WatchPongSignal
+import com.anaglych.squintboyadvance.data.sync.SaveSyncSettingsRepository
 import com.anaglych.squintboyadvance.shared.model.SystemType
 import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
+import com.anaglych.squintboyadvance.ui.archive.ArchiveSetupScreen
 import com.anaglych.squintboyadvance.ui.roms.RomManagementScreen
 import com.anaglych.squintboyadvance.ui.roms.RomsTab
 import com.anaglych.squintboyadvance.ui.roms.WatchRomListViewModel
@@ -84,6 +89,7 @@ import kotlinx.coroutines.withContext
 
 private const val ROUTE_ROMS = "roms"
 private const val ROUTE_LICENSES = "licenses"
+private const val ROUTE_ARCHIVE_SETUP = "archive_setup"
 
 // ── State machine ────────────────────────────────────────────────────────────
 
@@ -302,6 +308,16 @@ fun CompanionApp(
     val watchConnected = connectionState == WatchConnectionState.CONNECTED
     val isRootRoute = currentRoute == ROUTE_ROMS
 
+    // Watch (re)connected: mirror the sync config and heal any missed drain window.
+    val appContext = LocalContext.current.applicationContext
+    LaunchedEffect(watchConnected) {
+        if (watchConnected) {
+            val syncRepo = SaveSyncSettingsRepository.getInstance(appContext)
+            syncRepo.pushConfigToWatch()
+            syncRepo.requestWatchDrain()
+        }
+    }
+
     // Banner is shown for WATCH_NO_APP (always) or NO_WATCH (first-time users only)
     val showBanner = when (connectionState) {
         WatchConnectionState.WATCH_NO_APP -> true
@@ -323,7 +339,16 @@ fun CompanionApp(
                         }
                     }
                 },
-                actions = {},
+                actions = {
+                    if (isRootRoute) {
+                        IconButton(onClick = { navController.navigate(ROUTE_ARCHIVE_SETUP) }) {
+                            Icon(
+                                Icons.Default.CloudSync,
+                                contentDescription = "Save Sync settings",
+                            )
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.primary,
@@ -372,6 +397,9 @@ fun CompanionApp(
                 composable(ROUTE_LICENSES) {
                     LicensesScreen()
                 }
+                composable(ROUTE_ARCHIVE_SETUP) {
+                    ArchiveSetupScreen()
+                }
                 composable(
                     route = "rom_management/{romId}/{systemType}",
                     arguments = listOf(
@@ -395,6 +423,7 @@ fun CompanionApp(
                             watchRomListViewModel.setDisplayName(romId, newName)
                         },
                         onOpenLicenses = { navController.navigate(ROUTE_LICENSES) },
+                        onOpenArchiveSetup = { navController.navigate(ROUTE_ARCHIVE_SETUP) },
                     )
                 }
             }
