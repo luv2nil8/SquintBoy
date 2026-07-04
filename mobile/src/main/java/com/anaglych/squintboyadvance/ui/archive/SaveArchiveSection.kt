@@ -139,7 +139,7 @@ fun SaveArchiveSection(
                 onDayClick = { vm.selectDay(it) },
                 oldestMonth = oldestMonth,
             )
-            // Persistent list: newest-first across all saves, or the tapped day.
+            // The selected day's saves, always visible below the calendar.
             AnimatedContent(
                 targetState = selectedDay,
                 transitionSpec = {
@@ -148,23 +148,16 @@ fun SaveArchiveSection(
                 },
                 label = "day-filter",
             ) { day ->
-                val shown = if (day == null) saves
-                else saves.filter { sameLocalDay(it.timestampMs, day) }
+                val shown = saves.filter { sameLocalDay(it.timestampMs, day) }
                 Column(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.padding(top = 8.dp),
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            if (day == null) "All saves" else dayHeaderFormat.format(day),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (day != null) {
-                            TextButton(onClick = { vm.selectDay(null) }) { Text("Show all") }
-                        }
-                    }
+                    Text(
+                        dayHeaderFormat.format(day),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     if (shown.isEmpty()) {
                         Text(
                             "No saves on this day",

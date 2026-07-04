@@ -84,12 +84,12 @@ class SaveArchiveViewModel(
         .map { list -> list.minOfOrNull { it.timestampMs }?.let { YearMonth.from(dayKeyToDate(GameDirNaming.dayKey(it))) } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    /** Defaults to today — the list under the calendar opens on the current day. */
-    val selectedDay = MutableStateFlow<LocalDate?>(LocalDate.now())
+    /** The day the list shows — always set, defaults to today. */
+    val selectedDay = MutableStateFlow<LocalDate>(LocalDate.now())
     val restoreState = MutableStateFlow(ArchiveRestoreState())
 
-    fun selectDay(day: LocalDate?) {
-        selectedDay.value = if (selectedDay.value == day) null else day
+    fun selectDay(day: LocalDate) {
+        selectedDay.value = day
     }
 
     fun togglePin(save: ArchivedSaveEntity) {
