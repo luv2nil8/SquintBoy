@@ -165,6 +165,13 @@ fun SaveArchiveSection(
                             TextButton(onClick = { vm.selectDay(null) }) { Text("Show all") }
                         }
                     }
+                    if (shown.isEmpty()) {
+                        Text(
+                            "No saves on this day",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     for (save in shown) {
                         ArchivedSaveRow(
                             save = save,

@@ -49,7 +49,14 @@ class DriveAuthManager(private val context: Context) {
             }
         } catch (e: Exception) {
             Log.w(TAG, "authorize failed: ${e.message}")
-            DriveAuthResult.Failed(e.message ?: "Authorization failed")
+            val message =
+                if (e is com.google.android.gms.common.api.ApiException && e.statusCode == 10) {
+                    // DEVELOPER_ERROR: no OAuth client registered for this package+signature.
+                    "Google OAuth client not set up for this build (Cloud Console)"
+                } else {
+                    e.message ?: "Authorization failed"
+                }
+            DriveAuthResult.Failed(message)
         }
     }
 
