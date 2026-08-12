@@ -15,8 +15,10 @@ import com.anaglych.squintboyadvance.shared.model.RomOverrides
 import com.anaglych.squintboyadvance.shared.model.SaveFileEntry
 import com.anaglych.squintboyadvance.shared.model.SaveFileType
 import com.anaglych.squintboyadvance.shared.model.SaveListResponse
+import com.anaglych.squintboyadvance.data.sync.WatchSavePusher
 import com.anaglych.squintboyadvance.shared.model.SystemType
 import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
+import com.anaglych.squintboyadvance.shared.util.HashUtils
 import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.MessageEvent
@@ -269,19 +271,11 @@ class RomManagementViewModel(
                 val nodeId = nodeClient.connectedNodes.await().firstOrNull()?.id
                     ?: throw Exception("No watch connected")
 
-                val romBaseName = romId.substringBeforeLast('.')
-                val channel: ChannelClient.Channel =
-                    channelClient.openChannel(nodeId, WearMessageConstants.PATH_SAVE_PUSH).await()
-
-                try {
-                    val outStream = channelClient.getOutputStream(channel).await()
-                    outStream.use { out ->
-                        out.write("$romId/$romBaseName.sav\n".toByteArray(Charsets.UTF_8))
-                        backup.file.inputStream().use { it.copyTo(out) }
-                    }
-                } finally {
-                    channelClient.close(channel).await()
-                }
+                val bytes = backup.file.readBytes()
+                if (bytes.isEmpty()) throw Exception("Backup file is empty")
+                WatchSavePusher.push(
+                    channelClient, nodeId, romId, bytes, HashUtils.sha256Hex(bytes)
+                )
 
                 messageClient.sendMessage(
                     nodeId,

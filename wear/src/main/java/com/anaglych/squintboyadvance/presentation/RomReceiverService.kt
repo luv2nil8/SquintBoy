@@ -199,12 +199,24 @@ class RomReceiverService : WearableListenerService() {
         val romId = header.substring(0, slashIdx)
         val fileName = header.substring(slashIdx + 1)
 
-        val savesDir = File(filesDir, "saves").apply { mkdirs() }
-        val outFile = File(savesDir, fileName)
-        outFile.outputStream().use { out ->
-            inputStream.copyTo(out)
+        val bytes = inputStream.readBytes()
+        if (bytes.isEmpty() || bytes.size > 1024 * 1024) {
+            Log.w(TAG, "Rejected save push for $romId: implausible size ${bytes.size}")
+            return
         }
-        Log.i(TAG, "Received save: $romId/$fileName (${outFile.length()} bytes)")
+
+        val savesDir = File(filesDir, "saves").apply { mkdirs() }
+        val safeName = fileName.replace('/', '_').replace('\\', '_')
+        // Write IN PLACE like handleSavePushV2: mGBA may hold this file mmap'd
+        // in a live session — a rename strands its writes on the old inode, and
+        // a truncate-to-zero (FileOutputStream) can SIGBUS an mmap'd reader.
+        val outFile = File(savesDir, safeName)
+        java.io.RandomAccessFile(outFile, "rw").use { raf ->
+            raf.write(bytes)
+            raf.setLength(bytes.size.toLong())
+        }
+        Log.i(TAG, "Received save: $romId/$safeName (${bytes.size} bytes)")
+        SaveRestoreSignal.emit(romId)
     }
 
     /**
@@ -220,6 +232,7 @@ class RomReceiverService : WearableListenerService() {
             val header = readLine(input) ?: throw Exception("Missing header")
             val slashIdx = header.indexOf('/')
             if (slashIdx < 0) throw Exception("Bad header: $header")
+            val romId = header.substring(0, slashIdx)
             val fileName = header.substring(slashIdx + 1)
             val expectedSize = readLine(input)?.toLongOrNull()
                 ?: throw Exception("Missing/invalid size header")
@@ -257,6 +270,7 @@ class RomReceiverService : WearableListenerService() {
             output.write("OK\n".toByteArray(Charsets.UTF_8))
             output.flush()
             Log.i(TAG, "Received validated save: $safeName ($expectedSize bytes)")
+            SaveRestoreSignal.emit(romId)
         } catch (e: Exception) {
             Log.e(TAG, "Save push v2 failed: ${e.message}", e)
             try {

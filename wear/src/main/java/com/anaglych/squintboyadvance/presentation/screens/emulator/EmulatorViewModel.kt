@@ -11,6 +11,7 @@ import com.anaglych.squintboyadvance.core.MgbaEmulator
 import com.anaglych.squintboyadvance.core.SaveStateManager
 import com.anaglych.squintboyadvance.presentation.EntitlementRepository
 import com.anaglych.squintboyadvance.presentation.RomMetadataStore
+import com.anaglych.squintboyadvance.presentation.SaveRestoreSignal
 import com.anaglych.squintboyadvance.presentation.SettingsRepository
 import com.anaglych.squintboyadvance.presentation.sync.ArchiveHashStore
 import com.anaglych.squintboyadvance.presentation.sync.OutboxDrainer
@@ -194,6 +195,35 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
                     audioEnabled = enabled
                 }
         }
+        // Attach/detach the save archiver live when the phone toggles save sync.
+        // A session can outlive many config flips (Wear sessions survive
+        // wrist-down for days), so sampling the flag once at loadRom is not
+        // enough: a session launched in manual mode would otherwise never
+        // archive again after sync is re-enabled, and one launched with sync on
+        // would keep archiving as a zombie after it's disabled.
+        viewModelScope.launch {
+            SaveSyncConfigRepository.getInstance(getApplication()).enabled.collect { enabled ->
+                if (enabled) attachArchiver() else detachArchiver()
+            }
+        }
+        // Phone replaced this ROM's live .sav (manual upload or archive
+        // restore): reset the core so the session continues from the restored
+        // save. Left alone, the stale in-memory state would be re-persisted
+        // over it — onFocusLost pushes a pre-restore .ss0 after the phone
+        // already cleared the stacks, and the next launch's state restore
+        // (flags include SAVEDATA) would write the old SRAM back over the
+        // uploaded .sav. The .sav stays mmap'd through the in-place write, so
+        // a plain reset boots straight into the new save; if paused, the
+        // session stays paused on the reset core.
+        viewModelScope.launch {
+            SaveRestoreSignal.saveRestored.collect { romId ->
+                if (romId != _currentRomId.value) return@collect
+                when (_state.value) {
+                    EmulatorState.RUNNING, EmulatorState.PAUSED -> emulator?.reset()
+                    else -> {}
+                }
+            }
+        }
     }
 
     fun loadRom(romId: String, romTitle: String) {
@@ -258,19 +288,11 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         saveStateManager?.restoreAll()
         refreshSaveStateAvailability()
 
-        // Silent save archiver (opt-in, phone-managed; no watch UI)
-        sramArchiver?.stop() // defensive: never leak a poll job across loads
-        sramArchiver = null
-        if (SaveSyncConfigRepository.getInstance(context).enabled.value) {
-            sramArchiver = SramArchiver(
-                savFile = savFile,
-                romId = romId,
-                outbox = SaveSyncOutbox.getInstance(context),
-                hashStore = ArchiveHashStore.getInstance(context),
-                isRunning = { _state.value == EmulatorState.RUNNING },
-                onQueued = { OutboxDrainer.requestDrain(context) },
-            ).also { it.start(viewModelScope) }
-        }
+        // Silent save archiver (opt-in, phone-managed; no watch UI). Also
+        // attached/detached live by the config collector in init when sync is
+        // toggled mid-session.
+        detachArchiver() // defensive: never leak a poll job across loads
+        attachArchiver()
 
         // Init resampler once so live audio toggle doesn't need to reinit mid-playback
         emu.initAudio(OUTPUT_SAMPLE_RATE)
@@ -305,6 +327,37 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             frameskip = effectiveFrameskip(settings),
         ).also { it.ffSpeed = _ffSpeed.value }
         emulatorThread?.start()
+    }
+
+    /**
+     * Creates and starts the SRAM archiver for the loaded ROM when save sync
+     * is enabled and a session is live. Idempotent — keeps an existing
+     * archiver. Called from loadRom and from the sync-config collector so a
+     * mid-session enable takes effect immediately.
+     */
+    private fun attachArchiver() {
+        if (sramArchiver != null) return
+        val context = getApplication<Application>()
+        if (!SaveSyncConfigRepository.getInstance(context).enabled.value) return
+        if (emulator == null) return
+        val romId = _currentRomId.value ?: return
+        val savFile = File(
+            File(context.filesDir, "saves"),
+            "${romId.substringBeforeLast('.')}.sav"
+        )
+        sramArchiver = SramArchiver(
+            savFile = savFile,
+            romId = romId,
+            outbox = SaveSyncOutbox.getInstance(context),
+            hashStore = ArchiveHashStore.getInstance(context),
+            isRunning = { _state.value == EmulatorState.RUNNING },
+            onQueued = { OutboxDrainer.requestDrain(context) },
+        ).also { it.start(viewModelScope) }
+    }
+
+    private fun detachArchiver() {
+        sramArchiver?.stop()
+        sramArchiver = null
     }
 
     private fun onFrameReady() {
@@ -717,8 +770,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
         renderBitmap = null
         pixelBuffer = null
         saveStateManager = null
-        sramArchiver?.stop()
-        sramArchiver = null
+        detachArchiver()
         _currentRomId.value = null
     }
 
