@@ -134,8 +134,12 @@ fun EmulatorScreen(
         viewModel.loadRom(romId, romTitle)
     }
 
-    // Swallow swipe-to-dismiss while paused — the pause menu has its own exit path
-    BackHandler(enabled = state == EmulatorState.PAUSED) {}
+    // While paused: back at the main menu resumes play (mirrors the Resume
+    // button); from a sub-screen (e.g. reset confirm) it falls back to the
+    // menu instead, so a stray back can't skip past a confirmation.
+    BackHandler(enabled = state == EmulatorState.PAUSED) {
+        if (pauseUiState == PauseUiState.MENU) viewModel.resume() else pauseUiState = PauseUiState.MENU
+    }
     // While running, back opens the pause menu instead of popping the nav
     // stack back to the ROM screen.
     BackHandler(enabled = state == EmulatorState.RUNNING) { viewModel.pause() }
