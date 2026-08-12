@@ -1,6 +1,7 @@
 package com.anaglych.squintboyadvance.ui.archive
 
 import android.app.Application
+import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
@@ -13,15 +14,13 @@ import com.anaglych.squintboyadvance.data.db.DriveState
 import com.anaglych.squintboyadvance.data.db.LocalState
 import com.anaglych.squintboyadvance.data.db.SaveSyncDatabase
 import com.anaglych.squintboyadvance.data.sync.SaveSyncSettingsRepository
+import com.anaglych.squintboyadvance.data.sync.WatchSavePusher
 import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
-import com.anaglych.squintboyadvance.shared.util.readLine
+import com.anaglych.squintboyadvance.shared.util.HashUtils
 import com.google.android.gms.wearable.Wearable
-import java.io.BufferedInputStream
 import java.time.LocalDate
 import java.time.YearMonth
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -43,7 +42,7 @@ class SaveArchiveViewModel(
 
     companion object {
         private const val TAG = "SaveArchiveViewModel"
-        private const val ACK_TIMEOUT_MS = 15_000L
+        private const val MAX_SAVE_BYTES = 1024 * 1024
 
         fun factory(application: Application, romId: String): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
@@ -131,6 +130,47 @@ class SaveArchiveViewModel(
     }
 
     /**
+     * Sends a user-picked save file to the watch as the live .sav — the manual
+     * upload path while sync is on (the legacy backups UI is hidden then).
+     * Same pipeline as [restoreToWatch]: validated push, then stack clear.
+     */
+    fun restoreFromFile(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            restoreState.value = ArchiveRestoreState(inProgress = true, message = "Sending…")
+            try {
+                val bytes = getApplication<Application>().contentResolver
+                    .openInputStream(uri)?.use { it.readBytes() }
+                    ?: throw Exception("Couldn't read the selected file")
+                if (bytes.isEmpty()) throw Exception("The selected file is empty")
+                // Hard cap matching the watch's push_v2 limit. Enforced here
+                // because the legacy fallback has no ack — a watch-side
+                // rejection would otherwise be reported as success.
+                if (bytes.size > MAX_SAVE_BYTES) {
+                    throw Exception("File is too large to be a save (${bytes.size / 1024} KB)")
+                }
+                val nodeId = nodeClient.connectedNodes.await().firstOrNull()?.id
+                    ?: throw Exception("No watch connected")
+
+                WatchSavePusher.push(
+                    channelClient, nodeId, romId, bytes, HashUtils.sha256Hex(bytes)
+                )
+
+                messageClient.sendMessage(
+                    nodeId,
+                    WearMessageConstants.PATH_SAVE_CLEAR_STACKS,
+                    romId.toByteArray(Charsets.UTF_8),
+                ).await()
+
+                restoreState.value = ArchiveRestoreState(message = "Sent to watch")
+            } catch (e: Exception) {
+                Log.e(TAG, "restoreFromFile failed", e)
+                restoreState.value =
+                    ArchiveRestoreState(message = e.message ?: "Failed", isError = true)
+            }
+        }
+    }
+
+    /**
      * Sends an archived save back to the watch as its live .sav. Tries the
      * validated push_v2 protocol, falls back to the legacy push for old watch
      * builds, then clears the watch's save/state stacks exactly like the
@@ -146,11 +186,7 @@ class SaveArchiveViewModel(
                 val nodeId = nodeClient.connectedNodes.await().firstOrNull()?.id
                     ?: throw Exception("No watch connected")
 
-                val v2Ok = tryPushV2(nodeId, bytes, save.sha256)
-                if (!v2Ok) {
-                    Log.i(TAG, "push_v2 failed; falling back to legacy push")
-                    legacyPush(nodeId, bytes)
-                }
+                WatchSavePusher.push(channelClient, nodeId, romId, bytes, save.sha256)
 
                 messageClient.sendMessage(
                     nodeId,
@@ -169,57 +205,6 @@ class SaveArchiveViewModel(
 
     fun clearRestoreMessage() {
         restoreState.value = ArchiveRestoreState()
-    }
-
-    private suspend fun tryPushV2(nodeId: String, bytes: ByteArray, sha256: String): Boolean {
-        val romBaseName = romId.substringBeforeLast('.')
-        return try {
-            val channel =
-                channelClient.openChannel(nodeId, WearMessageConstants.PATH_SAVE_PUSH_V2).await()
-            var watchdog: Job? = null
-            try {
-                val out = channelClient.getOutputStream(channel).await()
-                val input = BufferedInputStream(channelClient.getInputStream(channel).await())
-                out.write("$romId/$romBaseName.sav\n".toByteArray(Charsets.UTF_8))
-                out.write("${bytes.size}\n".toByteArray(Charsets.UTF_8))
-                out.write("$sha256\n".toByteArray(Charsets.UTF_8))
-                out.write(bytes)
-                out.flush()
-
-                // The blocking ack read is unblocked by closing the channel on timeout.
-                watchdog = viewModelScope.launch {
-                    delay(ACK_TIMEOUT_MS)
-                    try {
-                        channelClient.close(channel).await()
-                    } catch (_: Exception) {}
-                }
-                val ack = readLine(input)
-                ack == "OK"
-            } finally {
-                watchdog?.cancel()
-                try {
-                    channelClient.close(channel).await()
-                } catch (_: Exception) {}
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "push_v2 error: ${e.message}")
-            false
-        }
-    }
-
-    private suspend fun legacyPush(nodeId: String, bytes: ByteArray) {
-        val romBaseName = romId.substringBeforeLast('.')
-        val channel =
-            channelClient.openChannel(nodeId, WearMessageConstants.PATH_SAVE_PUSH).await()
-        try {
-            val out = channelClient.getOutputStream(channel).await()
-            out.use {
-                it.write("$romId/$romBaseName.sav\n".toByteArray(Charsets.UTF_8))
-                it.write(bytes)
-            }
-        } finally {
-            channelClient.close(channel).await()
-        }
     }
 
     private fun updateManifestEntry(save: ArchivedSaveEntity) {

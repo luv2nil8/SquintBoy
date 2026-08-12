@@ -1,6 +1,11 @@
 package com.anaglych.squintboyadvance.ui.archive
 
 import android.app.Application
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.expandVertically
@@ -20,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -49,6 +55,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.anaglych.squintboyadvance.data.db.ArchivedSaveEntity
+import com.anaglych.squintboyadvance.shared.util.SaveSizeCheck
+import com.anaglych.squintboyadvance.shared.util.SaveValidation
 import com.anaglych.squintboyadvance.ui.components.SlideToConfirm
 import java.time.Instant
 import java.time.LocalDate
@@ -95,6 +103,15 @@ fun SaveArchiveSection(
     var pendingRestore by remember { mutableStateOf<ArchivedSaveEntity?>(null) }
     var pendingDelete by remember { mutableStateOf<ArchivedSaveEntity?>(null) }
     var pendingNote by remember { mutableStateOf<ArchivedSaveEntity?>(null) }
+    var pendingFileRestore by remember { mutableStateOf<PickedSaveFile?>(null) }
+
+    // Manual upload: with sync on, the legacy backups UI is hidden, so this is
+    // the way to send an arbitrary save file from phone storage to the watch.
+    val filePickLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        uri?.let { pendingFileRestore = resolvePickedFile(context, it) }
+    }
 
     Column {
         // ── Header ───────────────────────────────────────────────────────
@@ -109,6 +126,16 @@ fun SaveArchiveSection(
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.weight(1f),
             )
+            IconButton(
+                onClick = { filePickLauncher.launch(arrayOf("*/*")) },
+                enabled = watchConnected,
+            ) {
+                Icon(
+                    Icons.Default.UploadFile,
+                    contentDescription = "Send a save file to the watch",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             IconButton(onClick = onOpenSetup) {
                 Icon(
                     Icons.Default.Settings,
@@ -182,68 +209,38 @@ fun SaveArchiveSection(
 
     // ── Restore confirmation ────────────────────────────────────────────
     pendingRestore?.let { save ->
-        // Auto-close shortly after a successful restore.
-        LaunchedEffect(restoreState.message) {
-            if (restoreState.message != null && !restoreState.isError && !restoreState.inProgress) {
-                delay(1200)
+        RestoreConfirmDialog(
+            title = "Restore to Watch",
+            body = "The save from ${formatStamp(save.timestampMs)} will replace the " +
+                "current save on your watch.",
+            slideText = "Slide to restore",
+            restoreState = restoreState,
+            onConfirm = { vm.restoreToWatch(save) },
+            onClose = {
                 pendingRestore = null
                 vm.clearRestoreMessage()
-            }
-        }
-        Dialog(onDismissRequest = {
-            if (!restoreState.inProgress) {
-                pendingRestore = null
+            },
+        )
+    }
+
+    // ── Send-file confirmation ──────────────────────────────────────────
+    pendingFileRestore?.let { picked ->
+        val sizeWarning =
+            if (picked.sizeBytes >= 0 &&
+                SaveValidation.check(picked.sizeBytes, romId) != SaveSizeCheck.VALID
+            ) "\n\nNote: this file size is unusual for this game — it may not be compatible."
+            else ""
+        RestoreConfirmDialog(
+            title = "Send Save to Watch",
+            body = "\"${picked.name}\" will replace the current save on your watch.$sizeWarning",
+            slideText = "Slide to send",
+            restoreState = restoreState,
+            onConfirm = { vm.restoreFromFile(picked.uri) },
+            onClose = {
+                pendingFileRestore = null
                 vm.clearRestoreMessage()
-            }
-        }) {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            ) {
-                Column(Modifier.padding(20.dp)) {
-                    Text(
-                        "Restore to Watch",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "The save from ${formatStamp(save.timestampMs)} will replace the " +
-                            "current save on your watch.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    when {
-                        restoreState.inProgress -> Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(Modifier.width(20.dp).height(20.dp))
-                            Spacer(Modifier.width(12.dp))
-                            Text(restoreState.message ?: "Restoring…")
-                        }
-                        restoreState.message != null -> Text(
-                            restoreState.message!!,
-                            color = if (restoreState.isError) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.primary,
-                        )
-                        else -> SlideToConfirm(
-                            text = "Slide to restore",
-                            accentColor = MaterialTheme.colorScheme.primary,
-                            onConfirmed = { vm.restoreToWatch(save) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    TextButton(
-                        onClick = {
-                            pendingRestore = null
-                            vm.clearRestoreMessage()
-                        },
-                        enabled = !restoreState.inProgress,
-                        modifier = Modifier.align(Alignment.End),
-                    ) { Text(if (restoreState.message != null) "Close" else "Cancel") }
-                }
-            }
-        }
+            },
+        )
     }
 
     // ── Delete confirmation ─────────────────────────────────────────────
@@ -315,6 +312,73 @@ fun SaveArchiveSection(
     }
 }
 
+/**
+ * Confirmation dialog shared by archive restore and send-from-file: slide to
+ * confirm, then progress/result driven by [restoreState], auto-closing shortly
+ * after success.
+ */
+@Composable
+private fun RestoreConfirmDialog(
+    title: String,
+    body: String,
+    slideText: String,
+    restoreState: ArchiveRestoreState,
+    onConfirm: () -> Unit,
+    onClose: () -> Unit,
+) {
+    LaunchedEffect(restoreState.message) {
+        if (restoreState.message != null && !restoreState.isError && !restoreState.inProgress) {
+            delay(1200)
+            onClose()
+        }
+    }
+    Dialog(onDismissRequest = { if (!restoreState.inProgress) onClose() }) {
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        ) {
+            Column(Modifier.padding(20.dp)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    body,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(16.dp))
+                when {
+                    restoreState.inProgress -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.width(20.dp).height(20.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Text(restoreState.message ?: "Restoring…")
+                    }
+                    restoreState.message != null -> Text(
+                        restoreState.message!!,
+                        color = if (restoreState.isError) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.primary,
+                    )
+                    else -> SlideToConfirm(
+                        text = slideText,
+                        accentColor = MaterialTheme.colorScheme.primary,
+                        onConfirmed = onConfirm,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                TextButton(
+                    onClick = onClose,
+                    enabled = !restoreState.inProgress,
+                    modifier = Modifier.align(Alignment.End),
+                ) { Text(if (restoreState.message != null) "Close" else "Cancel") }
+            }
+        }
+    }
+}
+
 @Composable
 private fun WarningBanner(text: String, onFix: () -> Unit) {
     Row(
@@ -383,6 +447,23 @@ private fun EmptyArchiveCard() {
             modifier = Modifier.padding(16.dp),
         )
     }
+}
+
+private data class PickedSaveFile(val uri: Uri, val name: String, val sizeBytes: Long)
+
+/** Display name + size for a picked document; size is -1 when the provider doesn't report it. */
+private fun resolvePickedFile(context: Context, uri: Uri): PickedSaveFile {
+    var name = uri.lastPathSegment ?: "save file"
+    var size = -1L
+    context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+        if (c.moveToFirst()) {
+            val nameIdx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            val sizeIdx = c.getColumnIndex(OpenableColumns.SIZE)
+            if (nameIdx >= 0) c.getString(nameIdx)?.let { name = it }
+            if (sizeIdx >= 0 && !c.isNull(sizeIdx)) size = c.getLong(sizeIdx)
+        }
+    }
+    return PickedSaveFile(uri, name, size)
 }
 
 private val dayHeaderFormat = DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.getDefault())
