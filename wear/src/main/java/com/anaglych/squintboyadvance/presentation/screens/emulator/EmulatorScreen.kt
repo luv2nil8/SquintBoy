@@ -155,10 +155,16 @@ fun EmulatorScreen(
     }
 
     // While paused: back at the main menu resumes play (mirrors the Resume
-    // button); from a sub-screen (e.g. reset confirm) it falls back to the
-    // menu instead, so a stray back can't skip past a confirmation.
+    // button); from a dismissable sub-screen it falls back to the menu
+    // instead, so a stray back can't skip past a confirmation. SESSION_EXPIRED
+    // has no dismiss path by design (soft-lock — upgrade or exit only), so
+    // back is swallowed there same as before.
     BackHandler(enabled = state == EmulatorState.PAUSED) {
-        if (pauseUiState == PauseUiState.MENU) viewModel.resume() else pauseUiState = PauseUiState.MENU
+        when (pauseUiState) {
+            PauseUiState.MENU -> viewModel.resume()
+            PauseUiState.SESSION_EXPIRED -> {}
+            else -> pauseUiState = PauseUiState.MENU
+        }
     }
     // While running, back opens the pause menu instead of popping the nav
     // stack back to the ROM screen.
