@@ -185,15 +185,15 @@ class MobileBillingManager private constructor(context: Context) {
             .setProductList(productList)
             .build()
 
-        billingClient.queryProductDetailsAsync(params) { result, productDetailsList ->
+        billingClient.queryProductDetailsAsync(params) { result, queryResult ->
+            val productDetails = queryResult.productDetailsList.firstOrNull()
             if (result.responseCode != BillingClient.BillingResponseCode.OK ||
-                productDetailsList.isEmpty()
+                productDetails == null
             ) {
                 Log.e(TAG, "Product details query failed: ${result.debugMessage}")
                 return@queryProductDetailsAsync
             }
 
-            val productDetails = productDetailsList.first()
             val flowParams = BillingFlowParams.newBuilder()
                 .setProductDetailsParamsList(
                     listOf(
