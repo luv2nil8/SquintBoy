@@ -91,6 +91,9 @@ import com.anaglych.squintboyadvance.shared.model.GbColorPalette
 import com.anaglych.squintboyadvance.shared.model.RomOverrides
 import com.anaglych.squintboyadvance.shared.model.ScaleMode
 import com.anaglych.squintboyadvance.shared.model.SystemType
+import com.anaglych.squintboyadvance.data.sync.SaveSyncSettingsRepository
+import com.anaglych.squintboyadvance.ui.archive.SaveArchiveSection
+import com.anaglych.squintboyadvance.ui.archive.SaveSyncGate
 import com.anaglych.squintboyadvance.ui.components.SlideToConfirm
 import com.anaglych.squintboyadvance.ui.theme.Crimson
 import com.anaglych.squintboyadvance.ui.theme.GbBadge
@@ -109,6 +112,7 @@ fun RomManagementScreen(
     onRenamed: (String) -> Unit = {},
     onOpenLicenses: () -> Unit = {},
     onUpgrade: () -> Unit = {},
+    onOpenArchiveSetup: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val application = context.applicationContext as Application
@@ -216,6 +220,8 @@ fun RomManagementScreen(
             when (selectedTab) {
                 0 -> SavesTabContent(
                     viewModel = viewModel,
+                    romId = romId,
+                    onOpenArchiveSetup = onOpenArchiveSetup,
                     watchConnected = watchConnected,
                     watchSave = watchSave,
                     isLoadingWatchSave = isLoadingWatchSave,
@@ -350,6 +356,8 @@ fun RomManagementScreen(
 @Composable
 private fun SavesTabContent(
     viewModel: RomManagementViewModel,
+    romId: String,
+    onOpenArchiveSetup: () -> Unit,
     watchConnected: Boolean,
     watchSave: com.anaglych.squintboyadvance.shared.model.SaveFileEntry?,
     isLoadingWatchSave: Boolean,
@@ -364,83 +372,102 @@ private fun SavesTabContent(
     val context = LocalContext.current
     val crimson = Crimson
 
+    // With save sync running, the archive IS the save UI — hide the legacy
+    // watch-save/backup sections. They return the moment sync is disabled.
+    val syncSettings by SaveSyncSettingsRepository.getInstance(context.applicationContext)
+        .settings.collectAsStateWithLifecycle()
+    val gateAvailable by SaveSyncGate.isAvailable(context).collectAsStateWithLifecycle()
+    val syncActive = gateAvailable && syncSettings.enabled
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        // ── Current Save on Watch ───────────────────────────────────
+        // ── Save Archive (opt-in sync system) ───────────────────────
         item {
-            SectionHeader(
-                title = "Save on Watch",
-                action = {
-                    IconButton(
-                        onClick = { viewModel.refreshWatchSave() },
-                        enabled = watchConnected && !isLoadingWatchSave,
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-                    }
-                },
+            SaveArchiveSection(
+                romId = romId,
+                watchConnected = watchConnected,
+                onOpenSetup = onOpenArchiveSetup,
+                onUpgrade = onUpgrade,
             )
         }
 
-        item {
-            when {
-                isLoadingWatchSave -> Box(
-                    Modifier.fillMaxWidth(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                }
-                watchSave != null -> WatchSaveCard(
-                    entry = watchSave,
-                    onBackup = { if (isPro) viewModel.backupToPhone() },
-                    backupInProgress = backupTransfer.inProgress,
-                    backupMessage = backupTransfer.message,
-                    backupEnabled = isPro,
-                    backupIsError = backupTransfer.isError,
-                    watchConnected = watchConnected,
-                    onUpgrade = onUpgrade,
-                )
-                else -> Text(
-                    text = if (watchConnected) "No save file found on watch" else "Connect watch to view save",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-
-        // ── Phone Backups ───────────────────────────────────────────
-        item {
-            Spacer(Modifier.height(4.dp))
-            SectionHeader(
-                title = "Backups on Phone",
-                action = {
-                    IconButton(onClick = importLauncher) {
-                        Icon(Icons.Default.Add, contentDescription = "Import save from phone")
-                    }
-                },
-            )
-        }
-
-        if (backups.isEmpty()) {
+        if (!syncActive) {
+            // ── Current Save on Watch ───────────────────────────────
             item {
-                Text(
-                    "No backups yet. Tap \"Backup to Phone\" above to save a copy.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                SectionHeader(
+                    title = "Save on Watch",
+                    action = {
+                        IconButton(
+                            onClick = { viewModel.refreshWatchSave() },
+                            enabled = watchConnected && !isLoadingWatchSave,
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        }
+                    },
                 )
             }
-        } else {
-            items(backups, key = { it.file.absolutePath }) { backup ->
-                BackupCard(
-                    backup = backup,
-                    onExport = { viewModel.exportBackup(backup, context) },
-                    onDelete = { viewModel.deleteBackup(backup) },
-                    onRename = { newName -> viewModel.renameBackup(backup, newName) },
-                    onUpload = { onUpload(backup) },
-                    watchConnected = watchConnected,
+
+            item {
+                when {
+                    isLoadingWatchSave -> Box(
+                        Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    }
+                    watchSave != null -> WatchSaveCard(
+                        entry = watchSave,
+                        onBackup = { if (isPro) viewModel.backupToPhone() },
+                        backupInProgress = backupTransfer.inProgress,
+                        backupMessage = backupTransfer.message,
+                        backupEnabled = isPro,
+                        backupIsError = backupTransfer.isError,
+                        watchConnected = watchConnected,
+                        onUpgrade = onUpgrade,
+                    )
+                    else -> Text(
+                        text = if (watchConnected) "No save file found on watch" else "Connect watch to view save",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            // ── Phone Backups ───────────────────────────────────────
+            item {
+                Spacer(Modifier.height(4.dp))
+                SectionHeader(
+                    title = "Backups on Phone",
+                    action = {
+                        IconButton(onClick = importLauncher) {
+                            Icon(Icons.Default.Add, contentDescription = "Import save from phone")
+                        }
+                    },
                 )
+            }
+
+            if (backups.isEmpty()) {
+                item {
+                    Text(
+                        "No backups yet. Tap \"Backup to Phone\" above to save a copy.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                items(backups, key = { it.file.absolutePath }) { backup ->
+                    BackupCard(
+                        backup = backup,
+                        onExport = { viewModel.exportBackup(backup, context) },
+                        onDelete = { viewModel.deleteBackup(backup) },
+                        onRename = { newName -> viewModel.renameBackup(backup, newName) },
+                        onUpload = { onUpload(backup) },
+                        watchConnected = watchConnected,
+                    )
+                }
             }
         }
 

@@ -2,10 +2,13 @@ package com.anaglych.squintboyadvance.presentation
 
 import android.os.PowerManager
 import android.util.Log
+import com.anaglych.squintboyadvance.presentation.sync.OutboxDrainer
+import com.anaglych.squintboyadvance.presentation.sync.SaveSyncConfigRepository
 import com.anaglych.squintboyadvance.shared.model.*
 import com.anaglych.squintboyadvance.shared.model.DemoLimits
 import com.anaglych.squintboyadvance.shared.protocol.WearMessageConstants
 import com.anaglych.squintboyadvance.shared.util.readLine
+import com.google.android.gms.wearable.CapabilityInfo
 import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Wearable
@@ -36,6 +39,7 @@ class RomReceiverService : WearableListenerService() {
             when (channel.path) {
                 WearMessageConstants.PATH_ROM_TRANSFER -> handleRomTransfer(channel)
                 WearMessageConstants.PATH_SAVE_PUSH -> handleSavePush(channel)
+                WearMessageConstants.PATH_SAVE_PUSH_V2 -> handleSavePushV2(channel)
                 WearMessageConstants.PATH_SAVE_PULL -> handleSavePull(channel)
                 else -> Log.w(TAG, "Unknown channel path: ${channel.path}")
             }
@@ -195,12 +199,85 @@ class RomReceiverService : WearableListenerService() {
         val romId = header.substring(0, slashIdx)
         val fileName = header.substring(slashIdx + 1)
 
-        val savesDir = File(filesDir, "saves").apply { mkdirs() }
-        val outFile = File(savesDir, fileName)
-        outFile.outputStream().use { out ->
-            inputStream.copyTo(out)
+        val bytes = inputStream.readBytes()
+        if (bytes.isEmpty() || bytes.size > 1024 * 1024) {
+            Log.w(TAG, "Rejected save push for $romId: implausible size ${bytes.size}")
+            return
         }
-        Log.i(TAG, "Received save: $romId/$fileName (${outFile.length()} bytes)")
+
+        val savesDir = File(filesDir, "saves").apply { mkdirs() }
+        val safeName = fileName.replace('/', '_').replace('\\', '_')
+        // Write IN PLACE like handleSavePushV2: mGBA may hold this file mmap'd
+        // in a live session — a rename strands its writes on the old inode, and
+        // a truncate-to-zero (FileOutputStream) can SIGBUS an mmap'd reader.
+        val outFile = File(savesDir, safeName)
+        java.io.RandomAccessFile(outFile, "rw").use { raf ->
+            raf.write(bytes)
+            raf.setLength(bytes.size.toLong())
+        }
+        Log.i(TAG, "Received save: $romId/$safeName (${bytes.size} bytes)")
+        SaveRestoreSignal.emit(romId)
+    }
+
+    /**
+     * Validated save restore (v2 of handleSavePush): 3-line header
+     * (romId/fileName, sizeBytes, sha256) + exactly sizeBytes of payload.
+     * Verifies size + hash in memory, installs in place, acks "OK" / "ERR <msg>".
+     */
+    private fun handleSavePushV2(channel: ChannelClient.Channel) {
+        val channelClient = Wearable.getChannelClient(this)
+        val input = BufferedInputStream(Tasks.await(channelClient.getInputStream(channel)))
+        val output = Tasks.await(channelClient.getOutputStream(channel))
+        try {
+            val header = readLine(input) ?: throw Exception("Missing header")
+            val slashIdx = header.indexOf('/')
+            if (slashIdx < 0) throw Exception("Bad header: $header")
+            val romId = header.substring(0, slashIdx)
+            val fileName = header.substring(slashIdx + 1)
+            val expectedSize = readLine(input)?.toLongOrNull()
+                ?: throw Exception("Missing/invalid size header")
+            val expectedHash = readLine(input) ?: throw Exception("Missing hash header")
+            if (expectedSize <= 0 || expectedSize > 1024 * 1024) {
+                throw Exception("Implausible save size: $expectedSize")
+            }
+
+            val bytes = ByteArray(expectedSize.toInt())
+            var offset = 0
+            while (offset < bytes.size) {
+                val read = input.read(bytes, offset, bytes.size - offset)
+                if (read < 0) throw Exception("Stream ended at $offset/$expectedSize bytes")
+                offset += read
+            }
+
+            val actualHash = com.anaglych.squintboyadvance.shared.util.HashUtils.sha256Hex(bytes)
+            if (!actualHash.equals(expectedHash, ignoreCase = true)) {
+                throw Exception("Hash mismatch")
+            }
+
+            val savesDir = File(filesDir, "saves").apply { mkdirs() }
+            val safeName = fileName.replace('/', '_').replace('\\', '_')
+            // Write IN PLACE, never rename-over: mGBA may hold this file mmap'd
+            // in a live session, and a rename would strand its writes on the old
+            // inode (losing the player's progress silently). The payload is
+            // already hash-verified in memory, and RandomAccessFile avoids a
+            // truncate-to-zero window that could SIGBUS an mmap'd reader.
+            val outFile = File(savesDir, safeName)
+            java.io.RandomAccessFile(outFile, "rw").use { raf ->
+                raf.write(bytes)
+                raf.setLength(bytes.size.toLong())
+            }
+
+            output.write("OK\n".toByteArray(Charsets.UTF_8))
+            output.flush()
+            Log.i(TAG, "Received validated save: $safeName ($expectedSize bytes)")
+            SaveRestoreSignal.emit(romId)
+        } catch (e: Exception) {
+            Log.e(TAG, "Save push v2 failed: ${e.message}", e)
+            try {
+                output.write("ERR ${e.message}\n".toByteArray(Charsets.UTF_8))
+                output.flush()
+            } catch (_: Exception) {}
+        }
     }
 
     private fun handleSavePull(channel: ChannelClient.Channel) {
@@ -257,6 +334,9 @@ class RomReceiverService : WearableListenerService() {
                 WearMessageConstants.PATH_SETTINGS_SYNC -> handleSettingsSync(event)
                 WearMessageConstants.PATH_SAVE_LIST_REQUEST -> handleSaveListRequest(event)
                 WearMessageConstants.PATH_SAVE_CLEAR_STACKS -> handleSaveClearStacks(event)
+                WearMessageConstants.PATH_SAVE_SYNC_CONFIG -> handleSaveSyncConfig(event)
+                WearMessageConstants.PATH_SAVE_ARCHIVE_DRAIN ->
+                    OutboxDrainer.requestDrain(this, event.sourceNodeId)
                 WearMessageConstants.PATH_ROM_RENAME -> handleRomRename(event)
                 WearMessageConstants.PATH_SCREEN_INFO_REQUEST -> handleScreenInfoRequest(event)
                 WearMessageConstants.PATH_ENTITLEMENT_PUSH -> {
@@ -409,6 +489,26 @@ class RomReceiverService : WearableListenerService() {
             File(savesDir, "$romBaseName.sav.$i").delete()
         }
         Log.i(TAG, "Cleared save/state stacks for $romBaseName")
+    }
+
+    private fun handleSaveSyncConfig(event: MessageEvent) {
+        val config = json.decodeFromString(
+            SaveSyncConfig.serializer(), String(event.data, Charsets.UTF_8)
+        )
+        SaveSyncConfigRepository.getInstance(this).handleConfigPush(config)
+        // The phone pushes config on every connect, over the reliable message
+        // path, with its node id attached — piggyback outbox recovery on it
+        // rather than trusting capability-change events (flaky on some setups).
+        if (config.enabled) {
+            OutboxDrainer.requestDrain(this, event.sourceNodeId)
+        }
+    }
+
+    /** Phone became reachable: opportunistically drain any queued snapshots. */
+    override fun onCapabilityChanged(info: CapabilityInfo) {
+        if (info.name == WearMessageConstants.CAPABILITY_PHONE_APP && info.nodes.isNotEmpty()) {
+            OutboxDrainer.requestDrain(this)
+        }
     }
 
     private fun handleRomRename(event: MessageEvent) {

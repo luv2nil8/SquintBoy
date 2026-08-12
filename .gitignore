@@ -21,3 +21,4 @@ link-cable.md
 # Release signing — never commit these
 keystore.properties
 *.keystore
+.kotlin/
