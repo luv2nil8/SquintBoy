@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import com.anaglych.squintboyadvance.BuildConfig
 import com.anaglych.squintboyadvance.MobileBillingManager
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -102,21 +103,23 @@ fun LicensesScreen() {
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "Pro override",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFF9BBC0F),
-                    modifier = Modifier.weight(1f),
-                )
-                Switch(
-                    checked = isPro,
-                    onCheckedChange = { billingManager.debugSetPro(it) },
-                )
+        if (BuildConfig.DEBUG) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "Pro override",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0xFF9BBC0F),
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(
+                        checked = isPro,
+                        onCheckedChange = { billingManager.debugSetPro(it) },
+                    )
+                }
             }
         }
 
